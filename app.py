@@ -7,6 +7,7 @@ import streamlit as st
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
+from gerris_erfolgs_tracker.state import init_state
 
 class OpenAIConfig(BaseModel):
     """Configuration for connecting to the OpenAI API."""
@@ -42,6 +43,7 @@ class OpenAIConfig(BaseModel):
 
 def main() -> None:
     st.set_page_config(page_title="Gerris ErfolgsTracker", page_icon="✅")
+        init_state()
     st.title("Gerris ErfolgsTracker")
     st.write(
         """
