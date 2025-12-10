@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from enum import Enum
 from typing import List, Optional
 from uuid import uuid4
 
@@ -50,3 +51,19 @@ class GamificationState(BaseModel):
     badges: List[str] = Field(default_factory=list)
     history: List[str] = Field(default_factory=list)
     processed_completions: List[str] = Field(default_factory=list)
+
+
+class GamificationMode(str, Enum):
+    """Available gamification styles for the app."""
+
+    POINTS = "points"
+    BADGES = "badges"
+    AVATAR_ROSS = "dipl_psych_ross"
+
+    @property
+    def label(self) -> str:
+        if self is GamificationMode.POINTS:
+            return "Punkte & Level / Points & levels"
+        if self is GamificationMode.BADGES:
+            return "Abzeichen / Badges"
+        return "Dipl.-Psych. Roß (Avatar) / Dipl.-Psych. Roß (avatar)"

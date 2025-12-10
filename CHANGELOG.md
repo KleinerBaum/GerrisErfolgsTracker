@@ -15,3 +15,4 @@
   fallback behavior when no `OPENAI_API_KEY` is present.
 - Added settings sidebar for AI toggle and daily goal updates, reset workflow for session data, and safety/info notices
   highlighting session-only storage and non-crisis scope.
+- Added sidebar drop-down to choose gamification style (points, badges, or the new Dipl.-Psych. Roß avatar with bilingual motivational quotes).

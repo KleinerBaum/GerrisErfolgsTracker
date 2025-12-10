@@ -24,6 +24,7 @@ from gerris_erfolgs_tracker.eisenhower import (
 from gerris_erfolgs_tracker.gamification import (
     calculate_progress_to_next_level,
     get_gamification_state,
+    next_avatar_prompt,
     update_gamification_on_completion,
 )
 from gerris_erfolgs_tracker.kpis import (
@@ -33,7 +34,7 @@ from gerris_erfolgs_tracker.kpis import (
     update_kpis_on_completion,
 )
 from gerris_erfolgs_tracker.llm import get_default_model, get_openai_client
-from gerris_erfolgs_tracker.models import KpiStats, TodoItem
+from gerris_erfolgs_tracker.models import GamificationMode, KpiStats, TodoItem
 from gerris_erfolgs_tracker.state import get_todos, init_state, reset_state
 from gerris_erfolgs_tracker.todos import (
     add_todo,
@@ -58,6 +59,7 @@ def _ensure_settings_defaults(
 
     settings.setdefault(AI_ENABLED_KEY, bool(client))
     settings.setdefault("goal_daily", stats.goal_daily)
+    settings.setdefault("gamification_mode", GamificationMode.POINTS.value)
 
     st.session_state[SS_SETTINGS] = settings
     return settings
@@ -124,6 +126,34 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
             f"{badge} {goal_suggestion.payload.focus} — "
             f"{goal_suggestion.payload.daily_goal} Ziele / goals. {tips}"
         )
+
+    st.sidebar.divider()
+    st.sidebar.markdown("### Gamification-Stil / Gamification style")
+    gamification_mode_options = list(GamificationMode)
+    current_mode_value = settings.get(
+        "gamification_mode", GamificationMode.POINTS.value
+    )
+    try:
+        current_mode = GamificationMode(current_mode_value)
+    except ValueError:
+        current_mode = GamificationMode.POINTS
+
+    selected_mode = st.sidebar.selectbox(
+        "Gamification-Variante / Gamification mode",
+        options=gamification_mode_options,
+        format_func=lambda option: option.label,
+        index=gamification_mode_options.index(current_mode),
+        help=(
+            "Wähle Punkte, Abzeichen oder die motivierende Avatar-Option Dipl.-Psych. Roß / "
+            "Choose points, badges, or the motivational avatar option Dipl.-Psych. Roß."
+        ),
+    )
+    settings["gamification_mode"] = selected_mode.value
+
+    st.sidebar.caption(
+        "Dipl.-Psych. Roß steht für warme, therapeutische Motivation (Brünette, ca. 45 Jahre, Brille) / "
+        "Dipl.-Psych. Roß offers warm, therapeutic motivation (brunette, about 45 years old, with glasses)."
+    )
 
     st.sidebar.divider()
     st.sidebar.subheader("Sicherheit & Daten / Safety & data")
@@ -315,40 +345,80 @@ def render_gamification_panel(
     stats: KpiStats, *, ai_enabled: bool, client: Optional[OpenAI]
 ) -> None:
     gamification_state = get_gamification_state()
-    st.subheader("Gamification")
-
-    col_level, col_points = st.columns(2)
-    col_level.metric("Level", gamification_state.level)
-    col_points.metric("Punkte / Points", gamification_state.points)
-
-    progress_points, required_points, progress_ratio = calculate_progress_to_next_level(
-        gamification_state
-    )
-    st.progress(
-        progress_ratio,
-        text=(
-            "Fortschritt / Progress: "
-            f"{progress_points}/{required_points} Punkte bis Level {gamification_state.level + 1} "
-            "/ points to next level"
-        ),
-    )
-
-    st.caption(
-        "Aktueller Streak / Current streak: "
-        f"{stats.streak} Tage / days · Erledigt gesamt / Done total: {stats.done_total}"
-    )
-
-    st.markdown("#### Badges")
-    if gamification_state.badges:
-        badge_labels = " ".join(f"🏅 {badge}" for badge in gamification_state.badges)
-        st.markdown(
-            f"{badge_labels}<br/>"
-            "(jede Auszeichnung wird nur einmal vergeben / each badge is awarded once)",
-            unsafe_allow_html=True,
+    settings: dict[str, Any] = st.session_state.get(SS_SETTINGS, {})
+    try:
+        gamification_mode = GamificationMode(
+            settings.get("gamification_mode", GamificationMode.POINTS.value)
         )
-    else:
+    except ValueError:
+        gamification_mode = GamificationMode.POINTS
+
+    st.subheader("Gamification")
+    st.caption(gamification_mode.label)
+
+    if gamification_mode is GamificationMode.POINTS:
+        col_level, col_points = st.columns(2)
+        col_level.metric("Level", gamification_state.level)
+        col_points.metric("Punkte / Points", gamification_state.points)
+
+        (
+            progress_points,
+            required_points,
+            progress_ratio,
+        ) = calculate_progress_to_next_level(gamification_state)
+        st.progress(
+            progress_ratio,
+            text=(
+                "Fortschritt / Progress: "
+                f"{progress_points}/{required_points} Punkte bis Level {gamification_state.level + 1} "
+                "/ points to next level"
+            ),
+        )
+
         st.caption(
-            "Noch keine Badges gesammelt / No badges earned yet. Arbeite an deinen Zielen!"
+            "Aktueller Streak / Current streak: "
+            f"{stats.streak} Tage / days · Erledigt gesamt / Done total: {stats.done_total}"
+        )
+
+    elif gamification_mode is GamificationMode.BADGES:
+        st.markdown("#### Badges")
+        if gamification_state.badges:
+            badge_labels = " ".join(
+                f"🏅 {badge}" for badge in gamification_state.badges
+            )
+            st.markdown(
+                f"{badge_labels}<br/>"
+                "(jede Auszeichnung wird nur einmal vergeben / each badge is awarded once)",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption(
+                "Noch keine Badges gesammelt / No badges earned yet. Arbeite an deinen Zielen!"
+            )
+        st.info(
+            "Sammle Abzeichen für Meilensteine wie erste Aufgabe, 3-Tage-Streak und 10 Abschlüsse / "
+            "Earn badges for milestones like your first task, a 3-day streak, and 10 completions."
+        )
+
+    else:
+        st.markdown("#### Dipl.-Psych. Roß")
+        st.caption(
+            "Avatar: brünette Therapeutin (~45 Jahre) mit Brille, warme Ansprache / "
+            "Avatar: brunette therapist (~45 years) with glasses, warm encouragement."
+        )
+        message_index = int(st.session_state.get("avatar_prompt_index", 0))
+        avatar_message = next_avatar_prompt(message_index)
+        st.info(f"👩‍⚕️ Dipl.-Psych. Roß: {avatar_message}")
+
+        if st.button(
+            "Neuen Spruch anzeigen / Show another quote", key="avatar_prompt_btn"
+        ):
+            st.session_state["avatar_prompt_index"] = message_index + 1
+            st.rerun()
+
+        st.caption(
+            "Klicke erneut für weitere motivierende Botschaften im Therapiezimmer-Stil / "
+            "Click again for more therapeutic, motivational messages."
         )
 
     motivation_col, _ = st.columns([1, 1])
