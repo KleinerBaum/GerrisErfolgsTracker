@@ -54,3 +54,9 @@ OPENAI_API_KEY = "sk-..."
 ## Architektur-Hinweis
 
 Die App nutzt den aktuellen OpenAI Python-Flow: `from openai import OpenAI`, gefolgt von `client.responses.create(...)`. Der Zugriff auf die API ist optional; ohne gültigen Schlüssel bleibt die App lauffähig.
+
+## Session-State-Management
+
+Die zentrale Session-State-Initialisierung liegt in `gerris_erfolgs_tracker/state.py`. Dort werden alle Schlüssel aus `gerris_erfolgs_tracker/constants.py` verwendet, um Konsistenz zu gewährleisten und Tippfehler zu vermeiden. Modelle für Todos, KPI-Statistiken und Gamification befinden sich in `gerris_erfolgs_tracker/models.py`.## Session-State-Management
+
+Die zentrale Session-State-Initialisierung liegt in `gerris_erfolgs_tracker/state.py`. Dort werden alle Schlüssel aus `gerris_erfolgs_tracker/constants.py` verwendet, um Konsistenz zu gewährleisten und Tippfehler zu vermeiden. Modelle für Todos, KPI-Statistiken und Gamification befinden sich in `gerris_erfolgs_tracker/models.py`.
