@@ -56,6 +56,13 @@ OPENAI_API_KEY = "sk-..."
 - Typprüfung: `mypy`
 - Tests: `pytest`
 
+## Einstellungen & Sicherheit / Settings & Safety
+
+- Seitenleiste mit **AI aktiv / AI enabled** sowie **Tagesziel / Daily goal** inklusive KI-Vorschlag.
+- Button **Session zurücksetzen / Reset session** löscht ToDos, KPIs, Gamification und Einstellungen und stellt die Defaults wieder
+  her.
+- Hinweisboxen: Daten bleiben ausschließlich im Session-State (keine Persistenz im MVP); das Tool ist nicht als Krisen- oder Diagnoseinstrument gedacht.
+
 ## ToDo-Verwaltung
 
 - Erfassung über das Formular **ToDo hinzufügen / Add task** (Titel, optionales Fälligkeitsdatum, Quadrant) inklusive Button **AI: Quadrant vorschlagen**.

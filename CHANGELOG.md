@@ -13,3 +13,5 @@
   suggestions, and motivational prompts; includes retries and timeouts.
 - Added AI toggle plus UI buttons for quadrant suggestions, daily goal recommendations, and motivational messages with
   fallback behavior when no `OPENAI_API_KEY` is present.
+- Added settings sidebar for AI toggle and daily goal updates, reset workflow for session data, and safety/info notices
+  highlighting session-only storage and non-crisis scope.
