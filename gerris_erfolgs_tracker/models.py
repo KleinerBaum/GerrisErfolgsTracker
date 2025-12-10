@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import List, Optional
 from uuid import uuid4
 
@@ -21,15 +21,25 @@ class TodoItem(BaseModel):
     completed_at: Optional[datetime] = None
 
 
+class KpiDailyEntry(BaseModel):
+    """Daily summary of completions for KPI tracking."""
+
+    date: date
+    completions: int = 0
+
+
 class KpiStats(BaseModel):
     """Key performance indicators for todo completion."""
 
     done_total: int = 0
     done_today: int = 0
     streak: int = 0
-    goal_daily: int = 0
+    goal_daily: int = 3
     goal_hit_today: bool = False
     goal_history: List[bool] = Field(default_factory=list)
+    daily_history: List[KpiDailyEntry] = Field(default_factory=list)
+    last_completion_date: Optional[date] = None
+    current_day: Optional[date] = None
 
 
 class GamificationState(BaseModel):

@@ -61,6 +61,13 @@ OPENAI_API_KEY = "sk-..."
 - Filter für offene/erledigte Aufgaben.
 - Aktionen je Aufgabe: **Erledigt / Done** (toggle), **Quadrant wechseln / Change quadrant** (Dropdown), **Bearbeiten / Edit** (Formular), **Löschen / Delete**.
 
+## KPI-Dashboard
+
+- Sofort sichtbare KPIs: **Erledigt gesamt / Done total**, **Heute erledigt / Done today**, **Kontinuität / Streak**, sowie **Zielerreichung / Goal progress** mit Tagesziel (Standard: 3 Abschlüsse pro Tag).
+- Tageslogik: `done_today` wird automatisch auf den aktuellen Kalendertag bezogen; bei Datumswechsel werden die Tageswerte zurückgesetzt.
+- Kontinuität (Streak): zählt zusammenhängende Tage mit mindestens einem Abschluss.
+- Wochenansicht: Balkendiagramm der letzten 7 Tage mit Anzahl der Abschlüsse.
+
 ## Session-State-Management
 
 Die zentrale Session-State-Initialisierung liegt in `gerris_erfolgs_tracker/state.py`. Dort werden alle Schlüssel aus `gerris_erfolgs_tracker/constants.py` verwendet, um Konsistenz zu gewährleisten und Tippfehler zu vermeiden. Modelle für Todos, KPI-Statistiken und Gamification befinden sich in `gerris_erfolgs_tracker/models.py`.
