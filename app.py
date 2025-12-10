@@ -4,6 +4,7 @@ import os
 from datetime import date
 from typing import Any, Optional
 
+import pandas as pd
 import streamlit as st
 from openai import OpenAI
 from pydantic import BaseModel, Field
@@ -14,7 +15,12 @@ from gerris_erfolgs_tracker.eisenhower import (
     group_by_quadrant,
     sort_todos,
 )
-from gerris_erfolgs_tracker.models import TodoItem
+from gerris_erfolgs_tracker.kpis import (
+    get_kpi_stats,
+    get_weekly_completion_counts,
+    update_kpis_on_completion,
+)
+from gerris_erfolgs_tracker.models import KpiStats, TodoItem
 from gerris_erfolgs_tracker.state import get_todos, init_state
 from gerris_erfolgs_tracker.todos import (
     add_todo,
@@ -55,6 +61,7 @@ class OpenAIConfig(BaseModel):
 
 
 def render_todo_section() -> None:
+    kpi_stats = get_kpi_stats()
     todos = get_todos()
     quadrant_options = list(EisenhowerQuadrant)
 
@@ -115,10 +122,37 @@ def render_todo_section() -> None:
     sorted_todos = sort_todos(filtered_todos, by=sort_by)
     grouped = group_by_quadrant(sorted_todos)
 
+    render_kpi_dashboard(kpi_stats)
     st.subheader("Eisenhower-Matrix")
     quadrant_columns = st.columns(4)
     for quadrant, column in zip(EisenhowerQuadrant, quadrant_columns):
         render_quadrant_board(column, quadrant, grouped.get(quadrant, []))
+
+
+def render_kpi_dashboard(stats: KpiStats) -> None:
+    st.subheader("KPI-Dashboard")
+    col_total, col_today, col_streak, col_goal = st.columns(4)
+
+    col_total.metric("Erledigt gesamt / Done total", stats.done_total)
+    col_today.metric("Heute erledigt / Done today", stats.done_today)
+    col_streak.metric("Kontinuität / Streak", f"{stats.streak} Tage / days")
+
+    goal_delta = (
+        "🎯 Ziel erreicht / Goal achieved"
+        if stats.goal_hit_today
+        else "Noch nicht erreicht / Not reached yet"
+    )
+    col_goal.metric(
+        "Zielerreichung / Goal progress",
+        f"{stats.done_today}/{stats.goal_daily}",
+        delta=goal_delta,
+    )
+
+    st.caption("Wochenübersicht der Abschlüsse / Week view of completions")
+    weekly_data = get_weekly_completion_counts(stats)
+    chart_data = pd.DataFrame(weekly_data).set_index("date")
+    chart_data.rename(columns={"completions": "Abschlüsse / Completions"}, inplace=True)
+    st.bar_chart(chart_data)
 
 
 def render_quadrant_board(
@@ -155,7 +189,9 @@ def render_todo_card(todo: TodoItem) -> None:
             key=f"complete_{todo.id}",
             help="Markiere Aufgabe als erledigt oder offen / Toggle done or open",
         ):
-            toggle_complete(todo.id)
+            updated = toggle_complete(todo.id)
+            if updated and updated.completed:
+                update_kpis_on_completion(updated.completed_at)
             st.rerun()
 
         with action_cols[1]:
@@ -265,7 +301,9 @@ def main() -> None:
                 )
                 output = response.output if hasattr(response, "output") else None
                 message = output[0] if output else None
-                content = message.content if message and hasattr(message, "content") else None
+                content = (
+                    message.content if message and hasattr(message, "content") else None
+                )
                 answer = content[0].text if content else ""
                 st.success("Antwort erhalten")
                 st.write(answer)
