@@ -61,6 +61,12 @@ OPENAI_API_KEY = "sk-..."
 - Filter für offene/erledigte Aufgaben.
 - Aktionen je Aufgabe: **Erledigt / Done** (toggle), **Quadrant wechseln / Change quadrant** (Dropdown), **Bearbeiten / Edit** (Formular), **Löschen / Delete**.
 
+## Kalenderansicht / Calendar view
+
+- Monatlicher Überblick über ToDos mit Fälligkeitsdatum in einem 7-Spalten-Raster.
+- Monatsauswahl über Date-Picker (nur Monat/Jahr relevant) und optionaler Filter **Nur offene Aufgaben / Only open tasks**.
+- Aufgaben erscheinen an ihrem jeweiligen Kalendertag mit Status-Emoji (⏳ offen, ✅ erledigt).
+
 ## KPI-Dashboard
 
 - Sofort sichtbare KPIs: **Erledigt gesamt / Done total**, **Heute erledigt / Done today**, **Kontinuität / Streak**, sowie **Zielerreichung / Goal progress** mit Tagesziel (Standard: 3 Abschlüsse pro Tag).

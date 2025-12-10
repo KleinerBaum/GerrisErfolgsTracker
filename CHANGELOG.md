@@ -8,3 +8,4 @@
 - Introduced KPI-Dashboard with done_total/done_today, streak, daily goal tracking, and a 7-day completion chart.
 - Introduced Gamification loop with quadrant-based points, badge awards (First Step, Consistency 3, Double Digits), and level
   progress visualization including anti-duplicate safeguards.
+- Added calendar month view with date picker, open-task filter, and daily task placement.

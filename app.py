@@ -15,6 +15,7 @@ from gerris_erfolgs_tracker.eisenhower import (
     group_by_quadrant,
     sort_todos,
 )
+from gerris_erfolgs_tracker.calendar_view import render_calendar_view
 from gerris_erfolgs_tracker.gamification import (
     calculate_progress_to_next_level,
     get_gamification_state,
@@ -301,6 +302,9 @@ def main() -> None:
 
     st.header("ToDos / Tasks")
     render_todo_section()
+
+    st.divider()
+    render_calendar_view()
 
     st.divider()
     st.header("OpenAI Demo")
