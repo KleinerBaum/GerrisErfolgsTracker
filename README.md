@@ -56,8 +56,10 @@ OPENAI_API_KEY = "sk-..."
 ## ToDo-Verwaltung
 
 - Erfassung über das Formular **ToDo hinzufügen / Add task** (Titel, optionales Fälligkeitsdatum, Quadrant).
+- Eisenhower-Matrix mit vier Quadranten (dringend/wichtig) als Board-Ansicht mit je einer Spalte pro Quadrant.
+- Aufgaben lassen sich nach Fälligkeitsdatum, Erstellungsdatum oder Titel sortieren.
 - Filter für offene/erledigte Aufgaben.
-- Aktionen je Aufgabe: **Erledigt / Done** (toggle), **Bearbeiten / Edit** (Formular), **Löschen / Delete**.
+- Aktionen je Aufgabe: **Erledigt / Done** (toggle), **Quadrant wechseln / Change quadrant** (Dropdown), **Bearbeiten / Edit** (Formular), **Löschen / Delete**.
 
 ## Session-State-Management
 

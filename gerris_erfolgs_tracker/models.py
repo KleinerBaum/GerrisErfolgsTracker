@@ -6,6 +6,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
+
 
 class TodoItem(BaseModel):
     """Representation of a todo item stored in session state."""
@@ -14,7 +16,7 @@ class TodoItem(BaseModel):
     title: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     due_date: Optional[datetime] = None
-    quadrant: str
+    quadrant: EisenhowerQuadrant
     completed: bool = False
     completed_at: Optional[datetime] = None
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timezone
 from typing import Final, Optional
 
+from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, ensure_quadrant
 from gerris_erfolgs_tracker.models import TodoItem
 from gerris_erfolgs_tracker.state import get_todos, save_todos
 
@@ -23,11 +24,15 @@ def _normalize_due_date(due_date: Optional[date | datetime]) -> Optional[datetim
 
 
 def add_todo(
-    title: str, quadrant: str, due_date: Optional[date | datetime] = None
+    title: str,
+    quadrant: EisenhowerQuadrant | str,
+    due_date: Optional[date | datetime] = None,
 ) -> TodoItem:
     todos: list[TodoItem] = get_todos()
     todo = TodoItem(
-        title=title, quadrant=quadrant, due_date=_normalize_due_date(due_date)
+        title=title,
+        quadrant=ensure_quadrant(quadrant),
+        due_date=_normalize_due_date(due_date),
     )
     todos.append(todo)
     save_todos(todos)
@@ -70,7 +75,7 @@ def update_todo(
     todo_id: str,
     *,
     title: Optional[str] = None,
-    quadrant: Optional[str] = None,
+    quadrant: Optional[EisenhowerQuadrant | str] = None,
     due_date: Optional[date | datetime] | object = _UNSET,
 ) -> Optional[TodoItem]:
     todos: list[TodoItem] = get_todos()
@@ -83,7 +88,7 @@ def update_todo(
         if title is not None:
             updates["title"] = title
         if quadrant is not None:
-            updates["quadrant"] = quadrant
+            updates["quadrant"] = ensure_quadrant(quadrant)
         if due_date is not _UNSET:
             assert due_date is None or isinstance(due_date, (date, datetime))
             updates["due_date"] = _normalize_due_date(due_date)
