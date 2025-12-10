@@ -107,4 +107,13 @@ __all__ = (
     "get_kpi_stats",
     "get_weekly_completion_counts",
     "update_kpis_on_completion",
+    "update_goal_daily",
 )
+
+
+def update_goal_daily(goal_daily: int) -> KpiStats:
+    stats = _coerce_stats(st.session_state.get(SS_STATS))
+    stats.goal_daily = max(1, goal_daily)
+    stats.goal_hit_today = stats.done_today >= stats.goal_daily
+    st.session_state[SS_STATS] = stats.model_dump()
+    return stats
