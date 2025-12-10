@@ -3,9 +3,10 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 from enum import StrEnum
-from typing import Dict, Iterable, List, Literal, Mapping
+from typing import TYPE_CHECKING, Dict, Iterable, List, Literal, Mapping
 
-from gerris_erfolgs_tracker.models import TodoItem
+if TYPE_CHECKING:
+    from gerris_erfolgs_tracker.models import TodoItem
 
 
 class EisenhowerQuadrant(StrEnum):
@@ -48,8 +49,8 @@ def ensure_quadrant(value: EisenhowerQuadrant | str) -> EisenhowerQuadrant:
 
 
 def group_by_quadrant(
-    todos: Iterable[TodoItem],
-) -> Dict[EisenhowerQuadrant, List[TodoItem]]:
+    todos: Iterable["TodoItem"],
+) -> Dict[EisenhowerQuadrant, List["TodoItem"]]:
     grouped: Dict[EisenhowerQuadrant, List[TodoItem]] = defaultdict(list)
     for todo in todos:
         grouped[ensure_quadrant(todo.quadrant)].append(todo)
@@ -59,14 +60,14 @@ def group_by_quadrant(
     return dict(grouped)
 
 
-def _due_date_sort_key(todo: TodoItem) -> tuple[int, datetime]:
+def _due_date_sort_key(todo: "TodoItem") -> tuple[int, datetime]:
     fallback = datetime.max
     return (0 if todo.due_date is not None else 1, todo.due_date or fallback)
 
 
 def sort_todos(
-    todos: Iterable[TodoItem], *, by: SortKey = "due_date"
-) -> List[TodoItem]:
+    todos: Iterable["TodoItem"], *, by: SortKey = "due_date"
+) -> List["TodoItem"]:
     match by:
         case "due_date":
             return sorted(todos, key=_due_date_sort_key)
