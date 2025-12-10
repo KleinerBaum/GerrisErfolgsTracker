@@ -49,3 +49,4 @@ class GamificationState(BaseModel):
     level: int = 1
     badges: List[str] = Field(default_factory=list)
     history: List[str] = Field(default_factory=list)
+    processed_completions: List[str] = Field(default_factory=list)
