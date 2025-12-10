@@ -60,6 +60,8 @@ OPENAI_API_KEY = "sk-..."
 ## Einstellungen & Sicherheit / Settings & Safety
 
 - Seitenleiste mit **AI aktiv / AI enabled** sowie **Tagesziel / Daily goal** inklusive KI-Vorschlag.
+- AI-Zielvorschläge übernehmen den empfohlenen Wert automatisch in das Zahlenfeld (kein manuelles Nachtragen nötig) / AI goal
+  suggestions now auto-fill the number input for convenience.
 - Button **Session zurücksetzen / Reset session** löscht ToDos, KPIs, Gamification und Einstellungen und stellt die Defaults wieder
   her.
 - Hinweisboxen: Daten bleiben ausschließlich im Session-State (keine Persistenz im MVP); das Tool ist nicht als Krisen- oder Diagnoseinstrument gedacht.

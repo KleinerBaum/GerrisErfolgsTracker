@@ -48,6 +48,7 @@ AI_ENABLED_KEY = "ai_enabled"
 AI_QUADRANT_RATIONALE_KEY = "ai_quadrant_rationale"
 AI_GOAL_SUGGESTION_KEY = "ai_goal_suggestion"
 AI_MOTIVATION_KEY = "ai_motivation_message"
+GOAL_SUGGESTED_VALUE_KEY = "suggested_goal_daily"
 
 
 def _ensure_settings_defaults(
@@ -63,6 +64,22 @@ def _ensure_settings_defaults(
 
     st.session_state[SS_SETTINGS] = settings
     return settings
+
+
+def _resolve_goal_input_value(settings: dict[str, Any], stats: KpiStats) -> int:
+    suggested_goal = st.session_state.get(GOAL_SUGGESTED_VALUE_KEY)
+    existing_goal_value = st.session_state.get("settings_goal_daily")
+    default_goal = int(settings.get("goal_daily", stats.goal_daily))
+
+    if suggested_goal is not None:
+        resolved_goal = int(suggested_goal)
+    elif existing_goal_value is not None:
+        resolved_goal = int(existing_goal_value)
+    else:
+        resolved_goal = default_goal
+
+    st.session_state["settings_goal_daily"] = resolved_goal
+    return resolved_goal
 
 
 def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
@@ -82,11 +99,12 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
     settings[AI_ENABLED_KEY] = ai_enabled
 
     st.sidebar.markdown("### Tagesziel / Daily goal")
+    goal_input_value = _resolve_goal_input_value(settings=settings, stats=stats)
     goal_value = st.sidebar.number_input(
         "Ziel pro Tag / Target per day",
         min_value=1,
         step=1,
-        value=int(settings.get("goal_daily", stats.goal_daily)),
+        value=goal_input_value,
         key="settings_goal_daily",
         help=("Lege ein realistisches Tagesziel fest / Set a realistic daily target."),
     )
@@ -113,7 +131,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
         ):
             suggestion = suggest_goals(stats, client=client if ai_enabled else None)
             st.session_state[AI_GOAL_SUGGESTION_KEY] = suggestion
-            st.session_state["settings_goal_daily"] = suggestion.payload.daily_goal
+            st.session_state[GOAL_SUGGESTED_VALUE_KEY] = suggestion.payload.daily_goal
             st.rerun()
 
     goal_suggestion: AISuggestion[Any] | None = st.session_state.get(
@@ -184,6 +202,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
             "new_todo_due",
             "new_todo_quadrant",
             "settings_goal_daily",
+            GOAL_SUGGESTED_VALUE_KEY,
         ):
             st.session_state.pop(cleanup_key, None)
         reset_state()
