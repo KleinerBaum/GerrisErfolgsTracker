@@ -1,7 +1,9 @@
-#README.md
-#Gerris ErfolgsTracker
+# README.md
+# Gerris ErfolgsTracker
 
 Minimale Streamlit-App, die einen Prompt entgegennimmt und optional die OpenAI Responses API nutzt. Die App ist so konzipiert, dass sie lokal sowie auf Streamlit Cloud schnell startklar ist.
+
+Zusätzlich gibt es eine einfache ToDo-Verwaltung mit CRUD-Funktionen (Anlegen, Bearbeiten, Erledigen, Löschen), die den Streamlit-Session-State nutzt.
 
 ## Voraussetzungen
 
@@ -51,12 +53,16 @@ OPENAI_API_KEY = "sk-..."
 - Lint/Format: `ruff format` und `ruff check`
 - Tests: `pytest`
 
-## Architektur-Hinweis
+## ToDo-Verwaltung
 
-Die App nutzt den aktuellen OpenAI Python-Flow: `from openai import OpenAI`, gefolgt von `client.responses.create(...)`. Der Zugriff auf die API ist optional; ohne gültigen Schlüssel bleibt die App lauffähig.
+- Erfassung über das Formular **ToDo hinzufügen / Add task** (Titel, optionales Fälligkeitsdatum, Quadrant).
+- Filter für offene/erledigte Aufgaben.
+- Aktionen je Aufgabe: **Erledigt / Done** (toggle), **Bearbeiten / Edit** (Formular), **Löschen / Delete**.
 
 ## Session-State-Management
 
-Die zentrale Session-State-Initialisierung liegt in `gerris_erfolgs_tracker/state.py`. Dort werden alle Schlüssel aus `gerris_erfolgs_tracker/constants.py` verwendet, um Konsistenz zu gewährleisten und Tippfehler zu vermeiden. Modelle für Todos, KPI-Statistiken und Gamification befinden sich in `gerris_erfolgs_tracker/models.py`.## Session-State-Management
-
 Die zentrale Session-State-Initialisierung liegt in `gerris_erfolgs_tracker/state.py`. Dort werden alle Schlüssel aus `gerris_erfolgs_tracker/constants.py` verwendet, um Konsistenz zu gewährleisten und Tippfehler zu vermeiden. Modelle für Todos, KPI-Statistiken und Gamification befinden sich in `gerris_erfolgs_tracker/models.py`.
+
+## Architektur-Hinweis
+
+Die App nutzt den aktuellen OpenAI Python-Flow: `from openai import OpenAI`, gefolgt von `client.responses.create(...)`. Der Zugriff auf die API ist optional; ohne gültigen Schlüssel bleibt die App lauffähig.
