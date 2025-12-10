@@ -36,7 +36,9 @@ def get_gamification_state() -> GamificationState:
 
 
 def _completion_id(todo: TodoItem) -> str:
-    timestamp = (todo.completed_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    timestamp = (todo.completed_at or datetime.now(timezone.utc)).astimezone(
+        timezone.utc
+    )
     return f"{todo.id}:{timestamp.isoformat()}"
 
 
@@ -76,7 +78,9 @@ def update_gamification_on_completion(
     return state
 
 
-def calculate_progress_to_next_level(state: GamificationState) -> tuple[int, int, float]:
+def calculate_progress_to_next_level(
+    state: GamificationState,
+) -> tuple[int, int, float]:
     current_level_floor = (state.level - 1) * 100
     next_level_target = state.level * 100
     progress_points = max(0, state.points - current_level_floor)

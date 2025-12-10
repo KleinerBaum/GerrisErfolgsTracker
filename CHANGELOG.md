@@ -9,3 +9,7 @@
 - Introduced Gamification loop with quadrant-based points, badge awards (First Step, Consistency 3, Double Digits), and level
   progress visualization including anti-duplicate safeguards.
 - Added calendar month view with date picker, open-task filter, and daily task placement.
+- Added OpenAI integration with structured Outputs (`responses.parse`) and Pydantic schemas for todo categorization, goal
+  suggestions, and motivational prompts; includes retries and timeouts.
+- Added AI toggle plus UI buttons for quadrant suggestions, daily goal recommendations, and motivational messages with
+  fallback behavior when no `OPENAI_API_KEY` is present.
