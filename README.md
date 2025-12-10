@@ -68,6 +68,16 @@ OPENAI_API_KEY = "sk-..."
 - Kontinuität (Streak): zählt zusammenhängende Tage mit mindestens einem Abschluss.
 - Wochenansicht: Balkendiagramm der letzten 7 Tage mit Anzahl der Abschlüsse.
 
+## Gamification
+
+- Punkte pro Abschluss abhängig vom Eisenhower-Quadranten (z. B. Quadrant I 20 Punkte, Quadrant IV 5 Punkte).
+- Level-Berechnung: `level = 1 + points // 100` inklusive Fortschrittsbalken zum nächsten Level.
+- Badges (werden nur einmal vergeben):
+  - **First Step / Erster Schritt** – erster erledigter Task.
+  - **Consistency 3 / 3-Tage-Streak** – 3-Tage-Streak erreicht.
+  - **Double Digits / Zweistellig** – 10 erledigte Tasks insgesamt.
+- Anti-Doppelzählung: Abschlüsse werden als Events protokolliert, sodass Punkte und Badges auch nach einem Reload nicht mehrfach vergeben werden.
+
 ## Session-State-Management
 
 Die zentrale Session-State-Initialisierung liegt in `gerris_erfolgs_tracker/state.py`. Dort werden alle Schlüssel aus `gerris_erfolgs_tracker/constants.py` verwendet, um Konsistenz zu gewährleisten und Tippfehler zu vermeiden. Modelle für Todos, KPI-Statistiken und Gamification befinden sich in `gerris_erfolgs_tracker/models.py`.

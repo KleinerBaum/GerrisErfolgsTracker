@@ -15,6 +15,11 @@ from gerris_erfolgs_tracker.eisenhower import (
     group_by_quadrant,
     sort_todos,
 )
+from gerris_erfolgs_tracker.gamification import (
+    calculate_progress_to_next_level,
+    get_gamification_state,
+    update_gamification_on_completion,
+)
 from gerris_erfolgs_tracker.kpis import (
     get_kpi_stats,
     get_weekly_completion_counts,
@@ -123,6 +128,7 @@ def render_todo_section() -> None:
     grouped = group_by_quadrant(sorted_todos)
 
     render_kpi_dashboard(kpi_stats)
+    render_gamification_panel(kpi_stats)
     st.subheader("Eisenhower-Matrix")
     quadrant_columns = st.columns(4)
     for quadrant, column in zip(EisenhowerQuadrant, quadrant_columns):
@@ -153,6 +159,45 @@ def render_kpi_dashboard(stats: KpiStats) -> None:
     chart_data = pd.DataFrame(weekly_data).set_index("date")
     chart_data.rename(columns={"completions": "Abschlüsse / Completions"}, inplace=True)
     st.bar_chart(chart_data)
+
+
+def render_gamification_panel(stats: KpiStats) -> None:
+    gamification_state = get_gamification_state()
+    st.subheader("Gamification")
+
+    col_level, col_points = st.columns(2)
+    col_level.metric("Level", gamification_state.level)
+    col_points.metric("Punkte / Points", gamification_state.points)
+
+    progress_points, required_points, progress_ratio = calculate_progress_to_next_level(
+        gamification_state
+    )
+    st.progress(
+        progress_ratio,
+        text=(
+            "Fortschritt / Progress: "
+            f"{progress_points}/{required_points} Punkte bis Level {gamification_state.level + 1} "
+            "/ points to next level"
+        ),
+    )
+
+    st.caption(
+        "Aktueller Streak / Current streak: "
+        f"{stats.streak} Tage / days · Erledigt gesamt / Done total: {stats.done_total}"
+    )
+
+    st.markdown("#### Badges")
+    if gamification_state.badges:
+        badge_labels = " ".join(f"🏅 {badge}" for badge in gamification_state.badges)
+        st.markdown(
+            f"{badge_labels}<br/>"
+            "(jede Auszeichnung wird nur einmal vergeben / each badge is awarded once)",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.caption(
+            "Noch keine Badges gesammelt / No badges earned yet. Arbeite an deinen Zielen!"
+        )
 
 
 def render_quadrant_board(
@@ -191,7 +236,8 @@ def render_todo_card(todo: TodoItem) -> None:
         ):
             updated = toggle_complete(todo.id)
             if updated and updated.completed:
-                update_kpis_on_completion(updated.completed_at)
+                stats = update_kpis_on_completion(updated.completed_at)
+                update_gamification_on_completion(updated, stats)
             st.rerun()
 
         with action_cols[1]:
