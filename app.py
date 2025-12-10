@@ -13,6 +13,7 @@ from gerris_erfolgs_tracker.ai_features import (
     suggest_goals,
     suggest_quadrant,
 )
+from gerris_erfolgs_tracker.constants import SS_SETTINGS
 from gerris_erfolgs_tracker.calendar_view import render_calendar_view
 from gerris_erfolgs_tracker.eisenhower import (
     EisenhowerQuadrant,
@@ -33,7 +34,7 @@ from gerris_erfolgs_tracker.kpis import (
 )
 from gerris_erfolgs_tracker.llm import get_default_model, get_openai_client
 from gerris_erfolgs_tracker.models import KpiStats, TodoItem
-from gerris_erfolgs_tracker.state import get_todos, init_state
+from gerris_erfolgs_tracker.state import get_todos, init_state, reset_state
 from gerris_erfolgs_tracker.todos import (
     add_todo,
     delete_todo,
@@ -48,10 +49,119 @@ AI_GOAL_SUGGESTION_KEY = "ai_goal_suggestion"
 AI_MOTIVATION_KEY = "ai_motivation_message"
 
 
-def _ensure_ai_toggle(default_enabled: bool) -> bool:
-    if AI_ENABLED_KEY not in st.session_state:
-        st.session_state[AI_ENABLED_KEY] = default_enabled
-    return bool(st.session_state[AI_ENABLED_KEY])
+def _ensure_settings_defaults(
+    *, client: Optional[OpenAI], stats: KpiStats
+) -> dict[str, Any]:
+    settings: dict[str, Any] = st.session_state.get(SS_SETTINGS, {})
+    if not isinstance(settings, dict):
+        settings = {}
+
+    settings.setdefault(AI_ENABLED_KEY, bool(client))
+    settings.setdefault("goal_daily", stats.goal_daily)
+
+    st.session_state[SS_SETTINGS] = settings
+    return settings
+
+
+def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
+    st.sidebar.header("Einstellungen / Settings")
+
+    settings = _ensure_settings_defaults(client=client, stats=stats)
+
+    ai_enabled = st.sidebar.toggle(
+        "AI aktiv / AI enabled",
+        key=AI_ENABLED_KEY,
+        value=bool(settings.get(AI_ENABLED_KEY, bool(client))),
+        help=(
+            "Aktiviere KI-gestützte Vorschläge. Ohne Schlüssel werden Fallback-Texte genutzt / "
+            "Enable AI suggestions. Without a key, fallback texts are used."
+        ),
+    )
+    settings[AI_ENABLED_KEY] = ai_enabled
+
+    st.sidebar.markdown("### Tagesziel / Daily goal")
+    goal_value = st.sidebar.number_input(
+        "Ziel pro Tag / Target per day",
+        min_value=1,
+        step=1,
+        value=int(settings.get("goal_daily", stats.goal_daily)),
+        key="settings_goal_daily",
+        help=("Lege ein realistisches Tagesziel fest / Set a realistic daily target."),
+    )
+    settings["goal_daily"] = int(goal_value)
+
+    goal_action_cols = st.sidebar.columns(2)
+    with goal_action_cols[0]:
+        if goal_action_cols[0].button(
+            "Ziel speichern / Save goal", key="settings_save_goal"
+        ):
+            update_goal_daily(int(goal_value))
+            st.sidebar.success("Tagesziel aktualisiert / Daily goal updated.")
+            st.rerun()
+
+    with goal_action_cols[1]:
+        if goal_action_cols[1].button(
+            "AI: Ziel vorschlagen / Suggest goal",
+            key="settings_ai_goal",
+            disabled=not ai_enabled,
+            help=(
+                "Lässt OpenAI einen Vorschlag machen; ohne Schlüssel wird ein Fallback genutzt / "
+                "Let OpenAI suggest a goal; without a key a fallback is used."
+            ),
+        ):
+            suggestion = suggest_goals(stats, client=client if ai_enabled else None)
+            st.session_state[AI_GOAL_SUGGESTION_KEY] = suggestion
+            st.session_state["settings_goal_daily"] = suggestion.payload.daily_goal
+            st.rerun()
+
+    goal_suggestion: AISuggestion[Any] | None = st.session_state.get(
+        AI_GOAL_SUGGESTION_KEY
+    )
+    if goal_suggestion:
+        badge = "🤖" if goal_suggestion.from_ai else "🧭"
+        tips = " · ".join(goal_suggestion.payload.tips)
+        st.sidebar.info(
+            f"{badge} {goal_suggestion.payload.focus} — "
+            f"{goal_suggestion.payload.daily_goal} Ziele / goals. {tips}"
+        )
+
+    st.sidebar.divider()
+    st.sidebar.subheader("Sicherheit & Daten / Safety & data")
+    st.sidebar.info(
+        "Alle Angaben bleiben im Session-State und werden nicht gespeichert / "
+        "All data stays in session state only (not persisted)."
+    )
+    st.sidebar.warning(
+        "Dieses Tool ersetzt keine Krisenhilfe oder Diagnosen / This tool is not "
+        "a crisis or diagnostic service. Bei akuten Notfällen wende dich an lokale "
+        "Hotlines / In emergencies, contact local hotlines."
+    )
+
+    if st.sidebar.button(
+        "Session zurücksetzen / Reset session",
+        key="reset_session_btn",
+        help=(
+            "Löscht ToDos, KPIs, Gamification und Einstellungen aus dieser Sitzung / "
+            "Clear todos, KPIs, gamification, and settings for this session."
+        ),
+    ):
+        for cleanup_key in (
+            AI_ENABLED_KEY,
+            AI_GOAL_SUGGESTION_KEY,
+            AI_QUADRANT_RATIONALE_KEY,
+            AI_MOTIVATION_KEY,
+            "new_todo_title",
+            "new_todo_due",
+            "new_todo_quadrant",
+            "settings_goal_daily",
+        ):
+            st.session_state.pop(cleanup_key, None)
+        reset_state()
+        st.sidebar.success("Session zurückgesetzt / Session reset.")
+        st.rerun()
+
+    st.session_state[SS_SETTINGS] = settings
+    return ai_enabled
 
 
 def render_todo_section(ai_enabled: bool, client: Optional[OpenAI]) -> None:
@@ -162,7 +272,7 @@ def render_todo_section(ai_enabled: bool, client: Optional[OpenAI]) -> None:
     sorted_todos = sort_todos(filtered_todos, by=sort_by)
     grouped = group_by_quadrant(sorted_todos)
 
-    render_kpi_dashboard(kpi_stats, ai_enabled=ai_enabled, client=client)
+    render_kpi_dashboard(kpi_stats)
     render_gamification_panel(kpi_stats, ai_enabled=ai_enabled, client=client)
     st.subheader("Eisenhower-Matrix")
     quadrant_columns = st.columns(4)
@@ -170,9 +280,7 @@ def render_todo_section(ai_enabled: bool, client: Optional[OpenAI]) -> None:
         render_quadrant_board(column, quadrant, grouped.get(quadrant, []))
 
 
-def render_kpi_dashboard(
-    stats: KpiStats, *, ai_enabled: bool, client: Optional[OpenAI]
-) -> None:
+def render_kpi_dashboard(stats: KpiStats) -> None:
     st.subheader("KPI-Dashboard")
     col_total, col_today, col_streak, col_goal = st.columns(4)
 
@@ -197,48 +305,10 @@ def render_kpi_dashboard(
     chart_data.rename(columns={"completions": "Abschlüsse / Completions"}, inplace=True)
     st.bar_chart(chart_data)
 
-    st.markdown("#### Zielsetzung / Goal setting")
-    st.session_state.setdefault("goal_daily_input", stats.goal_daily)
-    goal_col, ai_goal_col = st.columns([2, 1])
-    new_goal = goal_col.number_input(
-        "Tagesziel / Daily goal",
-        min_value=1,
-        step=1,
-        value=int(st.session_state.get("goal_daily_input", stats.goal_daily)),
-        key="goal_daily_input",
-        help="Definiere ein realistisches Tagesziel / Define a realistic daily target.",
+    st.info(
+        "Passe das Tagesziel und die KI-Einstellungen im Seitenbereich an / "
+        "Adjust the daily goal and AI settings in the sidebar."
     )
-
-    if goal_col.button("Ziel speichern / Save goal", key="save_goal_btn"):
-        update_goal_daily(int(new_goal))
-        st.success("Tagesziel aktualisiert / Daily goal updated.")
-        st.session_state[AI_GOAL_SUGGESTION_KEY] = None
-        st.rerun()
-
-    if ai_goal_col.button(
-        "AI: Ziel vorschlagen / Suggest goal",
-        key="ai_goal_btn",
-        disabled=not ai_enabled,
-        help=(
-            "Lässt OpenAI einen Vorschlag machen; ohne Schlüssel wird ein Fallback genutzt / "
-            "Let OpenAI suggest a goal; without a key a fallback is used."
-        ),
-    ):
-        suggestion = suggest_goals(stats, client=client if ai_enabled else None)
-        st.session_state[AI_GOAL_SUGGESTION_KEY] = suggestion
-        st.session_state["goal_daily_input"] = suggestion.payload.daily_goal
-        st.rerun()
-
-    goal_suggestion: AISuggestion[Any] | None = st.session_state.get(
-        AI_GOAL_SUGGESTION_KEY
-    )
-    if goal_suggestion:
-        badge = "🤖" if goal_suggestion.from_ai else "🧭"
-        tips = " · ".join(goal_suggestion.payload.tips)
-        st.info(
-            f"{badge} {goal_suggestion.payload.focus} — "
-            f"{goal_suggestion.payload.daily_goal} Ziele / goals. {tips}"
-        )
 
 
 def render_gamification_panel(
@@ -399,20 +469,12 @@ def render_todo_card(todo: TodoItem) -> None:
 def main() -> None:
     st.set_page_config(page_title="Gerris ErfolgsTracker", page_icon="✅")
     init_state()
-    st.title("Gerris ErfolgsTracker")
 
     client = get_openai_client()
-    ai_enabled_default = bool(client)
-    ai_enabled = _ensure_ai_toggle(ai_enabled_default)
-    ai_enabled = st.toggle(
-        "AI aktiv / AI enabled",
-        key=AI_ENABLED_KEY,
-        value=ai_enabled,
-        help=(
-            "Aktiviere KI-gestützte Vorschläge. Ohne Schlüssel werden Fallback-Texte genutzt / "
-            "Enable AI suggestions. Without a key, fallback texts are used."
-        ),
-    )
+    stats = get_kpi_stats()
+    ai_enabled = render_settings_panel(stats, client)
+
+    st.title("Gerris ErfolgsTracker")
     if not client:
         st.info(
             "Kein OPENAI_API_KEY gefunden. Vorschläge nutzen Fallbacks, bis ein Key in "

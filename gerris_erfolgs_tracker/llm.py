@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Iterable, Optional, Sequence, TypeVar
+from typing import Any, Iterable, Optional, Sequence, TypeVar
 
 import streamlit as st
 from openai import (
@@ -59,8 +59,8 @@ def get_openai_client() -> Optional[OpenAI]:
     return OpenAI(**client_kwargs)  # type: ignore[arg-type]
 
 
-def _responses_resource(client: OpenAI, timeout: float):
-    return client.responses.with_options(timeout=timeout)
+def _responses_resource(client: OpenAI, timeout: float) -> Any:
+    return client.responses.with_options(timeout=timeout)  # type: ignore[attr-defined]
 
 
 def request_structured_response(
