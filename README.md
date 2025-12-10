@@ -52,9 +52,10 @@ OPENAI_API_KEY = "sk-..."
 
 ## Entwicklung & Tests
 
-- Lint/Format: `ruff format` und `ruff check`
+- Lint/Format: `ruff format` und `ruff check .`
 - Typprüfung: `mypy`
-- Tests: `pytest`
+- Tests: `pytest -q`
+- CI: GitHub Actions Workflow (`.github/workflows/ci.yml`) führt `ruff check .` und `pytest -q` bei Push/PR aus.
 
 ## Einstellungen & Sicherheit / Settings & Safety
 
