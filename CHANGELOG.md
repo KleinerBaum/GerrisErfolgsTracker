@@ -19,3 +19,5 @@
 - Added sidebar drop-down to choose gamification style (points, badges, or the new Dipl.-Psych. Roß avatar with bilingual motivational quotes).
 - Added automated linting (`ruff check .`) and testing (`pytest -q`) via GitHub Actions CI plus unit tests for KPIs,
   gamification, and Eisenhower logic.
+- Hardened the ToDo form by decoupling AI quadrant prefills from widget keys and resetting inputs via reruns to avoid
+  StreamlitAPIExceptions, backed by regression tests.

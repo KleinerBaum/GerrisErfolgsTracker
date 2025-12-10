@@ -49,6 +49,11 @@ AI_QUADRANT_RATIONALE_KEY = "ai_quadrant_rationale"
 AI_GOAL_SUGGESTION_KEY = "ai_goal_suggestion"
 AI_MOTIVATION_KEY = "ai_motivation_message"
 GOAL_SUGGESTED_VALUE_KEY = "suggested_goal_daily"
+NEW_TODO_TITLE_KEY = "new_todo_title"
+NEW_TODO_DUE_KEY = "new_todo_due"
+NEW_TODO_QUADRANT_KEY = "new_todo_quadrant"
+NEW_TODO_QUADRANT_PREFILL_KEY = "new_todo_quadrant_prefill"
+NEW_TODO_RESET_TRIGGER_KEY = "new_todo_reset_trigger"
 
 
 def _ensure_settings_defaults(
@@ -220,31 +225,44 @@ def render_todo_section(ai_enabled: bool, client: Optional[OpenAI]) -> None:
 
     st.subheader("ToDo hinzufügen / Add task")
 
-    st.session_state.setdefault("new_todo_title", "")
-    st.session_state.setdefault("new_todo_due", None)
-    st.session_state.setdefault(
-        "new_todo_quadrant", EisenhowerQuadrant.URGENT_IMPORTANT
+    if st.session_state.pop(NEW_TODO_RESET_TRIGGER_KEY, False):
+        for cleanup_key in (
+            NEW_TODO_TITLE_KEY,
+            NEW_TODO_DUE_KEY,
+            NEW_TODO_QUADRANT_KEY,
+            NEW_TODO_QUADRANT_PREFILL_KEY,
+            AI_QUADRANT_RATIONALE_KEY,
+        ):
+            st.session_state.pop(cleanup_key, None)
+
+    prefilled_quadrant = st.session_state.pop(
+        NEW_TODO_QUADRANT_PREFILL_KEY,
+        st.session_state.get(NEW_TODO_QUADRANT_KEY, EisenhowerQuadrant.URGENT_IMPORTANT),
     )
+
+    st.session_state.setdefault(NEW_TODO_TITLE_KEY, "")
+    st.session_state.setdefault(NEW_TODO_DUE_KEY, None)
+    st.session_state[NEW_TODO_QUADRANT_KEY] = prefilled_quadrant
 
     with st.form("add_todo_form", clear_on_submit=False):
         title = st.text_input(
             "Titel / Title",
-            key="new_todo_title",
+            key=NEW_TODO_TITLE_KEY,
             placeholder="Nächstes ToDo eingeben / Enter next task",
         )
         col_left, col_right = st.columns(2)
         with col_left:
             due_date: Optional[date] = st.date_input(
                 "Fälligkeitsdatum / Due date",
-                value=st.session_state.get("new_todo_due"),
-                key="new_todo_due",
+                value=st.session_state.get(NEW_TODO_DUE_KEY),
+                key=NEW_TODO_DUE_KEY,
                 format="YYYY-MM-DD",
             )
         with col_right:
             quadrant = st.selectbox(
                 "Eisenhower-Quadrant / Quadrant",
                 quadrant_options,
-                key="new_todo_quadrant",
+                key=NEW_TODO_QUADRANT_KEY,
                 format_func=lambda option: option.label,
             )
 
@@ -263,12 +281,10 @@ def render_todo_section(ai_enabled: bool, client: Optional[OpenAI]) -> None:
                 suggestion: AISuggestion[Any] = suggest_quadrant(
                     title.strip(), client=client if ai_enabled else None
                 )
-                st.session_state["new_todo_quadrant"] = EisenhowerQuadrant(
-                    suggestion.payload.quadrant
+                st.session_state[NEW_TODO_QUADRANT_PREFILL_KEY] = (
+                    EisenhowerQuadrant(suggestion.payload.quadrant)
                 )
-                st.session_state[AI_QUADRANT_RATIONALE_KEY] = (
-                    suggestion.payload.rationale
-                )
+                st.session_state[AI_QUADRANT_RATIONALE_KEY] = suggestion.payload.rationale
                 label = (
                     "KI-Vorschlag / AI suggestion" if suggestion.from_ai else "Fallback"
                 )
@@ -281,9 +297,7 @@ def render_todo_section(ai_enabled: bool, client: Optional[OpenAI]) -> None:
             else:
                 add_todo(title=title.strip(), quadrant=quadrant, due_date=due_date)
                 st.success("ToDo gespeichert / Task saved.")
-                st.session_state["new_todo_title"] = ""
-                st.session_state["new_todo_due"] = None
-                st.session_state[AI_QUADRANT_RATIONALE_KEY] = None
+                st.session_state[NEW_TODO_RESET_TRIGGER_KEY] = True
                 st.rerun()
 
     rationale = st.session_state.get(AI_QUADRANT_RATIONALE_KEY)
