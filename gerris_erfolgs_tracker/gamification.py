@@ -7,7 +7,12 @@ import streamlit as st
 
 from gerris_erfolgs_tracker.constants import SS_GAMIFICATION
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
-from gerris_erfolgs_tracker.models import GamificationState, KpiStats, TodoItem
+from gerris_erfolgs_tracker.models import (
+    GamificationMode,
+    GamificationState,
+    KpiStats,
+    TodoItem,
+)
 
 POINTS_PER_QUADRANT: Dict[EisenhowerQuadrant, int] = {
     EisenhowerQuadrant.URGENT_IMPORTANT: 20,
@@ -19,6 +24,25 @@ POINTS_PER_QUADRANT: Dict[EisenhowerQuadrant, int] = {
 BADGE_FIRST_STEP = "First Step / Erster Schritt"
 BADGE_CONSISTENCY_3 = "Consistency 3 / 3-Tage-Streak"
 BADGE_DOUBLE_DIGITS = "Double Digits / Zweistellig"
+
+AVATAR_ROSS_PROMPTS = [
+    (
+        "Ich sehe, wie viel Mühe du dir gibst – atme tief durch und mach den nächsten "
+        "kleinen Schritt. / I can see how much effort you are putting in — take a deep "
+        "breath and make the next small step."
+    ),
+    (
+        "Dipl.-Psych. Roß (brünette Therapeutin, ca. 45, mit Brille) erinnert dich: "
+        "Du darfst stolz auf jeden Fortschritt sein. / Dipl.-Psych. Roß (brunette "
+        "therapist, about 45, with glasses) reminds you: be proud of every bit of "
+        "progress."
+    ),
+    (
+        "Stell dir vor, ich sitze neben dir und nicke anerkennend – du bist auf dem "
+        "richtigen Weg. / Imagine me sitting next to you, nodding with appreciation — "
+        "you are on the right path."
+    ),
+]
 
 
 def _coerce_state(raw: object | None) -> GamificationState:
@@ -89,12 +113,22 @@ def calculate_progress_to_next_level(
     return progress_points, required_points, progress_ratio
 
 
+def next_avatar_prompt(index: int) -> str:
+    prompt_count = len(AVATAR_ROSS_PROMPTS)
+    if prompt_count == 0:
+        return "Dipl.-Psych. Roß freut sich auf deinen nächsten Schritt. / Dipl.-Psych. Roß looks forward to your next step."
+    return AVATAR_ROSS_PROMPTS[index % prompt_count]
+
+
 __all__ = [
     "get_gamification_state",
     "update_gamification_on_completion",
     "calculate_progress_to_next_level",
+    "next_avatar_prompt",
     "POINTS_PER_QUADRANT",
     "BADGE_FIRST_STEP",
     "BADGE_CONSISTENCY_3",
     "BADGE_DOUBLE_DIGITS",
+    "AVATAR_ROSS_PROMPTS",
+    "GamificationMode",
 ]

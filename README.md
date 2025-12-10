@@ -93,6 +93,7 @@ OPENAI_API_KEY = "sk-..."
   - **Consistency 3 / 3-Tage-Streak** – 3-Tage-Streak erreicht.
   - **Double Digits / Zweistellig** – 10 erledigte Tasks insgesamt.
 - Anti-Doppelzählung: Abschlüsse werden als Events protokolliert, sodass Punkte und Badges auch nach einem Reload nicht mehrfach vergeben werden.
+- Drop-down für Gamification-Modus (Punkte, Abzeichen oder neuer Avatar **Dipl.-Psych. Roß** mit motivierenden Sprüchen; brünette Therapeutin ca. 45 Jahre mit Brille), auswählbar in der Seitenleiste.
 
 ## KI-Features / AI features
 
