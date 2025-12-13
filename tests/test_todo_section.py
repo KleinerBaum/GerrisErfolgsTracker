@@ -16,7 +16,7 @@ from app import (
 )
 from gerris_erfolgs_tracker.ai_features import AISuggestion
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
-from gerris_erfolgs_tracker.llm_schemas import TodoCategorization
+from gerris_erfolgs_tracker.llm_schemas import QuadrantName, TodoCategorization
 from gerris_erfolgs_tracker.models import KpiStats
 
 
@@ -68,7 +68,11 @@ class _StreamlitTodoStub:
         return _FormStub()
 
     def text_input(
-        self, _: str, key: str, placeholder: str, **__: Any  # noqa: ANN001
+        self,
+        _: str,
+        key: str,
+        placeholder: str,
+        **__: Any,  # noqa: ANN001
     ) -> str:
         default_value = self.session_state.get(key, "")
         self.session_state[key] = default_value
@@ -135,11 +139,9 @@ def test_quadrant_suggestion_sets_prefill_and_rationale(
     plan = _FormPlan(submit_sequence=[True, False])
     st_stub = _StreamlitTodoStub(session_state, plan)
 
-    suggestion = AISuggestion[
-        TodoCategorization
-    ](
+    suggestion = AISuggestion[TodoCategorization](
         payload=TodoCategorization(
-            quadrant=EisenhowerQuadrant.NOT_URGENT_IMPORTANT,
+            quadrant=QuadrantName.NOT_URGENT_IMPORTANT,
             rationale="Beispielgrund / Example rationale",
         ),
         from_ai=True,
@@ -153,10 +155,7 @@ def test_quadrant_suggestion_sets_prefill_and_rationale(
     with pytest.raises(RerunSentinel):
         render_todo_section(ai_enabled=True, client=None)
 
-    assert (
-        session_state[NEW_TODO_QUADRANT_PREFILL_KEY]
-        == EisenhowerQuadrant.NOT_URGENT_IMPORTANT
-    )
+    assert session_state[NEW_TODO_QUADRANT_PREFILL_KEY] == EisenhowerQuadrant.NOT_URGENT_IMPORTANT
     assert session_state[AI_QUADRANT_RATIONALE_KEY] == suggestion.payload.rationale
     assert session_state[NEW_TODO_QUADRANT_KEY] == EisenhowerQuadrant.URGENT_IMPORTANT
 

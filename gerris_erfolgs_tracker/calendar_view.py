@@ -59,9 +59,7 @@ def _month_grid(first_weekday: int, days_in_month: int) -> list[list[Optional[in
     return weeks
 
 
-def _render_day_cell(
-    day: Optional[int], tasks_by_day: dict[int, list[TodoItem]]
-) -> None:
+def _render_day_cell(day: Optional[int], tasks_by_day: dict[int, list[TodoItem]]) -> None:
     with st.container(border=True):
         if day is None:
             st.write("\u00a0")

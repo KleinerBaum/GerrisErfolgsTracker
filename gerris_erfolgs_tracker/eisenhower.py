@@ -65,9 +65,7 @@ def _due_date_sort_key(todo: "TodoItem") -> tuple[int, datetime]:
     return (0 if todo.due_date is not None else 1, todo.due_date or fallback)
 
 
-def sort_todos(
-    todos: Iterable["TodoItem"], *, by: SortKey = "due_date"
-) -> List["TodoItem"]:
+def sort_todos(todos: Iterable["TodoItem"], *, by: SortKey = "due_date") -> List["TodoItem"]:
     match by:
         case "due_date":
             return sorted(todos, key=_due_date_sort_key)

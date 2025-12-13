@@ -44,9 +44,7 @@ def _fallback_quadrant(todo_title: str) -> TodoCategorization:
     return TodoCategorization(quadrant=quadrant, rationale=rationale)
 
 
-def suggest_quadrant(
-    todo_title: str, client: Optional[OpenAI] = None
-) -> AISuggestion[TodoCategorization]:
+def suggest_quadrant(todo_title: str, client: Optional[OpenAI] = None) -> AISuggestion[TodoCategorization]:
     if not todo_title.strip():
         return AISuggestion(_fallback_quadrant(todo_title), from_ai=False)
 
@@ -97,9 +95,7 @@ def _fallback_goals(stats: KpiStats) -> GoalSuggestion:
     return GoalSuggestion(daily_goal=goal, focus=focus, tips=tips)
 
 
-def suggest_goals(
-    stats: Optional[KpiStats] = None, client: Optional[OpenAI] = None
-) -> AISuggestion[GoalSuggestion]:
+def suggest_goals(stats: Optional[KpiStats] = None, client: Optional[OpenAI] = None) -> AISuggestion[GoalSuggestion]:
     active_stats = stats or get_kpi_stats()
     client_to_use = client or get_openai_client()
     model = get_default_model(reasoning=True)
@@ -137,9 +133,7 @@ def suggest_goals(
     return AISuggestion(_fallback_goals(active_stats), from_ai=False)
 
 
-def generate_motivation(
-    stats: Optional[KpiStats] = None, client: Optional[OpenAI] = None
-) -> AISuggestion[str]:
+def generate_motivation(stats: Optional[KpiStats] = None, client: Optional[OpenAI] = None) -> AISuggestion[str]:
     active_stats = stats or get_kpi_stats()
     client_to_use = client or get_openai_client()
     model = get_default_model(reasoning=False)

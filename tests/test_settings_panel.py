@@ -22,7 +22,7 @@ class RerunSentinel(Exception):
 
 @dataclass
 class _ButtonPlan:
-    responses: Dict[str, List[bool]]
+    responses: Dict[str | None, List[bool]]
 
     def pop(self, key: Optional[str]) -> bool:
         planned = self.responses.get(key)
