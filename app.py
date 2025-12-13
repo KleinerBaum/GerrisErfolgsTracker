@@ -34,7 +34,7 @@ from gerris_erfolgs_tracker.kpis import (
     update_kpis_on_completion,
 )
 from gerris_erfolgs_tracker.llm import get_default_model, get_openai_client
-from gerris_erfolgs_tracker.models import GamificationMode, KpiStats, TodoItem
+from gerris_erfolgs_tracker.models import Category, GamificationMode, KpiStats, TodoItem
 from gerris_erfolgs_tracker.state import get_todos, init_state, reset_state
 from gerris_erfolgs_tracker.todos import (
     add_todo,
@@ -54,6 +54,9 @@ NEW_TODO_DUE_KEY = "new_todo_due"
 NEW_TODO_QUADRANT_KEY = "new_todo_quadrant"
 NEW_TODO_QUADRANT_PREFILL_KEY = "new_todo_quadrant_prefill"
 NEW_TODO_RESET_TRIGGER_KEY = "new_todo_reset_trigger"
+NEW_TODO_CATEGORY_KEY = "new_todo_category"
+NEW_TODO_PRIORITY_KEY = "new_todo_priority"
+NEW_TODO_DESCRIPTION_KEY = "new_todo_description"
 
 
 def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> dict[str, Any]:
@@ -223,6 +226,9 @@ def render_todo_section(ai_enabled: bool, client: Optional[OpenAI]) -> None:
             NEW_TODO_QUADRANT_KEY,
             NEW_TODO_QUADRANT_PREFILL_KEY,
             AI_QUADRANT_RATIONALE_KEY,
+            NEW_TODO_CATEGORY_KEY,
+            NEW_TODO_PRIORITY_KEY,
+            NEW_TODO_DESCRIPTION_KEY,
         ):
             st.session_state.pop(cleanup_key, None)
 
@@ -234,6 +240,9 @@ def render_todo_section(ai_enabled: bool, client: Optional[OpenAI]) -> None:
     st.session_state.setdefault(NEW_TODO_TITLE_KEY, "")
     st.session_state.setdefault(NEW_TODO_DUE_KEY, None)
     st.session_state[NEW_TODO_QUADRANT_KEY] = prefilled_quadrant
+    st.session_state.setdefault(NEW_TODO_CATEGORY_KEY, Category.DAILY_STRUCTURE)
+    st.session_state.setdefault(NEW_TODO_PRIORITY_KEY, 3)
+    st.session_state.setdefault(NEW_TODO_DESCRIPTION_KEY, "")
 
     with st.form("add_todo_form", clear_on_submit=False):
         title = st.text_input(
@@ -256,6 +265,35 @@ def render_todo_section(ai_enabled: bool, client: Optional[OpenAI]) -> None:
                 key=NEW_TODO_QUADRANT_KEY,
                 format_func=lambda option: option.label,
             )
+
+        meta_left, meta_right = st.columns(2)
+        with meta_left:
+            category = st.selectbox(
+                "Kategorie / Category",
+                options=list(Category),
+                key=NEW_TODO_CATEGORY_KEY,
+                format_func=lambda option: option.label,
+            )
+        with meta_right:
+            priority = st.selectbox(
+                "Priorität (1=hoch) / Priority (1=high)",
+                options=list(range(1, 6)),
+                key=NEW_TODO_PRIORITY_KEY,
+            )
+
+        description_tabs = st.tabs(["Schreiben / Write", "Vorschau / Preview"])
+        with description_tabs[0]:
+            description_md = st.text_area(
+                "Beschreibung (Markdown) / Description (markdown)",
+                key=NEW_TODO_DESCRIPTION_KEY,
+                placeholder=("Optional: Details, Checkliste oder Kontext / Optional: details, checklist, or context"),
+            )
+        with description_tabs[1]:
+            preview_text = st.session_state.get(NEW_TODO_DESCRIPTION_KEY, "")
+            if preview_text.strip():
+                st.markdown(preview_text)
+            else:
+                st.caption("Keine Beschreibung vorhanden / No description yet.")
 
         action_cols = st.columns(2)
         suggest_quadrant_clicked = action_cols[0].form_submit_button(
@@ -280,7 +318,14 @@ def render_todo_section(ai_enabled: bool, client: Optional[OpenAI]) -> None:
             if not title.strip():
                 st.warning("Bitte Titel angeben / Please provide a title.")
             else:
-                add_todo(title=title.strip(), quadrant=quadrant, due_date=due_date)
+                add_todo(
+                    title=title.strip(),
+                    quadrant=quadrant,
+                    due_date=due_date,
+                    category=category,
+                    priority=priority,
+                    description_md=description_md,
+                )
                 st.success("ToDo gespeichert / Task saved.")
                 st.session_state[NEW_TODO_RESET_TRIGGER_KEY] = True
                 st.rerun()
@@ -463,6 +508,9 @@ def render_todo_card(todo: TodoItem) -> None:
         due_text = todo.due_date.date().isoformat() if todo.due_date is not None else "—"
         st.markdown(f"**{todo.title}**")
         st.caption(f"📅 Fällig / Due: {due_text} · 🧭 Quadrant: {todo.quadrant.label} · {status}")
+        st.caption(f"📂 {todo.category.label} · 🔢 Priorität / Priority: {todo.priority}")
+        if todo.description_md:
+            st.markdown(todo.description_md)
 
         action_cols = st.columns([1, 1, 1])
         if action_cols[0].button(
@@ -518,6 +566,32 @@ def render_todo_card(todo: TodoItem) -> None:
                     index=list(EisenhowerQuadrant).index(todo.quadrant),
                     key=f"edit_quadrant_{todo.id}",
                 )
+                new_category = st.selectbox(
+                    "Kategorie / Category",
+                    options=list(Category),
+                    format_func=lambda option: option.label,
+                    index=list(Category).index(todo.category),
+                    key=f"edit_category_{todo.id}",
+                )
+                new_priority = st.selectbox(
+                    "Priorität (1=hoch) / Priority (1=high)",
+                    options=list(range(1, 6)),
+                    index=list(range(1, 6)).index(todo.priority),
+                    key=f"edit_priority_{todo.id}",
+                )
+                edit_tabs = st.tabs(["Schreiben / Write", "Vorschau / Preview"])
+                with edit_tabs[0]:
+                    new_description = st.text_area(
+                        "Beschreibung (Markdown) / Description (markdown)",
+                        value=todo.description_md,
+                        key=f"edit_description_{todo.id}",
+                    )
+                with edit_tabs[1]:
+                    preview = st.session_state.get(f"edit_description_{todo.id}", "")
+                    if preview.strip():
+                        st.markdown(preview)
+                    else:
+                        st.caption("Keine Beschreibung vorhanden / No description yet.")
                 submitted_edit = st.form_submit_button("Speichern / Save")
                 if submitted_edit:
                     update_todo(
@@ -525,6 +599,9 @@ def render_todo_card(todo: TodoItem) -> None:
                         title=new_title.strip(),
                         quadrant=new_quadrant,
                         due_date=new_due,
+                        category=new_category,
+                        priority=new_priority,
+                        description_md=new_description,
                     )
                     st.success("Aktualisiert / Updated.")
                     st.rerun()

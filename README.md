@@ -82,7 +82,7 @@ OPENAI_API_KEY = "sk-..."
 
 ## ToDo-Verwaltung
 
-- Erfassung über das Formular **ToDo hinzufügen / Add task** (Titel, optionales Fälligkeitsdatum, Quadrant) inklusive Button **AI: Quadrant vorschlagen**.
+- Erfassung über das Formular **ToDo hinzufügen / Add task** (Titel, optionales Fälligkeitsdatum, Quadrant) inklusive Button **AI: Quadrant vorschlagen**. Neu sind Kategorie-Auswahl (z. B. Stellensuche, Tagesstruktur), Priorität (1–5) sowie eine optionale Markdown-Beschreibung mit Vorschau.
 - Eisenhower-Matrix mit vier Quadranten (dringend/wichtig) als Board-Ansicht mit je einer Spalte pro Quadrant.
 - Aufgaben lassen sich nach Fälligkeitsdatum, Erstellungsdatum oder Titel sortieren.
 - Filter für offene/erledigte Aufgaben.

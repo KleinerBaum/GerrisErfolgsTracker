@@ -4,7 +4,7 @@ from datetime import date, datetime, time, timezone
 from typing import Final, Optional
 
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, ensure_quadrant
-from gerris_erfolgs_tracker.models import TodoItem
+from gerris_erfolgs_tracker.models import Category, TodoItem
 from gerris_erfolgs_tracker.state import get_todos, save_todos
 
 
@@ -27,12 +27,19 @@ def add_todo(
     title: str,
     quadrant: EisenhowerQuadrant | str,
     due_date: Optional[date | datetime] = None,
+    *,
+    category: Category | str = Category.DAILY_STRUCTURE,
+    priority: int = 3,
+    description_md: str = "",
 ) -> TodoItem:
     todos: list[TodoItem] = get_todos()
     todo = TodoItem(
         title=title,
         quadrant=ensure_quadrant(quadrant),
         due_date=_normalize_due_date(due_date),
+        category=Category(category),
+        priority=int(priority),
+        description_md=description_md,
     )
     todos.append(todo)
     save_todos(todos)
@@ -77,6 +84,9 @@ def update_todo(
     title: Optional[str] = None,
     quadrant: Optional[EisenhowerQuadrant | str] = None,
     due_date: Optional[date | datetime] | object = _UNSET,
+    category: Optional[Category | str] = None,
+    priority: Optional[int] = None,
+    description_md: Optional[str] = None,
 ) -> Optional[TodoItem]:
     todos: list[TodoItem] = get_todos()
     updated: Optional[TodoItem] = None
@@ -92,6 +102,12 @@ def update_todo(
         if due_date is not _UNSET:
             assert due_date is None or isinstance(due_date, (date, datetime))
             updates["due_date"] = _normalize_due_date(due_date)
+        if category is not None:
+            updates["category"] = Category(category)
+        if priority is not None:
+            updates["priority"] = int(priority)
+        if description_md is not None:
+            updates["description_md"] = description_md
 
         todos[index] = todo.model_copy(update=updates)
         updated = todos[index]
