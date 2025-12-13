@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, List, Sequence
+from typing import Any, Callable, Iterable, List, Sequence, cast
 
 import streamlit as st
 
@@ -10,7 +10,7 @@ from gerris_erfolgs_tracker.constants import (
     SS_STATS,
     SS_TODOS,
 )
-from gerris_erfolgs_tracker.models import Category, GamificationState, KpiStats, TodoItem
+from gerris_erfolgs_tracker.models import Category, GamificationState, KpiStats, TodoItem, TodoKanban
 
 
 def _default_todos() -> List[TodoItem]:
@@ -31,16 +31,22 @@ def _default_settings() -> dict[str, Any]:
 
 def _coerce_todo(raw: Any) -> TodoItem:
     if isinstance(raw, TodoItem):
-        return raw
+        return raw.model_copy(update={"kanban": raw.kanban.ensure_default_columns()})
 
     if isinstance(raw, dict):
         migrated = dict(raw)
         migrated.setdefault("category", Category.DAILY_STRUCTURE)
         migrated.setdefault("priority", 3)
         migrated.setdefault("description_md", "")
-        return TodoItem.model_validate(migrated)
+        kanban_default_factory = cast(
+            Callable[[], object] | None, TodoItem.model_fields["kanban"].default_factory
+        )
+        migrated.setdefault("kanban", (kanban_default_factory or TodoKanban)())
+        todo = TodoItem.model_validate(migrated)
+        return todo.model_copy(update={"kanban": todo.kanban.ensure_default_columns()})
 
-    return TodoItem.model_validate(raw)
+    todo = TodoItem.model_validate(raw)
+    return todo.model_copy(update={"kanban": todo.kanban.ensure_default_columns()})
 
 
 def _migrate_todos(raw_todos: Iterable[Any]) -> list[TodoItem]:

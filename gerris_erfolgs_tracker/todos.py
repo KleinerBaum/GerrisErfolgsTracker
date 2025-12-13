@@ -1,14 +1,24 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timezone
-from typing import Final, Optional
+from typing import Final, Literal, Optional
 
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, ensure_quadrant
-from gerris_erfolgs_tracker.models import Category, TodoItem
+from gerris_erfolgs_tracker.models import Category, KanbanCard, TodoItem, TodoKanban
 from gerris_erfolgs_tracker.state import get_todos, save_todos
 
 
 _UNSET: Final = object()
+
+
+def _ensure_kanban(todo: TodoItem) -> TodoKanban:
+    kanban = todo.kanban.ensure_default_columns()
+    return kanban
+
+
+def _update_todo_at_index(todos: list[TodoItem], index: int, updated: TodoItem) -> None:
+    todos[index] = updated
+    save_todos(todos)
 
 
 def _normalize_due_date(due_date: Optional[date | datetime]) -> Optional[datetime]:
@@ -136,10 +146,70 @@ def duplicate_todo(todo_id: str) -> Optional[TodoItem]:
     return None
 
 
+def add_kanban_card(todo_id: str, *, title: str, description_md: str = "") -> Optional[KanbanCard]:
+    todos: list[TodoItem] = get_todos()
+    for index, todo in enumerate(todos):
+        if todo.id != todo_id:
+            continue
+
+        kanban = _ensure_kanban(todo)
+        card = KanbanCard(title=title, description_md=description_md, column_id=kanban.backlog_column_id())
+        updated_kanban = kanban.model_copy(update={"cards": [*kanban.cards, card]})
+        updated_todo = todo.model_copy(update={"kanban": updated_kanban})
+        _update_todo_at_index(todos, index, updated_todo)
+        return card
+
+    return None
+
+
+def move_kanban_card(
+    todo_id: str,
+    *,
+    card_id: str,
+    direction: Literal["left", "right"],
+) -> Optional[KanbanCard]:
+    todos: list[TodoItem] = get_todos()
+    for index, todo in enumerate(todos):
+        if todo.id != todo_id:
+            continue
+
+        kanban = _ensure_kanban(todo)
+        ordered_columns = sorted(kanban.columns, key=lambda column: column.order)
+        column_ids = [column.id for column in ordered_columns]
+
+        card_lookup = {card.id: card for card in kanban.cards}
+        card = card_lookup.get(card_id)
+        if card is None:
+            return None
+
+        current_column_index = column_ids.index(card.column_id) if card.column_id in column_ids else 0
+        new_column_index = current_column_index + (-1 if direction == "left" else 1)
+        if new_column_index < 0 or new_column_index >= len(column_ids):
+            return None
+
+        target_column_id = column_ids[new_column_index]
+        done_column_id = kanban.done_column_id()
+        updated_card = card.model_copy(
+            update={
+                "column_id": target_column_id,
+                "done_at": datetime.now(timezone.utc) if target_column_id == done_column_id else None,
+            }
+        )
+        updated_cards = [updated_card if existing.id == card_id else existing for existing in kanban.cards]
+        updated_kanban = kanban.model_copy(update={"cards": updated_cards})
+        updated_todo = todo.model_copy(update={"kanban": updated_kanban})
+        _update_todo_at_index(todos, index, updated_todo)
+        return updated_card
+
+    return None
+
+
 __all__ = [
     "add_todo",
     "toggle_complete",
     "delete_todo",
     "duplicate_todo",
     "update_todo",
+    "add_kanban_card",
+    "move_kanban_card",
 ]
