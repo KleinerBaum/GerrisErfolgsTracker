@@ -26,3 +26,4 @@
   gamification, and Eisenhower logic.
 - Hardened the ToDo form by decoupling AI quadrant prefills from widget keys and resetting inputs via reruns to avoid
   StreamlitAPIExceptions, backed by regression tests.
+- Added a category-level dashboard with per-domain goals, streaks, and a stacked 7-day Plotly view plus sidebar goal inputs.
