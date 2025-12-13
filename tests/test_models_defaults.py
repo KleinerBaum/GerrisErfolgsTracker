@@ -12,6 +12,12 @@ def test_todo_item_defaults() -> None:
     assert todo.category is Category.DAILY_STRUCTURE
     assert todo.priority == 3
     assert todo.description_md == ""
+    assert todo.progress_current == 0
+    assert todo.progress_target is None
+    assert todo.progress_unit == ""
+    assert todo.auto_done_when_target_reached is True
+    assert todo.completion_criteria_md == ""
+    assert todo.processed_progress_events == []
 
 
 def test_legacy_todo_migration(session_state: dict[str, object]) -> None:
@@ -37,3 +43,9 @@ def test_legacy_todo_migration(session_state: dict[str, object]) -> None:
     assert stored["category"] == Category.DAILY_STRUCTURE
     assert stored["priority"] == 3
     assert stored["description_md"] == ""
+    assert stored["progress_current"] == 0
+    assert stored["progress_target"] is None
+    assert stored["progress_unit"] == ""
+    assert stored["auto_done_when_target_reached"] is False
+    assert stored["completion_criteria_md"] == ""
+    assert stored["processed_progress_events"] == []

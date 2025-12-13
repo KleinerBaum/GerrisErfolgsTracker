@@ -57,6 +57,15 @@ class _ColumnStub:
     def progress(self, *_: Any, **__: Any) -> None:  # noqa: ANN401
         return None
 
+    def number_input(self, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+        return self._parent.number_input(*args, **kwargs)
+
+    def text_input(self, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+        return self._parent.text_input(*args, **kwargs)
+
+    def toggle(self, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+        return self._parent.toggle(*args, **kwargs)
+
     def selectbox(self, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
         return self._parent.selectbox(*args, **kwargs)
 
@@ -102,10 +111,13 @@ class _StreamlitTodoStub:
         self,
         _: str,
         key: str,
-        placeholder: str,
+        value: str | None = None,
+        placeholder: str | None = None,
         **__: Any,  # noqa: ANN001
     ) -> str:
-        default_value = self.session_state.get(key, "")
+        default_value = self.session_state.get(key, value or "")
+        if placeholder:
+            _ = placeholder
         self.session_state[key] = default_value
         return str(default_value)
 
@@ -158,6 +170,25 @@ class _StreamlitTodoStub:
 
     def progress(self, *_: Any, **__: Any) -> None:  # noqa: ANN401
         return None
+
+    def number_input(
+        self,
+        _: str,
+        min_value: float | int | None = None,
+        value: float | int = 0,
+        key: str | None = None,
+        step: float | int | None = None,
+        **__: Any,
+    ) -> float | int:
+        if key is None:
+            return value
+        default_value = self.session_state.get(key, value)
+        self.session_state[key] = default_value
+        return default_value  # type: ignore[return-value]
+
+    def toggle(self, _: str, value: bool, key: str, **__: Any) -> bool:  # noqa: ANN401
+        self.session_state.setdefault(key, value)
+        return bool(self.session_state[key])
 
     def warning(self, *_: Any, **__: Any) -> None:  # noqa: ANN401
         return None
@@ -253,6 +284,11 @@ def test_submit_resets_form_state_without_widget_writes(
         category: Any,
         priority: int,
         description_md: str,
+        progress_current: float = 0.0,
+        progress_target: float | None = None,
+        progress_unit: str = "",
+        auto_done_when_target_reached: bool = False,
+        completion_criteria_md: str = "",
     ) -> None:
         added.update(
             {
@@ -262,6 +298,11 @@ def test_submit_resets_form_state_without_widget_writes(
                 "category": category,
                 "priority": priority,
                 "description_md": description_md,
+                "progress_current": progress_current,
+                "progress_target": progress_target,
+                "progress_unit": progress_unit,
+                "auto_done_when_target_reached": auto_done_when_target_reached,
+                "completion_criteria_md": completion_criteria_md,
             }
         )
 
