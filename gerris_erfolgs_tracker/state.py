@@ -10,7 +10,7 @@ from gerris_erfolgs_tracker.constants import (
     SS_STATS,
     SS_TODOS,
 )
-from gerris_erfolgs_tracker.models import GamificationState, KpiStats, TodoItem
+from gerris_erfolgs_tracker.models import Category, GamificationState, KpiStats, TodoItem
 
 
 def _default_todos() -> List[TodoItem]:
@@ -29,11 +29,35 @@ def _default_settings() -> dict[str, Any]:
     return {}
 
 
+def _coerce_todo(raw: Any) -> TodoItem:
+    if isinstance(raw, TodoItem):
+        return raw
+
+    if isinstance(raw, dict):
+        migrated = dict(raw)
+        migrated.setdefault("category", Category.DAILY_STRUCTURE)
+        migrated.setdefault("priority", 3)
+        migrated.setdefault("description_md", "")
+        return TodoItem.model_validate(migrated)
+
+    return TodoItem.model_validate(raw)
+
+
+def _migrate_todos(raw_todos: Iterable[Any]) -> list[TodoItem]:
+    todos: list[TodoItem] = []
+    for raw in raw_todos:
+        todos.append(_coerce_todo(raw))
+    return todos
+
+
 def init_state() -> None:
     """Initialize all required session state keys if they are missing."""
 
     if SS_TODOS not in st.session_state:
         st.session_state[SS_TODOS] = _default_todos()
+    else:
+        migrated = _migrate_todos(st.session_state.get(SS_TODOS, []))
+        st.session_state[SS_TODOS] = [todo.model_dump() for todo in migrated]
 
     if SS_STATS not in st.session_state:
         st.session_state[SS_STATS] = _default_stats().model_dump()
@@ -50,11 +74,15 @@ def get_todos() -> List[TodoItem]:
 
     raw_todos: Iterable[Any] = st.session_state.get(SS_TODOS, [])
     todos: List[TodoItem] = []
+    mutated = False
     for raw in raw_todos:
-        if isinstance(raw, TodoItem):
-            todos.append(raw)
-        else:
-            todos.append(TodoItem.model_validate(raw))
+        todo = _coerce_todo(raw)
+        todos.append(todo)
+        if not isinstance(raw, TodoItem):
+            mutated = True
+
+    if mutated:
+        save_todos(todos)
     return todos
 
 

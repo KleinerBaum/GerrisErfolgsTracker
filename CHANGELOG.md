@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Added task categories (Stellensuche, Administratives, Familie & Freunde, Drogen, Tagesstruktur), priority (1–5) and markdown descriptions across the ToDo model, state migration, and UI.
 - Dokumentation zu Deployment-Optionen ergänzt (lokal und Streamlit Cloud) sowie klargestellt, dass alle Daten im Session-State
   bleiben.
 - Added centralized session-state initialization and constants for todo, KPI, and gamification data.

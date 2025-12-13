@@ -10,6 +10,28 @@ from pydantic import BaseModel, Field
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
 
 
+class Category(str, Enum):
+    """High-level life domains for tasks."""
+
+    JOB_SEARCH = "job_search"
+    ADMIN = "admin"
+    FRIENDS_FAMILY = "friends_family"
+    DRUGS = "drugs"
+    DAILY_STRUCTURE = "daily_structure"
+
+    @property
+    def label(self) -> str:
+        if self is Category.JOB_SEARCH:
+            return "Stellensuche / Job search"
+        if self is Category.ADMIN:
+            return "Administratives / Admin"
+        if self is Category.FRIENDS_FAMILY:
+            return "Familie & Freunde / Family & friends"
+        if self is Category.DRUGS:
+            return "Drogen / Substance use"
+        return "Tagesstruktur / Daily structure"
+
+
 class TodoItem(BaseModel):
     """Representation of a todo item stored in session state."""
 
@@ -18,6 +40,9 @@ class TodoItem(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     due_date: Optional[datetime] = None
     quadrant: EisenhowerQuadrant
+    category: Category = Category.DAILY_STRUCTURE
+    priority: int = Field(default=3, ge=1, le=5)
+    description_md: str = ""
     completed: bool = False
     completed_at: Optional[datetime] = None
 

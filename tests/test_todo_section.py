@@ -7,7 +7,10 @@ import pytest
 
 from app import (
     AI_QUADRANT_RATIONALE_KEY,
+    NEW_TODO_CATEGORY_KEY,
+    NEW_TODO_DESCRIPTION_KEY,
     NEW_TODO_DUE_KEY,
+    NEW_TODO_PRIORITY_KEY,
     NEW_TODO_QUADRANT_KEY,
     NEW_TODO_QUADRANT_PREFILL_KEY,
     NEW_TODO_RESET_TRIGGER_KEY,
@@ -17,7 +20,7 @@ from app import (
 from gerris_erfolgs_tracker.ai_features import AISuggestion
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
 from gerris_erfolgs_tracker.llm_schemas import QuadrantName, TodoCategorization
-from gerris_erfolgs_tracker.models import KpiStats
+from gerris_erfolgs_tracker.models import Category, KpiStats
 
 
 class RerunSentinel(Exception):
@@ -50,6 +53,14 @@ class _ColumnStub:
 
 class _FormStub:
     def __enter__(self) -> "_FormStub":
+        return self
+
+    def __exit__(self, *_: Any) -> None:  # noqa: ANN401
+        return None
+
+
+class _TabStub:
+    def __enter__(self) -> "_TabStub":
         return self
 
     def __exit__(self, *_: Any) -> None:  # noqa: ANN401
@@ -117,6 +128,19 @@ class _StreamlitTodoStub:
     def caption(self, *_: Any, **__: Any) -> None:  # noqa: ANN401
         return None
 
+    def markdown(self, *_: Any, **__: Any) -> None:  # noqa: ANN401
+        return None
+
+    def text_area(self, _: str, key: str, placeholder: str | None = None, **__: Any) -> str:
+        default_value = self.session_state.get(key, "")
+        if placeholder:
+            _ = placeholder
+        self.session_state[key] = default_value
+        return str(default_value)
+
+    def tabs(self, labels: List[str]) -> List[_TabStub]:
+        return [_TabStub() for _ in labels]
+
     def radio(self, *_: Any, **__: Any) -> str:  # noqa: ANN401
         return "Alle / All"
 
@@ -172,8 +196,25 @@ def test_submit_resets_form_state_without_widget_writes(
     st_stub = _StreamlitTodoStub(session_state, submissions)
     added: Dict[str, Any] = {}
 
-    def _record_add(title: str, quadrant: EisenhowerQuadrant, due_date: Optional[Any]) -> None:
-        added.update({"title": title, "quadrant": quadrant, "due_date": due_date})
+    def _record_add(
+        title: str,
+        quadrant: EisenhowerQuadrant,
+        due_date: Optional[Any],
+        *,
+        category: Any,
+        priority: int,
+        description_md: str,
+    ) -> None:
+        added.update(
+            {
+                "title": title,
+                "quadrant": quadrant,
+                "due_date": due_date,
+                "category": category,
+                "priority": priority,
+                "description_md": description_md,
+            }
+        )
 
     monkeypatch.setattr("app.st", st_stub)
     monkeypatch.setattr("app.get_kpi_stats", _mock_kpi)
@@ -185,6 +226,9 @@ def test_submit_resets_form_state_without_widget_writes(
 
     assert added["title"] == "Neue Aufgabe"
     assert added["quadrant"] == EisenhowerQuadrant.URGENT_IMPORTANT
+    assert added["category"].value == "daily_structure"
+    assert added["priority"] == 3
+    assert added["description_md"] == ""
     assert session_state[NEW_TODO_RESET_TRIGGER_KEY] is True
 
     # Second render applies the reset before drawing widgets.
@@ -200,6 +244,9 @@ def test_submit_resets_form_state_without_widget_writes(
         session_state.get(NEW_TODO_QUADRANT_KEY, EisenhowerQuadrant.URGENT_IMPORTANT)
         == EisenhowerQuadrant.URGENT_IMPORTANT
     )
+    assert session_state.get(NEW_TODO_CATEGORY_KEY) == Category.DAILY_STRUCTURE
+    assert session_state.get(NEW_TODO_PRIORITY_KEY) == 3
+    assert session_state.get(NEW_TODO_DESCRIPTION_KEY, "") == ""
     assert NEW_TODO_QUADRANT_PREFILL_KEY not in session_state
     assert AI_QUADRANT_RATIONALE_KEY not in session_state
     assert NEW_TODO_RESET_TRIGGER_KEY not in session_state
