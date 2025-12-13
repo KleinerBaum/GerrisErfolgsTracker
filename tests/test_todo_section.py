@@ -107,6 +107,9 @@ class _StreamlitTodoStub:
     def container(self, *_: Any, **__: Any) -> _FormStub:  # noqa: ANN401
         return _FormStub()
 
+    def form_submit_button(self, *_: Any, **__: Any) -> bool:  # noqa: ANN401
+        return self._plan.pop_submit()
+
     def text_input(
         self,
         _: str,

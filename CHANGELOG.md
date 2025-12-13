@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Fixed ToDo creation form buttons to stay inside their Streamlit form columns and avoid `st.form_submit_button` API errors.
 - Fixed dark theme CSS injection by treating the background image style as literal markup to avoid runtime NameErrors in Streamlit.
 - Added a branded background image (`images/background.png`) with a subtle overlay to keep the dark-green theme cohesive.
 - Polished the Streamlit UI with a cohesive dark-green dashboard theme (cards, list rows, expanders), simplified text-based

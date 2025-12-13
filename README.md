@@ -75,6 +75,8 @@ OPENAI_API_KEY = "sk-..."
 - Tests: `pytest -q`
 - CI: GitHub Actions Workflow (`.github/workflows/ci.yml`) führt `ruff check .` und `pytest -q` bei Push/PR aus.
 
+> **Formulare / Forms:** Platzieren Sie `st.form_submit_button` immer innerhalb eines `st.form`-Blocks und bei Bedarf innerhalb von Spalten mittels `with col:`. So vermeiden Sie `StreamlitAPIException`-Meldungen zur Formularplatzierung.
+
 ## Einstellungen & Sicherheit / Settings & Safety
 
 - Seitenleiste mit **AI aktiv / AI enabled** sowie **Tagesziel / Daily goal** inklusive KI-Vorschlag.

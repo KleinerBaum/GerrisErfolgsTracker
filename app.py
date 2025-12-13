@@ -1000,12 +1000,14 @@ def render_todo_section(
                     st.caption("Keine Kriterien gepflegt / No criteria provided.")
 
         action_cols = st.columns(2)
-        suggest_quadrant_clicked = action_cols[0].form_submit_button(
-            "AI: Quadrant vorschlagen / Suggest quadrant",
-            disabled=not ai_enabled,
-            help="Nutze OpenAI fuer eine Auto-Kategorisierung / Use OpenAI to classify the task.",
-        )
-        submitted = action_cols[1].form_submit_button("ToDo hinzufügen / Add task")
+        with action_cols[0]:
+            suggest_quadrant_clicked = st.form_submit_button(
+                "AI: Quadrant vorschlagen / Suggest quadrant",
+                disabled=not ai_enabled,
+                help="Nutze OpenAI fuer eine Auto-Kategorisierung / Use OpenAI to classify the task.",
+            )
+        with action_cols[1]:
+            submitted = st.form_submit_button("ToDo hinzufügen / Add task")
 
         if suggest_quadrant_clicked:
             if not title.strip():
