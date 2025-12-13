@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Added optional local JSON persistence for todos, KPIs, and settings including a Community Cloud notice about potential
+  ephemeral storage, plus documentation reminders to keep API keys in secrets only.
 - Added optionale Fortschrittsregeln / progress rules je Aufgabe (Zielwert + Einheit, aktueller Stand, Auto-Abschluss, Markdown-Kriterien) samt UI im Formular und Expander sowie Ereignis-basiertem Fortschrittsupdate mit Duplikat-Schutz.
 - Added per-task Kanban boards (Backlog/Doing/Done) with subtask cards, left/right move buttons, progress indicator inside each task expander, and default data-model columns.
 - Refactored the main task workflow into a default list tab with category grouping, priority→due→created sorting, filters (done toggle, category multi-select, sort override), detail expanders with quick edits, and tabs for Eisenhower board plus calendar to keep both views available.
