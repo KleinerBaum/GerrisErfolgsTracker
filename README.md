@@ -23,6 +23,16 @@ Hinweise:
 - Der Start funktioniert auch ohne API Key; die App zeigt dann einen Hinweis an.
 - Falls du den EU-Endpunkt nutzen möchtest, setze `OPENAI_BASE_URL=https://eu.api.openai.com/v1`.
 
+## Bereitstellung & Datenhaltung / Deployment & data handling
+
+- **Lokal / Local:** `streamlit run app.py` öffnet die App im Browser unter `localhost:8501`. Alle ToDos, KPIs und Einstellungen
+  liegen ausschließlich im Streamlit-Session-State und werden weder in Dateien noch in einer Datenbank gespeichert; ein Neustart
+  beginnt daher mit einem frischen Zustand.
+- **Streamlit Cloud:** Repository mit dem Streamlit Cloud Dashboard verbinden und die Secrets wie unten beschrieben hinterlegen;
+  danach kann die App unter der bereitgestellten URL genutzt werden (z. B. https://gerriserfolgstracker.streamlit.app/). Auch
+  hier bleiben die Daten pro Sitzung im Memory-Session-State, was den Betrieb ohne Persistenz und ohne lokale Infrastruktur
+  ermöglicht.
+
 ## Secrets & Umgebungsvariablen
 
 Die App sucht nach dem OpenAI Key in `st.secrets` oder der Umgebung:
