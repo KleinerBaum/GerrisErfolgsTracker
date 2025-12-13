@@ -606,7 +606,6 @@ def _resolve_goal_input_value(settings: dict[str, Any], stats: KpiStats) -> int:
     else:
         resolved_goal = default_goal
 
-    st.session_state[SETTINGS_GOAL_DAILY_KEY] = resolved_goal
     return resolved_goal
 
 

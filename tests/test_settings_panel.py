@@ -157,4 +157,4 @@ def test_resolve_goal_value_prefers_suggestion(session_state: Dict[str, object])
     resolved = _resolve_goal_input_value(settings=settings, stats=stats)
 
     assert resolved == 7
-    assert session_state["settings_goal_daily"] == 7
+    assert "settings_goal_daily" not in session_state
