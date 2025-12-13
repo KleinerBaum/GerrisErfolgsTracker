@@ -12,7 +12,7 @@ Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI
 - Python >= 3.11
 - Ein OpenAI API Key, falls du Modellantworten erzeugen möchtest (`OPENAI_API_KEY`).
 - Optional: Modell-Override via `OPENAI_MODEL` (Standard: `gpt-4o-mini`) und benutzerdefinierte Basis-URL z. B. EU-Endpunkt.
-- Optionale Persistenz: Lokale JSON-Datei unter `.data/gerris_state.json` (wird automatisch angelegt, sobald beschreibbar).
+- Optionale Persistenz & Sync: Die App schreibt standardmäßig in einen OneDrive-Sync-Ordner (z. B. `~/OneDrive/GerrisErfolgsTracker/gerris_state.json` oder `C:\\Users\\gerri\\OneDrive\\GerrisErfolgsTracker`). Über `GERRIS_ONEDRIVE_DIR` kannst du den Pfad explizit setzen; das Verzeichnis wird bei Bedarf angelegt.
 
 ## Lokale Einrichtung
 
@@ -31,12 +31,14 @@ Hinweise:
 ## Bereitstellung & Datenhaltung / Deployment & data handling
 
 - **Lokal / Local:** `streamlit run app.py` öffnet die App im Browser unter `localhost:8501`. ToDos, KPIs und Einstellungen
-  werden zusätzlich im JSON-File `.data/gerris_state.json` persistiert (wird automatisch angelegt). Ein Löschen dieser Datei
-  setzt den Zustand zurück.
+  landen automatisch als `gerris_state.json` im OneDrive-Sync-Ordner `~/OneDrive/GerrisErfolgsTracker/` (oder dem Pfad aus
+  `GERRIS_ONEDRIVE_DIR`). So bleiben mobile Eingaben (z. B. aus der OneDrive-App) und die Streamlit-App synchron. Das
+  Verzeichnis wird beim Speichern erzeugt; ein Löschen der Datei setzt den Zustand zurück.
 - **Streamlit Cloud:** Repository mit dem Streamlit Cloud Dashboard verbinden und die Secrets wie unten beschrieben hinterlegen;
   danach kann die App unter der bereitgestellten URL genutzt werden (z. B. https://gerriserfolgstracker.streamlit.app/). Die
-  JSON-Datei wird auch hier beschrieben, ist aber auf der Community Cloud meist flüchtig und kann nach einem Neustart
-  verschwinden. Funktioniert somit ohne zusätzliche Infrastruktur, aber ohne Garantien für Persistenz.
+  App schreibt ebenfalls in den OneDrive-Pfad (über `GERRIS_ONEDRIVE_DIR` konfigurierbar); auf der Community Cloud kann die
+  Datei dennoch flüchtig sein und nach einem Neustart verschwinden. Funktioniert somit ohne zusätzliche Infrastruktur, aber
+  ohne Garantien für Persistenz.
 
 ## Secrets & Umgebungsvariablen
 
@@ -45,6 +47,7 @@ Die App sucht nach dem OpenAI Key in `st.secrets` oder der Umgebung:
 - `OPENAI_API_KEY` (erforderlich für Modellaufrufe)
 - `OPENAI_BASE_URL` (optional, z. B. EU-Endpunkt)
 - `OPENAI_MODEL` (optional, z. B. `gpt-4o-mini` oder `o3-mini`)
+- `GERRIS_ONEDRIVE_DIR` (optional: expliziter OneDrive-Sync-Ordner für die JSON-Datei)
 
 ### Lokale Secrets
 
@@ -87,7 +90,7 @@ OPENAI_API_KEY = "sk-..."
   cards.
 - Button **Session zurücksetzen / Reset session** löscht ToDos, KPIs, Gamification und Einstellungen und stellt die Defaults wieder
   her.
-- Hinweisboxen: Daten bleiben ausschließlich im Session-State (keine Persistenz im MVP); das Tool ist nicht als Krisen- oder Diagnoseinstrument gedacht.
+- Hinweisboxen informieren über den aktuell genutzten Speicherort (OneDrive, lokale Datei oder flüchtiger Cloud-Speicher); das Tool ist nicht als Krisen- oder Diagnoseinstrument gedacht.
 
 ## ToDo-Verwaltung
 
