@@ -3,6 +3,8 @@
 
 Streamlit-App mit Eisenhower-ToDo-Board, Gamification und optionaler OpenAI-Integration für KI-gestützte Vorschläge (Auto-Kategorisierung, Tagesziel-Empfehlungen, Motivation). Ohne API-Key greifen Fallback-Texte und die App bleibt voll funktionsfähig.
 
+Die UI folgt einem klaren, fokussierten Design mit einem dunkelgrünen Primärton (#127475) für einen ruhigen, professionellen Eindruck. Es werden nur wenige, leicht verständliche Status-Icons eingesetzt (z. B. ⏳ für offene und ✅ für erledigte Aufgaben), um die Oberfläche aufgeräumt zu halten.
+
 Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI aktiv / AI enabled** gesetzt ist, nutzt die App GPT-Modelle (Standard: `gpt-4o-mini`, per Einstellung überschreibbar), um z. B. automatisch den Eisenhower-Quadranten zu empfehlen, ein strukturiertes Tagesziel zu liefern oder kurze Motivationsnachrichten basierend auf den jüngsten KPIs zu erstellen. Ist kein API-Key hinterlegt oder die AI-Option deaktiviert, werden statische, vorgefertigte Texte verwendet, sodass die Anwendung weiterhin vollständig nutzbar bleibt.
 
 ## Voraussetzungen
@@ -97,7 +99,7 @@ OPENAI_API_KEY = "sk-..."
 - Sofort sichtbare KPIs: **Erledigt gesamt / Done total**, **Heute erledigt / Done today**, **Kontinuität / Streak**, sowie **Zielerreichung / Goal progress** mit Tagesziel (Standard: 3 Abschlüsse pro Tag).
 - Tageslogik: `done_today` wird automatisch auf den aktuellen Kalendertag bezogen; bei Datumswechsel werden die Tageswerte zurückgesetzt.
 - Kontinuität (Streak): zählt zusammenhängende Tage mit mindestens einem Abschluss.
-- Wochenansicht: Balkendiagramm der letzten 7 Tage mit Anzahl der Abschlüsse.
+- Wochenansicht: Interaktives Plotly-Balkendiagramm der letzten 7 Tage mit Hover-Details und Zoom für die Abschlüsse.
 
 ## Gamification
 

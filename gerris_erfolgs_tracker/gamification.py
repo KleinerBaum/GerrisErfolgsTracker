@@ -60,9 +60,7 @@ def get_gamification_state() -> GamificationState:
 
 
 def _completion_id(todo: TodoItem) -> str:
-    timestamp = (todo.completed_at or datetime.now(timezone.utc)).astimezone(
-        timezone.utc
-    )
+    timestamp = (todo.completed_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
     return f"{todo.id}:{timestamp.isoformat()}"
 
 
@@ -80,9 +78,7 @@ def _assign_badges(state: GamificationState, stats: KpiStats) -> None:
         _award_badge(state, BADGE_DOUBLE_DIGITS)
 
 
-def update_gamification_on_completion(
-    todo: TodoItem, stats: KpiStats
-) -> GamificationState:
+def update_gamification_on_completion(todo: TodoItem, stats: KpiStats) -> GamificationState:
     if not todo.completed or todo.completed_at is None:
         return get_gamification_state()
 

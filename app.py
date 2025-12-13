@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Optional
 
-import pandas as pd
 import streamlit as st
 from openai import OpenAI
 
@@ -13,6 +12,7 @@ from gerris_erfolgs_tracker.ai_features import (
     suggest_goals,
     suggest_quadrant,
 )
+from gerris_erfolgs_tracker.charts import build_weekly_completion_figure
 from gerris_erfolgs_tracker.constants import SS_SETTINGS
 from gerris_erfolgs_tracker.calendar_view import render_calendar_view
 from gerris_erfolgs_tracker.eisenhower import (
@@ -56,9 +56,7 @@ NEW_TODO_QUADRANT_PREFILL_KEY = "new_todo_quadrant_prefill"
 NEW_TODO_RESET_TRIGGER_KEY = "new_todo_reset_trigger"
 
 
-def _ensure_settings_defaults(
-    *, client: Optional[OpenAI], stats: KpiStats
-) -> dict[str, Any]:
+def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> dict[str, Any]:
     settings: dict[str, Any] = st.session_state.get(SS_SETTINGS, {})
     if not isinstance(settings, dict):
         settings = {}
@@ -117,9 +115,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
 
     goal_action_cols = st.sidebar.columns(2)
     with goal_action_cols[0]:
-        if goal_action_cols[0].button(
-            "Ziel speichern / Save goal", key="settings_save_goal"
-        ):
+        if goal_action_cols[0].button("Ziel speichern / Save goal", key="settings_save_goal"):
             update_goal_daily(int(goal_value))
             st.sidebar.success("Tagesziel aktualisiert / Daily goal updated.")
             st.rerun()
@@ -139,23 +135,18 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
             st.session_state[GOAL_SUGGESTED_VALUE_KEY] = suggestion.payload.daily_goal
             st.rerun()
 
-    goal_suggestion: AISuggestion[Any] | None = st.session_state.get(
-        AI_GOAL_SUGGESTION_KEY
-    )
+    goal_suggestion: AISuggestion[Any] | None = st.session_state.get(AI_GOAL_SUGGESTION_KEY)
     if goal_suggestion:
         badge = "🤖" if goal_suggestion.from_ai else "🧭"
         tips = " · ".join(goal_suggestion.payload.tips)
         st.sidebar.info(
-            f"{badge} {goal_suggestion.payload.focus} — "
-            f"{goal_suggestion.payload.daily_goal} Ziele / goals. {tips}"
+            f"{badge} {goal_suggestion.payload.focus} — {goal_suggestion.payload.daily_goal} Ziele / goals. {tips}"
         )
 
     st.sidebar.divider()
     st.sidebar.markdown("### Gamification-Stil / Gamification style")
     gamification_mode_options = list(GamificationMode)
-    current_mode_value = settings.get(
-        "gamification_mode", GamificationMode.POINTS.value
-    )
+    current_mode_value = settings.get("gamification_mode", GamificationMode.POINTS.value)
     try:
         current_mode = GamificationMode(current_mode_value)
     except ValueError:
@@ -278,16 +269,10 @@ def render_todo_section(ai_enabled: bool, client: Optional[OpenAI]) -> None:
             if not title.strip():
                 st.warning("Bitte Titel angeben / Please provide a title.")
             else:
-                suggestion: AISuggestion[Any] = suggest_quadrant(
-                    title.strip(), client=client if ai_enabled else None
-                )
-                st.session_state[NEW_TODO_QUADRANT_PREFILL_KEY] = (
-                    EisenhowerQuadrant(suggestion.payload.quadrant)
-                )
+                suggestion: AISuggestion[Any] = suggest_quadrant(title.strip(), client=client if ai_enabled else None)
+                st.session_state[NEW_TODO_QUADRANT_PREFILL_KEY] = EisenhowerQuadrant(suggestion.payload.quadrant)
                 st.session_state[AI_QUADRANT_RATIONALE_KEY] = suggestion.payload.rationale
-                label = (
-                    "KI-Vorschlag / AI suggestion" if suggestion.from_ai else "Fallback"
-                )
+                label = "KI-Vorschlag / AI suggestion" if suggestion.from_ai else "Fallback"
                 st.info(f"{label}: {suggestion.payload.rationale}")
                 st.rerun()
 
@@ -302,13 +287,9 @@ def render_todo_section(ai_enabled: bool, client: Optional[OpenAI]) -> None:
 
     rationale = st.session_state.get(AI_QUADRANT_RATIONALE_KEY)
     if rationale:
-        st.caption(
-            f"Begründung (übersteuerbar) / Rationale (you can override): {rationale}"
-        )
+        st.caption(f"Begründung (übersteuerbar) / Rationale (you can override): {rationale}")
 
-    filter_selection = st.radio(
-        "Filter", ["Alle / All", "Offen / Open", "Erledigt / Done"], horizontal=True
-    )
+    filter_selection = st.radio("Filter", ["Alle / All", "Offen / Open", "Erledigt / Done"], horizontal=True)
 
     filtered_todos = todos
     if "Offen" in filter_selection or "Open" in filter_selection:
@@ -351,11 +332,7 @@ def render_kpi_dashboard(stats: KpiStats) -> None:
     col_today.metric("Heute erledigt / Done today", stats.done_today)
     col_streak.metric("Kontinuität / Streak", f"{stats.streak} Tage / days")
 
-    goal_delta = (
-        "🎯 Ziel erreicht / Goal achieved"
-        if stats.goal_hit_today
-        else "Noch nicht erreicht / Not reached yet"
-    )
+    goal_delta = "🎯 Ziel erreicht / Goal achieved" if stats.goal_hit_today else "Noch nicht erreicht / Not reached yet"
     col_goal.metric(
         "Zielerreichung / Goal progress",
         f"{stats.done_today}/{stats.goal_daily}",
@@ -364,9 +341,12 @@ def render_kpi_dashboard(stats: KpiStats) -> None:
 
     st.caption("Wochenübersicht der Abschlüsse / Week view of completions")
     weekly_data = get_weekly_completion_counts(stats)
-    chart_data = pd.DataFrame(weekly_data).set_index("date")
-    chart_data.rename(columns={"completions": "Abschlüsse / Completions"}, inplace=True)
-    st.bar_chart(chart_data)
+    weekly_chart = build_weekly_completion_figure(weekly_data)
+    st.plotly_chart(
+        weekly_chart,
+        use_container_width=True,
+        config={"displaylogo": False, "responsive": True},
+    )
 
     st.info(
         "Passe das Tagesziel und die KI-Einstellungen im Seitenbereich an / "
@@ -374,15 +354,11 @@ def render_kpi_dashboard(stats: KpiStats) -> None:
     )
 
 
-def render_gamification_panel(
-    stats: KpiStats, *, ai_enabled: bool, client: Optional[OpenAI]
-) -> None:
+def render_gamification_panel(stats: KpiStats, *, ai_enabled: bool, client: Optional[OpenAI]) -> None:
     gamification_state = get_gamification_state()
     settings: dict[str, Any] = st.session_state.get(SS_SETTINGS, {})
     try:
-        gamification_mode = GamificationMode(
-            settings.get("gamification_mode", GamificationMode.POINTS.value)
-        )
+        gamification_mode = GamificationMode(settings.get("gamification_mode", GamificationMode.POINTS.value))
     except ValueError:
         gamification_mode = GamificationMode.POINTS
 
@@ -416,18 +392,13 @@ def render_gamification_panel(
     elif gamification_mode is GamificationMode.BADGES:
         st.markdown("#### Badges")
         if gamification_state.badges:
-            badge_labels = " ".join(
-                f"🏅 {badge}" for badge in gamification_state.badges
-            )
+            badge_labels = " ".join(f"🏅 {badge}" for badge in gamification_state.badges)
             st.markdown(
-                f"{badge_labels}<br/>"
-                "(jede Auszeichnung wird nur einmal vergeben / each badge is awarded once)",
+                f"{badge_labels}<br/>(jede Auszeichnung wird nur einmal vergeben / each badge is awarded once)",
                 unsafe_allow_html=True,
             )
         else:
-            st.caption(
-                "Noch keine Badges gesammelt / No badges earned yet. Arbeite an deinen Zielen!"
-            )
+            st.caption("Noch keine Badges gesammelt / No badges earned yet. Arbeite an deinen Zielen!")
         st.info(
             "Sammle Abzeichen für Meilensteine wie erste Aufgabe, 3-Tage-Streak und 10 Abschlüsse / "
             "Earn badges for milestones like your first task, a 3-day streak, and 10 completions."
@@ -443,9 +414,7 @@ def render_gamification_panel(
         avatar_message = next_avatar_prompt(message_index)
         st.info(f"👩‍⚕️ Dipl.-Psych. Roß: {avatar_message}")
 
-        if st.button(
-            "Neuen Spruch anzeigen / Show another quote", key="avatar_prompt_btn"
-        ):
+        if st.button("Neuen Spruch anzeigen / Show another quote", key="avatar_prompt_btn"):
             st.session_state["avatar_prompt_index"] = message_index + 1
             st.rerun()
 
@@ -464,9 +433,7 @@ def render_gamification_panel(
             "Ask OpenAI for motivation; without a key we use a fallback."
         ),
     ):
-        st.session_state[AI_MOTIVATION_KEY] = generate_motivation(
-            stats, client=client if ai_enabled else None
-        )
+        st.session_state[AI_MOTIVATION_KEY] = generate_motivation(stats, client=client if ai_enabled else None)
         st.rerun()
 
     motivation: AISuggestion[Any] | None = st.session_state.get(AI_MOTIVATION_KEY)
@@ -483,9 +450,7 @@ def render_quadrant_board(
     with container:
         st.markdown(f"### {quadrant.label}")
         if not todos:
-            st.caption(
-                "Keine Aufgaben in diesem Quadranten / No tasks in this quadrant."
-            )
+            st.caption("Keine Aufgaben in diesem Quadranten / No tasks in this quadrant.")
             return
 
         for todo in todos:
@@ -495,13 +460,9 @@ def render_quadrant_board(
 def render_todo_card(todo: TodoItem) -> None:
     with st.container(border=True):
         status = "✅ Erledigt / Done" if todo.completed else "⏳ Offen / Open"
-        due_text = (
-            todo.due_date.date().isoformat() if todo.due_date is not None else "—"
-        )
+        due_text = todo.due_date.date().isoformat() if todo.due_date is not None else "—"
         st.markdown(f"**{todo.title}**")
-        st.caption(
-            f"📅 Fällig / Due: {due_text} · 🧭 Quadrant: {todo.quadrant.label} · {status}"
-        )
+        st.caption(f"📅 Fällig / Due: {due_text} · 🧭 Quadrant: {todo.quadrant.label} · {status}")
 
         action_cols = st.columns([1, 1, 1])
         if action_cols[0].button(
@@ -584,9 +545,7 @@ def main() -> None:
             "st.secrets oder der Umgebung hinterlegt ist."
         )
     else:
-        st.caption(
-            f"Aktives Modell: {get_default_model()} (konfigurierbar via OPENAI_MODEL)."
-        )
+        st.caption(f"Aktives Modell: {get_default_model()} (konfigurierbar via OPENAI_MODEL).")
 
     st.header("ToDos / Tasks")
     render_todo_section(ai_enabled=ai_enabled, client=client)
