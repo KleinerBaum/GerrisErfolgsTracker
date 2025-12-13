@@ -56,3 +56,15 @@ def test_badges_are_awarded_once(session_state: dict[str, object]) -> None:
     assert state_second.points == state_first.points
     assert state_second.badges == state_first.badges
     assert len(state_second.processed_completions) == 1
+
+
+def test_completion_event_is_logged_once(session_state: dict[str, object]) -> None:
+    todo = _completed_todo(EisenhowerQuadrant.URGENT_NOT_IMPORTANT)
+    stats = KpiStats(done_total=2, streak=1)
+
+    state_first = update_gamification_on_completion(todo, stats)
+    assert len(state_first.history) == 1
+    assert todo.id in state_first.history[0]
+
+    state_second = update_gamification_on_completion(todo, stats)
+    assert len(state_second.history) == 1
