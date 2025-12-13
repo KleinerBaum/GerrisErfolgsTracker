@@ -3,6 +3,8 @@
 
 Streamlit-App mit Eisenhower-ToDo-Board, Gamification und optionaler OpenAI-Integration für KI-gestützte Vorschläge (Auto-Kategorisierung, Tagesziel-Empfehlungen, Motivation). Ohne API-Key greifen Fallback-Texte und die App bleibt voll funktionsfähig.
 
+Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI aktiv / AI enabled** gesetzt ist, nutzt die App GPT-Modelle (Standard: `gpt-4o-mini`, per Einstellung überschreibbar), um z. B. automatisch den Eisenhower-Quadranten zu empfehlen, ein strukturiertes Tagesziel zu liefern oder kurze Motivationsnachrichten basierend auf den jüngsten KPIs zu erstellen. Ist kein API-Key hinterlegt oder die AI-Option deaktiviert, werden statische, vorgefertigte Texte verwendet, sodass die Anwendung weiterhin vollständig nutzbar bleibt.
+
 ## Voraussetzungen
 
 - Python >= 3.11
