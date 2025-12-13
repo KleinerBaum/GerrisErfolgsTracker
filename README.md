@@ -3,7 +3,7 @@
 
 Streamlit-App mit Eisenhower-ToDo-Board, Gamification und optionaler OpenAI-Integration für KI-gestützte Vorschläge (Auto-Kategorisierung, Tagesziel-Empfehlungen, Motivation). Ohne API-Key greifen Fallback-Texte und die App bleibt voll funktionsfähig.
 
-Die UI folgt einem klaren, fokussierten Design mit einem dunkelgrünen Primärton (#127475) für einen ruhigen, professionellen Eindruck. Es werden nur wenige, leicht verständliche Status-Icons eingesetzt (z. B. ⏳ für offene und ✅ für erledigte Aufgaben), um die Oberfläche aufgeräumt zu halten.
+Die UI folgt einem klaren, fokussierten Dark-Theme mit dunkelgrünem Primärton (#1C9C82) auf dunklem Hintergrund, um einen ruhigen, professionellen Eindruck zu vermitteln. Statusinformationen werden textlich und über Typografie/Abstände vermittelt, um Icon-Lärm zu vermeiden.
 
 Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI aktiv / AI enabled** gesetzt ist, nutzt die App GPT-Modelle (Standard: `gpt-4o-mini`, per Einstellung überschreibbar), um z. B. automatisch den Eisenhower-Quadranten zu empfehlen, ein strukturiertes Tagesziel zu liefern oder kurze Motivationsnachrichten basierend auf den jüngsten KPIs zu erstellen. Ist kein API-Key hinterlegt oder die AI-Option deaktiviert, werden statische, vorgefertigte Texte verwendet, sodass die Anwendung weiterhin vollständig nutzbar bleibt.
 
@@ -107,8 +107,8 @@ OPENAI_API_KEY = "sk-..."
 - Neues Top-Dashboard direkt unter dem Titel mit fünf Karten (eine pro Kategorie) inklusive Tagesfortschritt, Streak und offen vs. erledigt / New top-of-page dashboard with five category cards showing daily progress, streak, open vs. done.
 - Tageslogik: `done_today` wird automatisch auf den aktuellen Kalendertag bezogen; bei Datumswechsel werden die Tageswerte zurückgesetzt.
 - Kontinuität (Streak): zählt zusammenhängende Tage mit mindestens einem Abschluss.
-- Wochenansicht: Interaktives Plotly-Balkendiagramm der letzten 7 Tage mit Hover-Details und Zoom für die Abschlüsse.
-- Zusätzlich ein gestapeltes Plotly-Balkendiagramm für die letzten 7 Tage, aufgeteilt nach Kategorien, um Fortschritt je Lebensbereich sichtbar zu machen / Added a stacked 7-day Plotly bar by category for a quiet, dark-friendly overview.
+- Wochenansicht: Interaktives Plotly-Balkendiagramm der letzten 7 Tage mit Hover-Details und Zoom für die Abschlüsse, abgestimmt auf das dunkle Dashboard-Farbschema.
+- Zusätzlich ein gestapeltes Plotly-Balkendiagramm für die letzten 7 Tage, aufgeteilt nach Kategorien, um Fortschritt je Lebensbereich sichtbar zu machen / Added a stacked 7-day Plotly bar by category for a quiet, dark-friendly overview that matches the dark-green theme.
 
 ## Gamification
 

@@ -91,6 +91,66 @@ from gerris_erfolgs_tracker.todos import (
 )
 
 
+def _inject_dark_theme_styles() -> None:
+    st.markdown(
+        """
+        <style>
+            :root {
+                --gerris-primary: #1c9c82;
+                --gerris-surface: #10211f;
+                --gerris-surface-alt: #0e1917;
+                --gerris-border: #1f4a42;
+                --gerris-text: #e6f2ec;
+                --gerris-muted: #b7c9c3;
+            }
+
+            .stApp, .main, .block-container {
+                background-color: var(--gerris-surface-alt);
+                color: var(--gerris-text);
+            }
+
+            h1, h2, h3, h4, h5, h6, label, p {
+                color: var(--gerris-text);
+            }
+
+            div[data-testid="stMetricValue"] {
+                color: var(--gerris-text);
+            }
+
+            div[data-testid="stMetricDelta"] {
+                color: #9ce6c3;
+            }
+
+            div[data-testid="stVerticalBlockBorderWrapper"] {
+                border: 1px solid var(--gerris-border);
+                background: linear-gradient(145deg, var(--gerris-surface), var(--gerris-surface-alt));
+                border-radius: 14px;
+                padding: 16px;
+                margin-bottom: 0.9rem;
+            }
+
+            [data-testid="stExpander"] {
+                background: var(--gerris-surface);
+                border: 1px solid var(--gerris-border);
+                border-radius: 12px;
+            }
+
+            [data-testid="stExpander"] summary {
+                color: var(--gerris-text);
+                font-weight: 600;
+            }
+
+            .task-meta {
+                color: var(--gerris-muted);
+                font-size: 0.9rem;
+                margin-top: -0.25rem;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _sanitize_category_goals(settings: Mapping[str, object]) -> dict[str, int]:
     raw_goals = settings.get("category_goals", {}) if isinstance(settings, Mapping) else {}
     sanitized: dict[str, int] = {}
@@ -266,19 +326,19 @@ def render_task_row(todo: TodoItem) -> None:
             st.markdown(f"**{todo.title}**")
 
         with row_columns[2]:
-            st.markdown(f"`P{todo.priority}`")
+            st.markdown(f"Priorität / Priority: **P{todo.priority}**")
 
         with row_columns[3]:
             if todo.due_date:
-                st.caption(f"📅 {todo.due_date.date().isoformat()}")
+                st.caption(f"Fällig / Due: {todo.due_date.date().isoformat()}")
             else:
-                st.caption("—")
+                st.caption("Kein Fälligkeitsdatum / No due date")
 
         with row_columns[4]:
-            st.caption(f"🧭 {todo.quadrant.short_label}")
+            st.caption(f"Quadrant: {todo.quadrant.short_label}")
 
         with st.expander("Details"):
-            st.caption(f"📂 {todo.category.label}")
+            st.caption(f"Kategorie / Category: {todo.category.label}")
             if todo.description_md.strip():
                 st.markdown(todo.description_md)
             else:
@@ -680,6 +740,7 @@ def _build_category_progress(snapshot: CategoryKpi) -> go.Figure:
         y=[snapshot.category.label],
         orientation="h",
         marker_color=PRIMARY_COLOR,
+        textfont_color="#E6F2EC",
         text=[f"{snapshot.done_today}/{snapshot.daily_goal}"],
         textposition="outside",
         hovertemplate=(
@@ -694,6 +755,8 @@ def _build_category_progress(snapshot: CategoryKpi) -> go.Figure:
         margin=dict(t=10, r=10, b=10, l=10),
         xaxis=dict(range=[0, x_max], visible=False),
         yaxis=dict(visible=False),
+        template="plotly_dark",
+        font=dict(color="#E6F2EC"),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
     )
@@ -730,11 +793,11 @@ def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, categor
                     config={"displaylogo": False, "responsive": True},
                 )
                 st.caption(
-                    " ".join(
+                    " | ".join(
                         [
-                            f"📂 Offen / Open: {snapshot.open_count}",
-                            f"✅ Gesamt / Total: {snapshot.done_total}",
-                            f"🔥 Streak: {snapshot.streak} Tage / days",
+                            f"Offen / Open: {snapshot.open_count}",
+                            f"Gesamt / Total: {snapshot.done_total}",
+                            f"Streak: {snapshot.streak} Tage / days",
                         ]
                     )
                 )
@@ -1121,11 +1184,11 @@ def render_quadrant_board(
 
 def render_todo_card(todo: TodoItem) -> None:
     with st.container(border=True):
-        status = "✅ Erledigt / Done" if todo.completed else "⏳ Offen / Open"
+        status = "Erledigt / Done" if todo.completed else "Offen / Open"
         due_text = todo.due_date.date().isoformat() if todo.due_date is not None else "—"
         st.markdown(f"**{todo.title}**")
-        st.caption(f"📅 Fällig / Due: {due_text} · 🧭 Quadrant: {todo.quadrant.label} · {status}")
-        st.caption(f"📂 {todo.category.label} · 🔢 Priorität / Priority: {todo.priority}")
+        st.caption(f"Fällig / Due: {due_text} · Quadrant: {todo.quadrant.label} · Status: {status}")
+        st.caption(f"Kategorie / Category: {todo.category.label} · Priorität / Priority: {todo.priority}")
         if todo.description_md:
             st.markdown(todo.description_md)
 
@@ -1225,6 +1288,7 @@ def render_todo_card(todo: TodoItem) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="Gerris ErfolgsTracker", page_icon="✅")
+    _inject_dark_theme_styles()
     storage_backend = _bootstrap_storage()
     init_state()
     is_cloud = _is_streamlit_cloud()

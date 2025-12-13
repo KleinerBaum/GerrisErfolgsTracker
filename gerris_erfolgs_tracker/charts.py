@@ -7,14 +7,28 @@ import plotly.graph_objects as go
 from gerris_erfolgs_tracker.kpi import DailyCategoryCount
 from gerris_erfolgs_tracker.models import Category
 
-PRIMARY_COLOR = "#127475"
+PRIMARY_COLOR = "#1C9C82"
 CATEGORY_COLORS = [
-    "#127475",
-    "#1B998B",
-    "#5F0F40",
-    "#FF8C42",
-    "#FF3C38",
+    "#1C9C82",
+    "#1B7F6D",
+    "#2FA48E",
+    "#146853",
+    "#35C2A1",
 ]
+FONT_COLOR = "#E6F2EC"
+GRID_COLOR = "#24544B"
+
+
+def _apply_dark_theme(figure: go.Figure) -> go.Figure:
+    figure.update_layout(
+        template="plotly_dark",
+        font=dict(color=FONT_COLOR),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(gridcolor=GRID_COLOR, zerolinecolor=GRID_COLOR),
+        yaxis=dict(gridcolor=GRID_COLOR, zerolinecolor=GRID_COLOR),
+    )
+    return figure
 
 
 def build_weekly_completion_figure(
@@ -51,6 +65,7 @@ def build_weekly_completion_figure(
                 y=completions,
                 text=completions,
                 textposition="auto",
+                textfont_color=FONT_COLOR,
                 marker_color=PRIMARY_COLOR,
                 hovertemplate=("<b>%{x}</b><br>Abschlüsse / Completions: %{y}<extra></extra>"),
             )
@@ -58,17 +73,15 @@ def build_weekly_completion_figure(
     )
 
     figure.update_layout(
-        template="plotly_white",
         bargap=0.35,
         title_text="Abschlüsse der letzten 7 Tage / Completions last 7 days",
         xaxis_title="Datum / Date",
         yaxis_title="Abschlüsse / Completions",
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
         margin=dict(t=60, r=10, b=40, l=10),
     )
 
     figure.update_yaxes(rangemode="tozero")
+    _apply_dark_theme(figure)
 
     return figure
 
@@ -96,6 +109,7 @@ def build_category_weekly_completion_figure(
                 x=dates,
                 y=counts,
                 name=category.label,
+                textfont_color=FONT_COLOR,
                 marker_color=color,
                 hovertemplate=(f"<b>%{{x}}</b><br>{category.label}: %{{y}}<extra></extra>"),
             )
@@ -103,19 +117,17 @@ def build_category_weekly_completion_figure(
 
     figure = go.Figure(data=bars)
     figure.update_layout(
-        template="plotly_white",
         barmode="stack",
         bargap=0.35,
         legend_title_text="Kategorien / Categories",
         title_text="Abschlüsse nach Kategorie (7 Tage) / Completions by category (7 days)",
         xaxis_title="Datum / Date",
         yaxis_title="Abschlüsse / Completions",
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
         margin=dict(t=60, r=10, b=40, l=10),
         showlegend=True,
     )
     figure.update_yaxes(rangemode="tozero")
+    _apply_dark_theme(figure)
     return figure
 
 
