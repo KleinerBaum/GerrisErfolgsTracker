@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Polished the Streamlit UI with a cohesive dark-green dashboard theme (cards, list rows, expanders), simplified text-based
+  status labels, and dark-aligned Plotly charts for categories and weekly completions.
 - Added optional local JSON persistence for todos, KPIs, and settings including a Community Cloud notice about potential
   ephemeral storage, plus documentation reminders to keep API keys in secrets only.
 - Added optionale Fortschrittsregeln / progress rules je Aufgabe (Zielwert + Einheit, aktueller Stand, Auto-Abschluss, Markdown-Kriterien) samt UI im Formular und Expander sowie Ereignis-basiertem Fortschrittsupdate mit Duplikat-Schutz.
