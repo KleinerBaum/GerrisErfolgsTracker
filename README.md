@@ -85,11 +85,9 @@ OPENAI_API_KEY = "sk-..."
 
 ## ToDo-Verwaltung
 
+- Neuer Aufgaben-Tab **Liste / List** (Default) gruppiert nach Kategorie in fester Reihenfolge, sortiert nach Priorität → Fälligkeit → Erstellungsdatum und bietet Filter für erledigte Aufgaben, Kategorie-Multiselect sowie Sortier-Override (Priorität/Fälligkeit/Erstellt). Jede Zeile zeigt Done-Toggle, Titel, Prioritäts-Badge (P1–P5), Fälligkeitsdatum (falls vorhanden) und Quadranten-Kürzel, plus einen **Details**-Expander mit Beschreibung, Schnellbearbeitung (Kategorie, Priorität, Fälligkeit, Quadrant) sowie Aktionen **Löschen / Delete** und **Duplizieren / Duplicate**.
 - Erfassung über das Formular **ToDo hinzufügen / Add task** (Titel, optionales Fälligkeitsdatum, Quadrant) inklusive Button **AI: Quadrant vorschlagen**. Neu sind Kategorie-Auswahl (z. B. Stellensuche, Tagesstruktur), Priorität (1–5) sowie eine optionale Markdown-Beschreibung mit Vorschau.
-- Eisenhower-Matrix mit vier Quadranten (dringend/wichtig) als Board-Ansicht mit je einer Spalte pro Quadrant.
-- Aufgaben lassen sich nach Fälligkeitsdatum, Erstellungsdatum oder Titel sortieren.
-- Filter für offene/erledigte Aufgaben.
-- Aktionen je Aufgabe: **Erledigt / Done** (toggle), **Quadrant wechseln / Change quadrant** (Dropdown), **Bearbeiten / Edit** (Formular), **Löschen / Delete**.
+- Eisenhower-Matrix mit vier Quadranten (dringend/wichtig) als Board-Ansicht mit je einer Spalte pro Quadrant im entsprechenden Tab, zusätzlich bleibt die Monats-Kalender-Ansicht als eigener Tab verfügbar.
 
 ## Kalenderansicht / Calendar view
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import date
-from typing import Any, Mapping, Optional
+from datetime import date, datetime
+from typing import Any, Literal, Mapping, Optional
 
 import streamlit as st
 from openai import OpenAI
@@ -18,11 +18,30 @@ from gerris_erfolgs_tracker.charts import (
     build_category_weekly_completion_figure,
     build_weekly_completion_figure,
 )
-from gerris_erfolgs_tracker.constants import SS_SETTINGS
+from gerris_erfolgs_tracker.constants import (
+    AI_ENABLED_KEY,
+    AI_GOAL_SUGGESTION_KEY,
+    AI_MOTIVATION_KEY,
+    AI_QUADRANT_RATIONALE_KEY,
+    AVATAR_PROMPT_INDEX_KEY,
+    FILTER_SELECTED_CATEGORIES_KEY,
+    FILTER_SHOW_DONE_KEY,
+    FILTER_SORT_OVERRIDE_KEY,
+    GOAL_SUGGESTED_VALUE_KEY,
+    NEW_TODO_CATEGORY_KEY,
+    NEW_TODO_DESCRIPTION_KEY,
+    NEW_TODO_DUE_KEY,
+    NEW_TODO_PRIORITY_KEY,
+    NEW_TODO_QUADRANT_KEY,
+    NEW_TODO_QUADRANT_PREFILL_KEY,
+    NEW_TODO_RESET_TRIGGER_KEY,
+    NEW_TODO_TITLE_KEY,
+    SETTINGS_GOAL_DAILY_KEY,
+    SS_SETTINGS,
+)
 from gerris_erfolgs_tracker.calendar_view import render_calendar_view
 from gerris_erfolgs_tracker.eisenhower import (
     EisenhowerQuadrant,
-    SortKey,
     group_by_quadrant,
     sort_todos,
 )
@@ -46,27 +65,7 @@ from gerris_erfolgs_tracker.kpi import (
 from gerris_erfolgs_tracker.llm import get_default_model, get_openai_client
 from gerris_erfolgs_tracker.models import Category, GamificationMode, KpiStats, TodoItem
 from gerris_erfolgs_tracker.state import get_todos, init_state, reset_state
-from gerris_erfolgs_tracker.todos import (
-    add_todo,
-    delete_todo,
-    toggle_complete,
-    update_todo,
-)
-
-
-AI_ENABLED_KEY = "ai_enabled"
-AI_QUADRANT_RATIONALE_KEY = "ai_quadrant_rationale"
-AI_GOAL_SUGGESTION_KEY = "ai_goal_suggestion"
-AI_MOTIVATION_KEY = "ai_motivation_message"
-GOAL_SUGGESTED_VALUE_KEY = "suggested_goal_daily"
-NEW_TODO_TITLE_KEY = "new_todo_title"
-NEW_TODO_DUE_KEY = "new_todo_due"
-NEW_TODO_QUADRANT_KEY = "new_todo_quadrant"
-NEW_TODO_QUADRANT_PREFILL_KEY = "new_todo_quadrant_prefill"
-NEW_TODO_RESET_TRIGGER_KEY = "new_todo_reset_trigger"
-NEW_TODO_CATEGORY_KEY = "new_todo_category"
-NEW_TODO_PRIORITY_KEY = "new_todo_priority"
-NEW_TODO_DESCRIPTION_KEY = "new_todo_description"
+from gerris_erfolgs_tracker.todos import add_todo, delete_todo, duplicate_todo, toggle_complete, update_todo
 
 
 def _sanitize_category_goals(settings: Mapping[str, object]) -> dict[str, int]:
@@ -80,6 +79,192 @@ def _sanitize_category_goals(settings: Mapping[str, object]) -> dict[str, int]:
             sanitized_value = 1
         sanitized[category.value] = sanitized_value
     return sanitized
+
+
+SortOverride = Literal["priority", "due_date", "created_at"]
+
+
+def _toggle_todo_completion(todo: TodoItem) -> None:
+    updated = toggle_complete(todo.id)
+    if updated and updated.completed:
+        stats = update_kpis_on_completion(updated.completed_at)
+        update_gamification_on_completion(updated, stats)
+    st.rerun()
+
+
+def _task_sort_key(todo: TodoItem, sort_override: SortOverride) -> tuple[object, ...]:
+    due_key = (todo.due_date is None, todo.due_date or datetime.max)
+    created_key = todo.created_at or datetime.max
+
+    if sort_override == "due_date":
+        return (due_key, todo.priority, created_key)
+    if sort_override == "created_at":
+        return (created_key, todo.priority, due_key)
+    return (todo.priority, *due_key, created_key)
+
+
+def render_task_row(todo: TodoItem) -> None:
+    with st.container(border=True):
+        row_columns = st.columns([0.1, 0.45, 0.15, 0.15, 0.15])
+        with row_columns[0]:
+            st.checkbox(
+                "Erledigt / Done",
+                value=todo.completed,
+                label_visibility="collapsed",
+                key=f"list_done_{todo.id}",
+                on_change=_toggle_todo_completion,
+                kwargs={"todo": todo},
+                help="Hake Aufgabe ab oder öffne sie erneut / Toggle completion state.",
+            )
+
+        with row_columns[1]:
+            st.markdown(f"**{todo.title}**")
+
+        with row_columns[2]:
+            st.markdown(f"`P{todo.priority}`")
+
+        with row_columns[3]:
+            if todo.due_date:
+                st.caption(f"📅 {todo.due_date.date().isoformat()}")
+            else:
+                st.caption("—")
+
+        with row_columns[4]:
+            st.caption(f"🧭 {todo.quadrant.short_label}")
+
+        with st.expander("Details"):
+            st.caption(f"📂 {todo.category.label}")
+            if todo.description_md.strip():
+                st.markdown(todo.description_md)
+            else:
+                st.caption("Keine Beschreibung vorhanden / No description yet.")
+
+            with st.form(f"quick_edit_{todo.id}"):
+                left, right = st.columns(2)
+                with left:
+                    new_category = st.selectbox(
+                        "Kategorie / Category",
+                        options=list(Category),
+                        format_func=lambda option: option.label,
+                        index=list(Category).index(todo.category),
+                        key=f"quick_category_{todo.id}",
+                    )
+                    new_priority = st.selectbox(
+                        "Priorität (1=hoch) / Priority (1=high)",
+                        options=list(range(1, 6)),
+                        index=list(range(1, 6)).index(todo.priority),
+                        key=f"quick_priority_{todo.id}",
+                    )
+
+                with right:
+                    new_due = st.date_input(
+                        "Fälligkeitsdatum / Due date",
+                        value=todo.due_date.date() if todo.due_date else None,
+                        format="YYYY-MM-DD",
+                        key=f"quick_due_{todo.id}",
+                    )
+                    new_quadrant = st.selectbox(
+                        "Eisenhower-Quadrant / Quadrant",
+                        options=list(EisenhowerQuadrant),
+                        format_func=lambda option: option.label,
+                        index=list(EisenhowerQuadrant).index(todo.quadrant),
+                        key=f"quick_quadrant_{todo.id}",
+                    )
+
+                submitted_edit = st.form_submit_button("Speichern / Save")
+                if submitted_edit:
+                    update_todo(
+                        todo.id,
+                        category=new_category,
+                        priority=new_priority,
+                        due_date=new_due,
+                        quadrant=new_quadrant,
+                    )
+                    st.success("Aktualisiert / Updated.")
+                    st.rerun()
+
+            action_cols = st.columns(2)
+            if action_cols[0].button(
+                "Löschen / Delete",
+                key=f"list_delete_{todo.id}",
+                help="Aufgabe entfernen / Delete task",
+            ):
+                delete_todo(todo.id)
+                st.rerun()
+
+            if action_cols[1].button(
+                "Duplizieren / Duplicate",
+                key=f"list_duplicate_{todo.id}",
+                help="Aufgabe kopieren / Duplicate task",
+            ):
+                duplicate_todo(todo.id)
+                st.success("Aufgabe dupliziert / Task duplicated.")
+                st.rerun()
+
+
+def render_task_list_view(todos: list[TodoItem]) -> None:
+    st.subheader("Aufgabenliste / Task list")
+    st.caption(
+        "Gruppiert nach Kategorie mit Priorität zuerst, danach Fälligkeit und Erstellungsdatum / "
+        "Grouped by category with priority first, then due date and created timestamp."
+    )
+
+    filter_columns = st.columns(3)
+    with filter_columns[0]:
+        show_done = st.checkbox(
+            "Erledigte anzeigen / Show completed",
+            value=st.session_state.get(FILTER_SHOW_DONE_KEY, True),
+            key=FILTER_SHOW_DONE_KEY,
+        )
+
+    with filter_columns[1]:
+        default_categories = st.session_state.get(FILTER_SELECTED_CATEGORIES_KEY) or list(Category)
+        selected_categories = st.multiselect(
+            "Kategorien / Categories",
+            options=list(Category),
+            default=default_categories,
+            format_func=lambda option: option.label,
+            key=FILTER_SELECTED_CATEGORIES_KEY,
+        )
+        if not selected_categories:
+            selected_categories = list(Category)
+
+    with filter_columns[2]:
+        sort_labels: dict[SortOverride, str] = {
+            "priority": "Priorität, dann Fälligkeit / Priority then due date",
+            "due_date": "Fälligkeitsdatum zuerst / Sort by due date",
+            "created_at": "Erstellungsdatum zuerst / Sort by created at",
+        }
+        current_sort_value = st.session_state.get(FILTER_SORT_OVERRIDE_KEY, "priority")
+        current_sort: SortOverride = current_sort_value if current_sort_value in sort_labels else "priority"  # type: ignore[assignment]
+        sort_override: SortOverride = st.selectbox(
+            "Sortierung / Sorting",
+            options=list(sort_labels.keys()),
+            format_func=lambda key: sort_labels[key],
+            index=list(sort_labels.keys()).index(current_sort),
+            key=FILTER_SORT_OVERRIDE_KEY,
+        )
+
+    visible_todos = [
+        todo for todo in todos if (show_done or not todo.completed) and todo.category in selected_categories
+    ]
+
+    if not visible_todos:
+        st.info("Keine passenden Aufgaben gefunden / No matching tasks.")
+        return
+
+    for category in Category:
+        if category not in selected_categories:
+            continue
+
+        category_todos = [todo for todo in visible_todos if todo.category is category]
+        if not category_todos:
+            st.caption(f"Keine Aufgaben in {category.label} / No tasks in {category.label}.")
+            continue
+
+        st.markdown(f"### {category.label}")
+        for todo in sorted(category_todos, key=lambda item: _task_sort_key(item, sort_override)):
+            render_task_row(todo)
 
 
 def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> dict[str, Any]:
@@ -98,7 +283,7 @@ def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> d
 
 def _resolve_goal_input_value(settings: dict[str, Any], stats: KpiStats) -> int:
     suggested_goal = st.session_state.get(GOAL_SUGGESTED_VALUE_KEY)
-    existing_goal_value = st.session_state.get("settings_goal_daily")
+    existing_goal_value = st.session_state.get(SETTINGS_GOAL_DAILY_KEY)
     default_goal = int(settings.get("goal_daily", stats.goal_daily))
 
     if suggested_goal is not None:
@@ -108,7 +293,7 @@ def _resolve_goal_input_value(settings: dict[str, Any], stats: KpiStats) -> int:
     else:
         resolved_goal = default_goal
 
-    st.session_state["settings_goal_daily"] = resolved_goal
+    st.session_state[SETTINGS_GOAL_DAILY_KEY] = resolved_goal
     return resolved_goal
 
 
@@ -135,7 +320,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
         min_value=1,
         step=1,
         value=goal_input_value,
-        key="settings_goal_daily",
+        key=SETTINGS_GOAL_DAILY_KEY,
         help=("Lege ein realistisches Tagesziel fest / Set a realistic daily target."),
     )
     settings["goal_daily"] = int(goal_value)
@@ -240,10 +425,10 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
             AI_GOAL_SUGGESTION_KEY,
             AI_QUADRANT_RATIONALE_KEY,
             AI_MOTIVATION_KEY,
-            "new_todo_title",
-            "new_todo_due",
-            "new_todo_quadrant",
-            "settings_goal_daily",
+            NEW_TODO_TITLE_KEY,
+            NEW_TODO_DUE_KEY,
+            NEW_TODO_QUADRANT_KEY,
+            SETTINGS_GOAL_DAILY_KEY,
             GOAL_SUGGESTED_VALUE_KEY,
         ):
             st.session_state.pop(cleanup_key, None)
@@ -457,39 +642,29 @@ def render_todo_section(
     if rationale:
         st.caption(f"Begründung (übersteuerbar) / Rationale (you can override): {rationale}")
 
-    filter_selection = st.radio("Filter", ["Alle / All", "Offen / Open", "Erledigt / Done"], horizontal=True)
-
-    filtered_todos = todos
-    if "Offen" in filter_selection or "Open" in filter_selection:
-        filtered_todos = [todo for todo in todos if not todo.completed]
-    elif "Erledigt" in filter_selection or "Done" in filter_selection:
-        filtered_todos = [todo for todo in todos if todo.completed]
-
-    sort_labels: dict[SortKey, str] = {
-        "due_date": "Nach Fälligkeit sortieren / Sort by due date",
-        "created_at": "Nach Anlage-Datum sortieren / Sort by created date",
-        "title": "Nach Titel sortieren / Sort by title",
-    }
-    sort_by: SortKey = st.selectbox(
-        "Sortierung / Sorting",
-        options=list(sort_labels.keys()),
-        format_func=lambda key: sort_labels[key],
-        index=0,
+    st.markdown("### Aufgabenansichten / Task views")
+    list_tab, board_tab, calendar_tab = st.tabs(
+        [
+            "Liste / List",
+            "Eisenhower-Board",
+            "Kalender / Calendar",
+        ]
     )
 
-    if not filtered_todos:
-        st.info("Keine ToDos vorhanden / No tasks yet.")
-        return
+    with list_tab:
+        render_task_list_view(todos)
 
-    sorted_todos = sort_todos(filtered_todos, by=sort_by)
-    grouped = group_by_quadrant(sorted_todos)
+    with board_tab:
+        render_kpi_dashboard(kpi_stats)
+        render_gamification_panel(kpi_stats, ai_enabled=ai_enabled, client=client)
+        st.subheader("Eisenhower-Matrix")
+        grouped = group_by_quadrant(sort_todos(todos, by="due_date"))
+        quadrant_columns = st.columns(4)
+        for quadrant, column in zip(EisenhowerQuadrant, quadrant_columns):
+            render_quadrant_board(column, quadrant, grouped.get(quadrant, []))
 
-    render_kpi_dashboard(kpi_stats)
-    render_gamification_panel(kpi_stats, ai_enabled=ai_enabled, client=client)
-    st.subheader("Eisenhower-Matrix")
-    quadrant_columns = st.columns(4)
-    for quadrant, column in zip(EisenhowerQuadrant, quadrant_columns):
-        render_quadrant_board(column, quadrant, grouped.get(quadrant, []))
+    with calendar_tab:
+        render_calendar_view()
 
 
 def render_kpi_dashboard(stats: KpiStats) -> None:
@@ -578,12 +753,12 @@ def render_gamification_panel(stats: KpiStats, *, ai_enabled: bool, client: Opti
             "Avatar: brünette Therapeutin (~45 Jahre) mit Brille, warme Ansprache / "
             "Avatar: brunette therapist (~45 years) with glasses, warm encouragement."
         )
-        message_index = int(st.session_state.get("avatar_prompt_index", 0))
+        message_index = int(st.session_state.get(AVATAR_PROMPT_INDEX_KEY, 0))
         avatar_message = next_avatar_prompt(message_index)
         st.info(f"👩‍⚕️ Dipl.-Psych. Roß: {avatar_message}")
 
         if st.button("Neuen Spruch anzeigen / Show another quote", key="avatar_prompt_btn"):
-            st.session_state["avatar_prompt_index"] = message_index + 1
+            st.session_state[AVATAR_PROMPT_INDEX_KEY] = message_index + 1
             st.rerun()
 
         st.caption(
@@ -641,11 +816,7 @@ def render_todo_card(todo: TodoItem) -> None:
             key=f"complete_{todo.id}",
             help="Markiere Aufgabe als erledigt oder offen / Toggle done or open",
         ):
-            updated = toggle_complete(todo.id)
-            if updated and updated.completed:
-                stats = update_kpis_on_completion(updated.completed_at)
-                update_gamification_on_completion(updated, stats)
-            st.rerun()
+            _toggle_todo_completion(todo)
 
         with action_cols[1]:
             quadrant_selection = st.selectbox(
@@ -756,9 +927,6 @@ def main() -> None:
 
     st.header("ToDos / Tasks")
     render_todo_section(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
-
-    st.divider()
-    render_calendar_view()
 
 
 if __name__ == "__main__":

@@ -25,6 +25,16 @@ class EisenhowerQuadrant(StrEnum):
         }
         return labels[self]
 
+    @property
+    def short_label(self) -> str:
+        labels: Mapping[EisenhowerQuadrant, str] = {
+            EisenhowerQuadrant.URGENT_IMPORTANT: "Q1",
+            EisenhowerQuadrant.NOT_URGENT_IMPORTANT: "Q2",
+            EisenhowerQuadrant.URGENT_NOT_IMPORTANT: "Q3",
+            EisenhowerQuadrant.NOT_URGENT_NOT_IMPORTANT: "Q4",
+        }
+        return labels[self]
+
 
 SortKey = Literal["due_date", "created_at", "title"]
 

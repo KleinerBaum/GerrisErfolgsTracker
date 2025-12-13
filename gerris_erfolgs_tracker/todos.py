@@ -118,9 +118,28 @@ def update_todo(
     return updated
 
 
+def duplicate_todo(todo_id: str) -> Optional[TodoItem]:
+    todos: list[TodoItem] = get_todos()
+    for todo in todos:
+        if todo.id != todo_id:
+            continue
+
+        return add_todo(
+            title=todo.title,
+            quadrant=todo.quadrant,
+            due_date=todo.due_date,
+            category=todo.category,
+            priority=todo.priority,
+            description_md=todo.description_md,
+        )
+
+    return None
+
+
 __all__ = [
     "add_todo",
     "toggle_complete",
     "delete_todo",
+    "duplicate_todo",
     "update_todo",
 ]
