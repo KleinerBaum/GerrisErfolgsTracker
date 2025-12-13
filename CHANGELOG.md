@@ -20,6 +20,7 @@
 - Added settings sidebar for AI toggle and daily goal updates, reset workflow for session data, and safety/info notices
   highlighting session-only storage and non-crisis scope.
 - Added sidebar drop-down to choose gamification style (points, badges, or the new Dipl.-Psych. Roß avatar with bilingual motivational quotes).
+- Logged gamification completion events with tokens to prevent duplicate rewards and covered the history with regression tests.
 - Added automated linting (`ruff check .`) and testing (`pytest -q`) via GitHub Actions CI plus unit tests for KPIs,
   gamification, and Eisenhower logic.
 - Hardened the ToDo form by decoupling AI quadrant prefills from widget keys and resetting inputs via reruns to avoid

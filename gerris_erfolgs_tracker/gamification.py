@@ -64,6 +64,13 @@ def _completion_id(todo: TodoItem) -> str:
     return f"{todo.id}:{timestamp.isoformat()}"
 
 
+def _log_completion_event(state: GamificationState, todo: TodoItem, *, points: int, completion_token: str) -> None:
+    timestamp = (todo.completed_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    state.history.append(
+        (f"{timestamp.isoformat()} · {todo.quadrant.label}: +{points} Punkte / points · Token {completion_token}")
+    )
+
+
 def _award_badge(state: GamificationState, badge: str) -> None:
     if badge not in state.badges:
         state.badges.append(badge)
@@ -88,8 +95,10 @@ def update_gamification_on_completion(todo: TodoItem, stats: KpiStats) -> Gamifi
         return state
 
     state.processed_completions.append(completion_token)
-
     points_gained = POINTS_PER_QUADRANT.get(todo.quadrant, 10)
+
+    _log_completion_event(state, todo, points=points_gained, completion_token=completion_token)
+
     state.points += points_gained
     state.level = max(1, 1 + state.points // 100)
 
