@@ -107,6 +107,16 @@ class _StreamlitStub:
     def rerun(self) -> None:
         raise RerunSentinel()
 
+    def number_input(
+        self,
+        *_: Any,
+        value: int,
+        key: str,
+        **__: Any,
+    ) -> int:
+        self.session_state[key] = value
+        return value
+
 
 def test_goal_suggestion_sets_widget_value(session_state: Dict[str, object], monkeypatch: pytest.MonkeyPatch) -> None:
     stats = KpiStats(goal_daily=3)

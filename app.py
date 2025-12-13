@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 import streamlit as st
 from openai import OpenAI
+import plotly.graph_objects as go
 
 from gerris_erfolgs_tracker.ai_features import (
     AISuggestion,
@@ -12,7 +13,11 @@ from gerris_erfolgs_tracker.ai_features import (
     suggest_goals,
     suggest_quadrant,
 )
-from gerris_erfolgs_tracker.charts import build_weekly_completion_figure
+from gerris_erfolgs_tracker.charts import (
+    PRIMARY_COLOR,
+    build_category_weekly_completion_figure,
+    build_weekly_completion_figure,
+)
 from gerris_erfolgs_tracker.constants import SS_SETTINGS
 from gerris_erfolgs_tracker.calendar_view import render_calendar_view
 from gerris_erfolgs_tracker.eisenhower import (
@@ -32,6 +37,11 @@ from gerris_erfolgs_tracker.kpis import (
     get_weekly_completion_counts,
     update_goal_daily,
     update_kpis_on_completion,
+)
+from gerris_erfolgs_tracker.kpi import (
+    CategoryKpi,
+    aggregate_category_kpis,
+    last_7_days_completions_by_category,
 )
 from gerris_erfolgs_tracker.llm import get_default_model, get_openai_client
 from gerris_erfolgs_tracker.models import Category, GamificationMode, KpiStats, TodoItem
@@ -59,6 +69,19 @@ NEW_TODO_PRIORITY_KEY = "new_todo_priority"
 NEW_TODO_DESCRIPTION_KEY = "new_todo_description"
 
 
+def _sanitize_category_goals(settings: Mapping[str, object]) -> dict[str, int]:
+    raw_goals = settings.get("category_goals", {}) if isinstance(settings, Mapping) else {}
+    sanitized: dict[str, int] = {}
+    for category in Category:
+        try:
+            raw_value = raw_goals.get(category.value, 1) if isinstance(raw_goals, Mapping) else 1
+            sanitized_value = max(0, min(20, int(raw_value)))
+        except (TypeError, ValueError):
+            sanitized_value = 1
+        sanitized[category.value] = sanitized_value
+    return sanitized
+
+
 def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> dict[str, Any]:
     settings: dict[str, Any] = st.session_state.get(SS_SETTINGS, {})
     if not isinstance(settings, dict):
@@ -67,6 +90,7 @@ def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> d
     settings.setdefault(AI_ENABLED_KEY, bool(client))
     settings.setdefault("goal_daily", stats.goal_daily)
     settings.setdefault("gamification_mode", GamificationMode.POINTS.value)
+    settings["category_goals"] = _sanitize_category_goals(settings)
 
     st.session_state[SS_SETTINGS] = settings
     return settings
@@ -146,6 +170,25 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
             f"{badge} {goal_suggestion.payload.focus} — {goal_suggestion.payload.daily_goal} Ziele / goals. {tips}"
         )
 
+    st.sidebar.markdown("### Kategorienziele / Category goals")
+    category_goals = settings.get("category_goals", {})
+    goal_columns = st.sidebar.columns(2)
+    for index, category in enumerate(Category):
+        with goal_columns[index % 2]:
+            goal_value = st.number_input(
+                f"{category.label}",
+                min_value=0,
+                max_value=20,
+                step=1,
+                value=int(category_goals.get(category.value, 1)),
+                key=f"goal_{category.value}",
+                help="Tagesziel für diese Kategorie / Daily target for this category",
+            )
+            category_goals[category.value] = int(goal_value)
+
+    settings["category_goals"] = _sanitize_category_goals(settings)
+    settings["category_goals"].update(category_goals)
+
     st.sidebar.divider()
     st.sidebar.markdown("### Gamification-Stil / Gamification style")
     gamification_mode_options = list(GamificationMode)
@@ -212,9 +255,89 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
     return ai_enabled
 
 
-def render_todo_section(ai_enabled: bool, client: Optional[OpenAI]) -> None:
-    kpi_stats = get_kpi_stats()
-    todos = get_todos()
+def _build_category_progress(snapshot: CategoryKpi) -> go.Figure:
+    x_max = max(snapshot.daily_goal, snapshot.done_today, 1)
+    bar = go.Bar(
+        x=[snapshot.done_today],
+        y=[snapshot.category.label],
+        orientation="h",
+        marker_color=PRIMARY_COLOR,
+        text=[f"{snapshot.done_today}/{snapshot.daily_goal}"],
+        textposition="outside",
+        hovertemplate=(
+            f"{snapshot.category.label}<br>"
+            "Heute erledigt / Done today: %{x}<br>"
+            "Tagesziel / Daily goal: %{text}<extra></extra>"
+        ),
+    )
+    figure = go.Figure(bar)
+    figure.update_layout(
+        height=140,
+        margin=dict(t=10, r=10, b=10, l=10),
+        xaxis=dict(range=[0, x_max], visible=False),
+        yaxis=dict(visible=False),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    return figure
+
+
+def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, category_goals: Mapping[str, int]) -> None:
+    st.subheader("Kategorie-Überblick / Category overview")
+    snapshots = aggregate_category_kpis(
+        todos,
+        category_goals=category_goals,
+        fallback_streak=stats.streak,
+    )
+    card_columns = st.columns(len(Category))
+
+    for category, column in zip(Category, card_columns):
+        snapshot = snapshots[category]
+        with column:
+            with st.container(border=True):
+                st.markdown(f"**{category.label}**")
+                delta_text = (
+                    f"Δ {snapshot.done_today - snapshot.daily_goal} zum Ziel / to goal"
+                    if snapshot.daily_goal > 0
+                    else "Kein Tagesziel / No daily goal"
+                )
+                st.metric(
+                    "Heute erledigt / Done today",
+                    f"{snapshot.done_today}/{snapshot.daily_goal}",
+                    delta=delta_text,
+                )
+                st.plotly_chart(
+                    _build_category_progress(snapshot),
+                    use_container_width=True,
+                    config={"displaylogo": False, "responsive": True},
+                )
+                st.caption(
+                    " ".join(
+                        [
+                            f"📂 Offen / Open: {snapshot.open_count}",
+                            f"✅ Gesamt / Total: {snapshot.done_total}",
+                            f"🔥 Streak: {snapshot.streak} Tage / days",
+                        ]
+                    )
+                )
+
+    weekly_data = last_7_days_completions_by_category(todos)
+    st.plotly_chart(
+        build_category_weekly_completion_figure(weekly_data),
+        use_container_width=True,
+        config={"displaylogo": False, "responsive": True},
+    )
+
+
+def render_todo_section(
+    ai_enabled: bool,
+    client: Optional[OpenAI],
+    *,
+    todos: Optional[list[TodoItem]] = None,
+    stats: Optional[KpiStats] = None,
+) -> None:
+    kpi_stats = stats or get_kpi_stats()
+    todos = todos or get_todos()
     quadrant_options = list(EisenhowerQuadrant)
 
     st.subheader("ToDo hinzufügen / Add task")
@@ -616,6 +739,13 @@ def main() -> None:
     ai_enabled = render_settings_panel(stats, client)
 
     st.title("Gerris ErfolgsTracker")
+    todos = get_todos()
+    settings = st.session_state.get(SS_SETTINGS, {})
+    render_category_dashboard(
+        todos,
+        stats=stats,
+        category_goals=_sanitize_category_goals(settings),
+    )
     if not client:
         st.info(
             "Kein OPENAI_API_KEY gefunden. Vorschläge nutzen Fallbacks, bis ein Key in "
@@ -625,7 +755,7 @@ def main() -> None:
         st.caption(f"Aktives Modell: {get_default_model()} (konfigurierbar via OPENAI_MODEL).")
 
     st.header("ToDos / Tasks")
-    render_todo_section(ai_enabled=ai_enabled, client=client)
+    render_todo_section(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
 
     st.divider()
     render_calendar_view()

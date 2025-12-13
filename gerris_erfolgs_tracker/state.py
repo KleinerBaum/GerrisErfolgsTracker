@@ -26,7 +26,7 @@ def _default_gamification() -> GamificationState:
 
 
 def _default_settings() -> dict[str, Any]:
-    return {}
+    return {"category_goals": {category.value: 1 for category in Category}}
 
 
 def _coerce_todo(raw: Any) -> TodoItem:
