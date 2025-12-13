@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import date, datetime
 from typing import Any, Literal, Mapping, Optional
 
@@ -70,7 +71,15 @@ from gerris_erfolgs_tracker.kpi import (
 )
 from gerris_erfolgs_tracker.llm import get_default_model, get_openai_client
 from gerris_erfolgs_tracker.models import Category, GamificationMode, KpiStats, TodoItem
-from gerris_erfolgs_tracker.state import get_todos, init_state, reset_state
+from gerris_erfolgs_tracker.state import (
+    configure_storage,
+    get_todos,
+    init_state,
+    load_persisted_state,
+    persist_state,
+    reset_state,
+)
+from gerris_erfolgs_tracker.storage import FileStorageBackend
 from gerris_erfolgs_tracker.todos import (
     add_kanban_card,
     add_todo,
@@ -96,6 +105,39 @@ def _sanitize_category_goals(settings: Mapping[str, object]) -> dict[str, int]:
 
 
 SortOverride = Literal["priority", "due_date", "created_at"]
+
+
+def _is_streamlit_cloud() -> bool:
+    runtime_env = os.getenv("STREAMLIT_RUNTIME_ENVIRONMENT", "").lower()
+    if runtime_env in {"streamlit-community-cloud", "communitycloud"}:
+        return True
+
+    explicit_flag = os.getenv("STREAMLIT_CLOUD", "").lower() in {"1", "true", "yes"}
+    region_flag = os.getenv("STREAMLIT_REGION") is not None
+    return explicit_flag or region_flag
+
+
+def _bootstrap_storage() -> FileStorageBackend:
+    backend = FileStorageBackend()
+    configure_storage(backend)
+    if not st.session_state.get("_storage_loaded", False):
+        load_persisted_state()
+        st.session_state["_storage_loaded"] = True
+    return backend
+
+
+def _render_storage_notice(backend: FileStorageBackend, *, is_cloud: bool) -> None:
+    storage_note = (
+        "Persistenz aktiv: JSON unter "
+        f"{backend.path} (lokal beschreibbar) / Persistence active: JSON stored at {backend.path}."
+    )
+    if is_cloud:
+        storage_note += (
+            " Streamlit Community Cloud speichert Dateien oft nur temporär – nach Neustarts "
+            "kann der Zustand verloren gehen. / Streamlit Community Cloud storage can be "
+            "ephemeral; state may reset after a restart."
+        )
+    st.info(storage_note)
 
 
 def _toggle_todo_completion(todo: TodoItem) -> None:
@@ -591,8 +633,10 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
     st.sidebar.divider()
     st.sidebar.subheader("Sicherheit & Daten / Safety & data")
     st.sidebar.info(
-        "Alle Angaben bleiben im Session-State und werden nicht gespeichert / "
-        "All data stays in session state only (not persisted)."
+        "Optionale lokale Persistenz speichert Daten in .data/gerris_state.json; "
+        "auf Streamlit Community Cloud können Dateien nach einem Neustart verschwinden. / "
+        "Optional local persistence writes to .data/gerris_state.json; on Streamlit Community Cloud "
+        "files may reset after a restart."
     )
     st.sidebar.warning(
         "Dieses Tool ersetzt keine Krisenhilfe oder Diagnosen / This tool is not "
@@ -625,6 +669,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
         st.rerun()
 
     st.session_state[SS_SETTINGS] = settings
+    persist_state()
     return ai_enabled
 
 
@@ -1180,13 +1225,16 @@ def render_todo_card(todo: TodoItem) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="Gerris ErfolgsTracker", page_icon="✅")
+    storage_backend = _bootstrap_storage()
     init_state()
+    is_cloud = _is_streamlit_cloud()
 
     client = get_openai_client()
     stats = get_kpi_stats()
     ai_enabled = render_settings_panel(stats, client)
 
     st.title("Gerris ErfolgsTracker")
+    _render_storage_notice(storage_backend, is_cloud=is_cloud)
     todos = get_todos()
     settings = st.session_state.get(SS_SETTINGS, {})
     render_category_dashboard(

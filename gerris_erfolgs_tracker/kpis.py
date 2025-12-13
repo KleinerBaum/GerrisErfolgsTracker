@@ -8,6 +8,7 @@ import streamlit as st
 
 from gerris_erfolgs_tracker.constants import SS_STATS
 from gerris_erfolgs_tracker.models import KpiDailyEntry, KpiStats
+from gerris_erfolgs_tracker.state import persist_state
 
 
 def _coerce_stats(raw: object | None) -> KpiStats:
@@ -47,6 +48,7 @@ def get_kpi_stats() -> KpiStats:
     _reset_for_new_day(stats, today)
     _ensure_daily_entry(stats, stats.current_day or today)
     st.session_state[SS_STATS] = stats.model_dump()
+    persist_state()
     return stats
 
 
@@ -77,6 +79,7 @@ def update_kpis_on_completion(completed_at: datetime | None = None) -> KpiStats:
     stats.current_day = current_day
 
     st.session_state[SS_STATS] = stats.model_dump()
+    persist_state()
     return stats
 
 
@@ -116,4 +119,5 @@ def update_goal_daily(goal_daily: int) -> KpiStats:
     stats.goal_daily = max(1, goal_daily)
     stats.goal_hit_today = stats.done_today >= stats.goal_daily
     st.session_state[SS_STATS] = stats.model_dump()
+    persist_state()
     return stats

@@ -13,6 +13,7 @@ from gerris_erfolgs_tracker.models import (
     KpiStats,
     TodoItem,
 )
+from gerris_erfolgs_tracker.state import persist_state
 
 POINTS_PER_QUADRANT: Dict[EisenhowerQuadrant, int] = {
     EisenhowerQuadrant.URGENT_IMPORTANT: 20,
@@ -56,6 +57,7 @@ def _coerce_state(raw: object | None) -> GamificationState:
 def get_gamification_state() -> GamificationState:
     state = _coerce_state(st.session_state.get(SS_GAMIFICATION))
     st.session_state[SS_GAMIFICATION] = state.model_dump()
+    persist_state()
     return state
 
 
@@ -104,6 +106,7 @@ def update_gamification_on_completion(todo: TodoItem, stats: KpiStats) -> Gamifi
 
     _assign_badges(state, stats)
     st.session_state[SS_GAMIFICATION] = state.model_dump()
+    persist_state()
     return state
 
 

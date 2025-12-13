@@ -12,6 +12,7 @@ Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI
 - Python >= 3.11
 - Ein OpenAI API Key, falls du Modellantworten erzeugen möchtest (`OPENAI_API_KEY`).
 - Optional: Modell-Override via `OPENAI_MODEL` (Standard: `gpt-4o-mini`) und benutzerdefinierte Basis-URL z. B. EU-Endpunkt.
+- Optionale Persistenz: Lokale JSON-Datei unter `.data/gerris_state.json` (wird automatisch angelegt, sobald beschreibbar).
 
 ## Lokale Einrichtung
 
@@ -29,13 +30,13 @@ Hinweise:
 
 ## Bereitstellung & Datenhaltung / Deployment & data handling
 
-- **Lokal / Local:** `streamlit run app.py` öffnet die App im Browser unter `localhost:8501`. Alle ToDos, KPIs und Einstellungen
-  liegen ausschließlich im Streamlit-Session-State und werden weder in Dateien noch in einer Datenbank gespeichert; ein Neustart
-  beginnt daher mit einem frischen Zustand.
+- **Lokal / Local:** `streamlit run app.py` öffnet die App im Browser unter `localhost:8501`. ToDos, KPIs und Einstellungen
+  werden zusätzlich im JSON-File `.data/gerris_state.json` persistiert (wird automatisch angelegt). Ein Löschen dieser Datei
+  setzt den Zustand zurück.
 - **Streamlit Cloud:** Repository mit dem Streamlit Cloud Dashboard verbinden und die Secrets wie unten beschrieben hinterlegen;
-  danach kann die App unter der bereitgestellten URL genutzt werden (z. B. https://gerriserfolgstracker.streamlit.app/). Auch
-  hier bleiben die Daten pro Sitzung im Memory-Session-State, was den Betrieb ohne Persistenz und ohne lokale Infrastruktur
-  ermöglicht.
+  danach kann die App unter der bereitgestellten URL genutzt werden (z. B. https://gerriserfolgstracker.streamlit.app/). Die
+  JSON-Datei wird auch hier beschrieben, ist aber auf der Community Cloud meist flüchtig und kann nach einem Neustart
+  verschwinden. Funktioniert somit ohne zusätzliche Infrastruktur, aber ohne Garantien für Persistenz.
 
 ## Secrets & Umgebungsvariablen
 
@@ -63,6 +64,9 @@ OPENAI_API_KEY = "sk-..."
    - Optional `OPENAI_BASE_URL = https://eu.api.openai.com/v1`
    - Optional `OPENAI_MODEL = gpt-4o-mini`
 3. Deploy starten; die Abhängigkeiten werden über `requirements.txt` installiert.
+
+> **Wichtig / Important:** API-Keys niemals in das Repository einchecken. Nutze lokal `.streamlit/secrets.toml` und auf der
+> Streamlit Community Cloud die Secrets UI.
 
 ## Entwicklung & Tests
 

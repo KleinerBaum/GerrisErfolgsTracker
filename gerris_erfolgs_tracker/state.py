@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable, List, Sequence, cast
+import json
+import logging
+from typing import Any, Callable, Iterable, List, Mapping, Sequence, cast
 
 import streamlit as st
+from pydantic_core import to_jsonable_python
 
 from gerris_erfolgs_tracker.constants import (
     SS_GAMIFICATION,
@@ -11,6 +14,13 @@ from gerris_erfolgs_tracker.constants import (
     SS_TODOS,
 )
 from gerris_erfolgs_tracker.models import Category, GamificationState, KpiStats, TodoItem, TodoKanban
+from gerris_erfolgs_tracker.storage import StorageBackend
+
+
+LOGGER = logging.getLogger(__name__)
+PERSISTED_KEYS: tuple[str, ...] = (SS_TODOS, SS_STATS, SS_GAMIFICATION, SS_SETTINGS)
+_storage_backend: StorageBackend | None = None
+_last_persisted_fingerprint: str | None = None
 
 
 def _default_todos() -> List[TodoItem]:
@@ -78,6 +88,8 @@ def init_state() -> None:
     if SS_SETTINGS not in st.session_state:
         st.session_state[SS_SETTINGS] = _default_settings()
 
+    persist_state()
+
 
 def get_todos() -> List[TodoItem]:
     """Return todo items from session state as TodoItem models."""
@@ -100,6 +112,7 @@ def save_todos(todos: Sequence[TodoItem]) -> None:
     """Persist todo items back to session state."""
 
     st.session_state[SS_TODOS] = [todo.model_dump() for todo in todos]
+    persist_state()
 
 
 def reset_state() -> None:
@@ -109,3 +122,54 @@ def reset_state() -> None:
         if key in st.session_state:
             del st.session_state[key]
     init_state()
+
+
+def configure_storage(backend: StorageBackend | None) -> None:
+    """Register a storage backend to persist state changes."""
+
+    global _storage_backend, _last_persisted_fingerprint
+
+    _storage_backend = backend
+    _last_persisted_fingerprint = None
+
+
+def load_persisted_state() -> None:
+    """Hydrate the Streamlit session state from the configured backend."""
+
+    if _storage_backend is None:
+        return
+
+    try:
+        persisted = _storage_backend.load_state()
+    except Exception as exc:  # pragma: no cover - defensive logging
+        LOGGER.warning("Failed to load persisted state: %s", exc)
+        st.warning(
+            "Persistente Daten konnten nicht geladen werden / Could not load persisted data.",
+            icon="⚠️",
+        )
+        return
+
+    if not isinstance(persisted, Mapping):
+        return
+
+    st.session_state.update(persisted)
+
+
+def persist_state() -> None:
+    """Persist the managed session state keys using the configured backend."""
+
+    global _last_persisted_fingerprint
+
+    if _storage_backend is None:
+        return
+
+    payload = {key: st.session_state.get(key) for key in PERSISTED_KEYS if key in st.session_state}
+    serialized_payload = json.dumps(payload, default=to_jsonable_python, sort_keys=True)
+    if _last_persisted_fingerprint == serialized_payload:
+        return
+
+    try:
+        _storage_backend.save_state(payload)
+        _last_persisted_fingerprint = serialized_payload
+    except Exception as exc:  # pragma: no cover - defensive logging
+        LOGGER.warning("Failed to persist state: %s", exc)
