@@ -97,9 +97,7 @@ def build_category_weekly_completion_figure(
                 y=counts,
                 name=category.label,
                 marker_color=color,
-                hovertemplate=(
-                    f"<b>%{{x}}</b><br>{category.label}: %{{y}}<extra></extra>"
-                ),
+                hovertemplate=(f"<b>%{{x}}</b><br>{category.label}: %{{y}}<extra></extra>"),
             )
         )
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 import pytest
 
@@ -38,8 +38,9 @@ class _FormPlan:
 
 
 class _ColumnStub:
-    def __init__(self, plan: _FormPlan) -> None:
+    def __init__(self, plan: _FormPlan, parent: "_StreamlitTodoStub") -> None:
         self._plan = plan
+        self._parent = parent
 
     def __enter__(self) -> "_ColumnStub":
         return self
@@ -49,6 +50,18 @@ class _ColumnStub:
 
     def form_submit_button(self, *_: Any, **__: Any) -> bool:  # noqa: ANN401
         return self._plan.pop_submit()
+
+    def button(self, *_: Any, **__: Any) -> bool:  # noqa: ANN401
+        return False
+
+    def progress(self, *_: Any, **__: Any) -> None:  # noqa: ANN401
+        return None
+
+    def selectbox(self, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+        return self._parent.selectbox(*args, **kwargs)
+
+    def metric(self, *_: Any, **__: Any) -> None:  # noqa: ANN401
+        return None
 
 
 class _FormStub:
@@ -75,7 +88,14 @@ class _StreamlitTodoStub:
     def subheader(self, *_: Any, **__: Any) -> None:  # noqa: ANN401
         return None
 
+    def checkbox(self, _: str, value: bool, key: str, **__: Any) -> bool:  # noqa: ANN401
+        self.session_state.setdefault(key, value)
+        return bool(self.session_state[key])
+
     def form(self, *_: Any, **__: Any) -> _FormStub:  # noqa: ANN401
+        return _FormStub()
+
+    def container(self, *_: Any, **__: Any) -> _FormStub:  # noqa: ANN401
         return _FormStub()
 
     def text_input(
@@ -89,8 +109,9 @@ class _StreamlitTodoStub:
         self.session_state[key] = default_value
         return str(default_value)
 
-    def columns(self, count: int) -> List[_ColumnStub]:
-        return [_ColumnStub(self._plan) for _ in range(count)]
+    def columns(self, count: int | Sequence[Any]) -> List[_ColumnStub]:
+        total = count if isinstance(count, int) else len(count)
+        return [_ColumnStub(self._plan, self) for _ in range(total)]
 
     def date_input(
         self,
@@ -116,6 +137,28 @@ class _StreamlitTodoStub:
         self.session_state[key] = selected
         return selected
 
+    def multiselect(
+        self,
+        _: str,
+        options: List[Any],
+        default: Optional[List[Any]] = None,
+        key: Optional[str] = None,
+        **__: Any,
+    ) -> List[Any]:
+        selection: List[Any] = list(default or [])
+        if key:
+            raw_value = self.session_state.get(key, selection)
+            if isinstance(raw_value, list):
+                selection = list(raw_value)
+            self.session_state[key] = selection
+        return selection
+
+    def button(self, *_: Any, **__: Any) -> bool:  # noqa: ANN401
+        return False
+
+    def progress(self, *_: Any, **__: Any) -> None:  # noqa: ANN401
+        return None
+
     def warning(self, *_: Any, **__: Any) -> None:  # noqa: ANN401
         return None
 
@@ -140,6 +183,12 @@ class _StreamlitTodoStub:
 
     def tabs(self, labels: List[str]) -> List[_TabStub]:
         return [_TabStub() for _ in labels]
+
+    def expander(self, *_: Any, **__: Any) -> _FormStub:  # noqa: ANN401
+        return _FormStub()
+
+    def plotly_chart(self, *_: Any, **__: Any) -> None:  # noqa: ANN401
+        return None
 
     def radio(self, *_: Any, **__: Any) -> str:  # noqa: ANN401
         return "Alle / All"
