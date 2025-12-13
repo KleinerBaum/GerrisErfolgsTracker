@@ -104,8 +104,7 @@ def _get_background_data_url() -> str:
 
 def _inject_dark_theme_styles() -> None:
     background_url = _get_background_data_url()
-    st.markdown(
-        f"""
+    style = """
         <style>
             .stApp {
                 background-image: linear-gradient(
@@ -171,9 +170,8 @@ def _inject_dark_theme_styles() -> None:
                 margin-top: -0.25rem;
             }
         </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    """.replace("{background_url}", background_url)
+    st.markdown(style, unsafe_allow_html=True)
 
 
 def _sanitize_category_goals(settings: Mapping[str, object]) -> dict[str, int]:
