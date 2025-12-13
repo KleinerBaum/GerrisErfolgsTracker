@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Added a branded background image (`images/background.png`) with a subtle overlay to keep the dark-green theme cohesive.
 - Polished the Streamlit UI with a cohesive dark-green dashboard theme (cards, list rows, expanders), simplified text-based
   status labels, and dark-aligned Plotly charts for categories and weekly completions.
 - Added optional local JSON persistence for todos, KPIs, and settings including a Community Cloud notice about potential

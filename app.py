@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import base64
 import os
 from datetime import date, datetime
 from typing import Any, Literal, Mapping, Optional
+from functools import lru_cache
+from pathlib import Path
 
 import streamlit as st
 from openai import OpenAI
@@ -91,10 +94,32 @@ from gerris_erfolgs_tracker.todos import (
 )
 
 
+@lru_cache(maxsize=1)
+def _get_background_data_url() -> str:
+    image_path = Path(__file__).parent / "images" / "background.png"
+    with image_path.open("rb") as image_file:
+        encoded = base64.b64encode(image_file.read()).decode("utf-8")
+    return f"data:image/png;base64,{encoded}"
+
+
 def _inject_dark_theme_styles() -> None:
+    background_url = _get_background_data_url()
     st.markdown(
-        """
+        f"""
         <style>
+            .stApp {
+                background-image: linear-gradient(
+                        145deg,
+                        rgba(16, 33, 31, 0.9),
+                        rgba(14, 25, 23, 0.92)
+                    ),
+                    url('{background_url}');
+                background-size: cover;
+                background-attachment: fixed;
+                background-repeat: no-repeat;
+                background-position: center;
+            }
+
             :root {
                 --gerris-primary: #1c9c82;
                 --gerris-surface: #10211f;
@@ -104,8 +129,8 @@ def _inject_dark_theme_styles() -> None:
                 --gerris-muted: #b7c9c3;
             }
 
-            .stApp, .main, .block-container {
-                background-color: var(--gerris-surface-alt);
+            .main, .block-container {
+                background-color: rgba(14, 25, 23, 0.92);
                 color: var(--gerris-text);
             }
 
