@@ -812,7 +812,7 @@ def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, categor
                 )
                 st.plotly_chart(
                     _build_category_progress(snapshot),
-                    use_container_width=True,
+                    width="stretch",
                     config={"displaylogo": False, "responsive": True},
                 )
                 st.caption(
@@ -828,7 +828,7 @@ def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, categor
     weekly_data = last_7_days_completions_by_category(todos)
     st.plotly_chart(
         build_category_weekly_completion_figure(weekly_data),
-        use_container_width=True,
+        width="stretch",
         config={"displaylogo": False, "responsive": True},
     )
 
@@ -1094,7 +1094,7 @@ def render_kpi_dashboard(stats: KpiStats) -> None:
     weekly_chart = build_weekly_completion_figure(weekly_data)
     st.plotly_chart(
         weekly_chart,
-        use_container_width=True,
+        width="stretch",
         config={"displaylogo": False, "responsive": True},
     )
 
