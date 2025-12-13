@@ -214,13 +214,18 @@ def _render_storage_notice(backend: FileStorageBackend, *, is_cloud: bool) -> No
         "Persistenz aktiv: JSON unter "
         f"{backend.path} (lokal beschreibbar) / Persistence active: JSON stored at {backend.path}."
     )
+    onedrive_hint = (
+        "OneDrive-Sync erkannt; mobile Einträge werden abgeglichen / OneDrive sync detected; mobile entries stay aligned."
+        if any(part.lower() == "onedrive" for part in backend.path.parts)
+        else "Lokaler Pfad ohne Sync – OneDrive-Pfad via Umgebungsvariable setzen / Local path without sync – point GERRIS_ONEDRIVE_DIR to your OneDrive folder."
+    )
     if is_cloud:
         storage_note += (
             " Streamlit Community Cloud speichert Dateien oft nur temporär – nach Neustarts "
             "kann der Zustand verloren gehen. / Streamlit Community Cloud storage can be "
             "ephemeral; state may reset after a restart."
         )
-    st.info(storage_note)
+    st.info(f"{storage_note} {onedrive_hint}")
 
 
 def _toggle_todo_completion(todo: TodoItem) -> None:
