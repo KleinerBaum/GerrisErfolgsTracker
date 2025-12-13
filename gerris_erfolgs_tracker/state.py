@@ -38,9 +38,13 @@ def _coerce_todo(raw: Any) -> TodoItem:
         migrated.setdefault("category", Category.DAILY_STRUCTURE)
         migrated.setdefault("priority", 3)
         migrated.setdefault("description_md", "")
-        kanban_default_factory = cast(
-            Callable[[], object] | None, TodoItem.model_fields["kanban"].default_factory
-        )
+        migrated.setdefault("progress_current", 0.0)
+        migrated.setdefault("progress_target", None)
+        migrated.setdefault("progress_unit", "")
+        migrated.setdefault("auto_done_when_target_reached", bool(migrated.get("progress_target")))
+        migrated.setdefault("completion_criteria_md", "")
+        migrated.setdefault("processed_progress_events", [])
+        kanban_default_factory = cast(Callable[[], object] | None, TodoItem.model_fields["kanban"].default_factory)
         migrated.setdefault("kanban", (kanban_default_factory or TodoKanban)())
         todo = TodoItem.model_validate(migrated)
         return todo.model_copy(update={"kanban": todo.kanban.ensure_default_columns()})

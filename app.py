@@ -31,7 +31,13 @@ from gerris_erfolgs_tracker.constants import (
     NEW_TODO_CATEGORY_KEY,
     NEW_TODO_DESCRIPTION_KEY,
     NEW_TODO_DUE_KEY,
+    NEW_TODO_ENABLE_TARGET_KEY,
     NEW_TODO_PRIORITY_KEY,
+    NEW_TODO_PROGRESS_CURRENT_KEY,
+    NEW_TODO_PROGRESS_TARGET_KEY,
+    NEW_TODO_PROGRESS_UNIT_KEY,
+    NEW_TODO_AUTO_COMPLETE_KEY,
+    NEW_TODO_COMPLETION_CRITERIA_KEY,
     NEW_TODO_QUADRANT_KEY,
     NEW_TODO_QUADRANT_PREFILL_KEY,
     NEW_TODO_RESET_TRIGGER_KEY,
@@ -236,6 +242,27 @@ def render_task_row(todo: TodoItem) -> None:
             else:
                 st.caption("Keine Beschreibung vorhanden / No description yet.")
 
+            st.markdown("#### Fortschrittsregel / Progress rule")
+            if todo.progress_target is not None:
+                if todo.progress_target > 0:
+                    progress_ratio = min(1.0, todo.progress_current / todo.progress_target)
+                else:
+                    progress_ratio = 1.0
+                st.progress(
+                    progress_ratio,
+                    text=f"{todo.progress_current:.2f} / {todo.progress_target:.2f} {todo.progress_unit}",
+                )
+                st.caption(
+                    "Automatisch abschließen: " + ("Ja / Yes" if todo.auto_done_when_target_reached else "Nein / No")
+                )
+                if todo.completion_criteria_md.strip():
+                    st.markdown(todo.completion_criteria_md)
+            else:
+                st.caption(
+                    "Kein Ziel hinterlegt / No target configured. Aktueller Stand: "
+                    f"{todo.progress_current:.2f} {todo.progress_unit}"
+                )
+
             with st.form(f"quick_edit_{todo.id}"):
                 left, right = st.columns(2)
                 with left:
@@ -268,17 +295,81 @@ def render_task_row(todo: TodoItem) -> None:
                         key=f"quick_quadrant_{todo.id}",
                     )
 
-                submitted_edit = st.form_submit_button("Speichern / Save")
-                if submitted_edit:
-                    update_todo(
-                        todo.id,
-                        category=new_category,
-                        priority=new_priority,
-                        due_date=new_due,
-                        quadrant=new_quadrant,
+                with st.expander("Fortschrittsregel bearbeiten / Edit progress rule"):
+                    enable_progress_target = st.checkbox(
+                        "Ziel hinterlegen / Set target",
+                        value=todo.progress_target is not None,
+                        key=f"quick_progress_enable_{todo.id}",
                     )
-                    st.success("Aktualisiert / Updated.")
-                    st.rerun()
+                    progress_cols = st.columns([0.5, 0.5])
+                    with progress_cols[0]:
+                        edit_progress_target = st.number_input(
+                            "Zielwert / Target",
+                            min_value=0.0,
+                            value=float(todo.progress_target or 0.0),
+                            step=1.0,
+                            key=f"quick_progress_target_{todo.id}",
+                            disabled=not enable_progress_target,
+                        )
+                    with progress_cols[1]:
+                        edit_progress_unit = st.text_input(
+                            "Einheit / Unit",
+                            value=todo.progress_unit,
+                            key=f"quick_progress_unit_{todo.id}",
+                            disabled=not enable_progress_target,
+                        )
+
+                    edit_progress_current = st.number_input(
+                        "Aktueller Stand / Current progress",
+                        min_value=0.0,
+                        value=float(todo.progress_current),
+                        step=0.5,
+                        key=f"quick_progress_current_{todo.id}",
+                    )
+
+                    edit_auto_complete = st.toggle(
+                        "Automatisch abschließen / Auto-complete",
+                        value=todo.auto_done_when_target_reached,
+                        key=f"quick_progress_auto_{todo.id}",
+                        disabled=not enable_progress_target,
+                    )
+
+                    edit_criteria_tabs = st.tabs(["Kriterien / Criteria", "Vorschau / Preview"])
+                    with edit_criteria_tabs[0]:
+                        edit_completion_criteria = st.text_area(
+                            "Erfüllungskriterien (Markdown) / Completion criteria (markdown)",
+                            value=todo.completion_criteria_md,
+                            key=f"quick_progress_criteria_{todo.id}",
+                            disabled=not enable_progress_target,
+                        )
+                    with edit_criteria_tabs[1]:
+                        if enable_progress_target and todo.completion_criteria_md.strip():
+                            st.markdown(todo.completion_criteria_md)
+                        elif enable_progress_target:
+                            st.caption("Keine Kriterien gepflegt / No criteria provided.")
+                        else:
+                            st.caption("Kein Ziel aktiv / No target active.")
+
+            submitted_edit = st.form_submit_button("Speichern / Save")
+            if submitted_edit:
+                resolved_edit_target = edit_progress_target if enable_progress_target else None
+                resolved_edit_unit = edit_progress_unit if enable_progress_target else ""
+                resolved_edit_auto = edit_auto_complete if enable_progress_target else False
+                resolved_criteria = edit_completion_criteria if enable_progress_target else ""
+                update_todo(
+                    todo.id,
+                    category=new_category,
+                    priority=new_priority,
+                    due_date=new_due,
+                    quadrant=new_quadrant,
+                    progress_current=edit_progress_current,
+                    progress_target=resolved_edit_target,
+                    progress_unit=resolved_edit_unit,
+                    auto_done_when_target_reached=resolved_edit_auto,
+                    completion_criteria_md=resolved_criteria,
+                )
+                st.success("Aktualisiert / Updated.")
+                st.rerun()
 
             action_cols = st.columns(2)
             if action_cols[0].button(
@@ -634,6 +725,12 @@ def render_todo_section(
             NEW_TODO_CATEGORY_KEY,
             NEW_TODO_PRIORITY_KEY,
             NEW_TODO_DESCRIPTION_KEY,
+            NEW_TODO_PROGRESS_TARGET_KEY,
+            NEW_TODO_PROGRESS_UNIT_KEY,
+            NEW_TODO_PROGRESS_CURRENT_KEY,
+            NEW_TODO_AUTO_COMPLETE_KEY,
+            NEW_TODO_COMPLETION_CRITERIA_KEY,
+            NEW_TODO_ENABLE_TARGET_KEY,
         ):
             st.session_state.pop(cleanup_key, None)
 
@@ -648,6 +745,12 @@ def render_todo_section(
     st.session_state.setdefault(NEW_TODO_CATEGORY_KEY, Category.DAILY_STRUCTURE)
     st.session_state.setdefault(NEW_TODO_PRIORITY_KEY, 3)
     st.session_state.setdefault(NEW_TODO_DESCRIPTION_KEY, "")
+    st.session_state.setdefault(NEW_TODO_PROGRESS_TARGET_KEY, 0.0)
+    st.session_state.setdefault(NEW_TODO_PROGRESS_UNIT_KEY, "")
+    st.session_state.setdefault(NEW_TODO_PROGRESS_CURRENT_KEY, 0.0)
+    st.session_state.setdefault(NEW_TODO_AUTO_COMPLETE_KEY, True)
+    st.session_state.setdefault(NEW_TODO_COMPLETION_CRITERIA_KEY, "")
+    st.session_state.setdefault(NEW_TODO_ENABLE_TARGET_KEY, False)
 
     with st.form("add_todo_form", clear_on_submit=False):
         title = st.text_input(
@@ -700,6 +803,71 @@ def render_todo_section(
             else:
                 st.caption("Keine Beschreibung vorhanden / No description yet.")
 
+        with st.expander("Fortschrittsregel (optional) / Progress rule (optional)"):
+            enable_target: bool = st.checkbox(
+                "Zielvorgabe nutzen / Enable target",
+                value=bool(st.session_state.get(NEW_TODO_ENABLE_TARGET_KEY, False)),
+                key=NEW_TODO_ENABLE_TARGET_KEY,
+                help="Optionaler Zielwert mit Einheit / Optional numeric target with unit.",
+            )
+
+            target_cols = st.columns([0.5, 0.5])
+            with target_cols[0]:
+                target_value = st.number_input(
+                    "Zielwert / Target",
+                    min_value=0.0,
+                    value=float(st.session_state.get(NEW_TODO_PROGRESS_TARGET_KEY, 0.0)),
+                    step=1.0,
+                    key=NEW_TODO_PROGRESS_TARGET_KEY,
+                    disabled=not enable_target,
+                    help="Numerisches Ziel, z. B. 10.0",
+                )
+            with target_cols[1]:
+                progress_unit = st.text_input(
+                    "Einheit / Unit",
+                    value=st.session_state.get(NEW_TODO_PROGRESS_UNIT_KEY, ""),
+                    key=NEW_TODO_PROGRESS_UNIT_KEY,
+                    disabled=not enable_target,
+                    help="z. B. km, Seiten, Minuten / e.g., km, pages, minutes",
+                )
+
+            current_value = st.number_input(
+                "Aktueller Stand / Current progress",
+                min_value=0.0,
+                value=float(st.session_state.get(NEW_TODO_PROGRESS_CURRENT_KEY, 0.0)),
+                step=0.5,
+                key=NEW_TODO_PROGRESS_CURRENT_KEY,
+                help="Fortschritt in derselben Einheit wie das Ziel / Progress in same unit as target.",
+            )
+
+            auto_complete = st.toggle(
+                "Automatisch als erledigt markieren, wenn Ziel erreicht / Auto-complete when target is reached",
+                value=bool(
+                    st.session_state.get(
+                        NEW_TODO_AUTO_COMPLETE_KEY,
+                        bool(st.session_state.get(NEW_TODO_ENABLE_TARGET_KEY, False)),
+                    )
+                ),
+                key=NEW_TODO_AUTO_COMPLETE_KEY,
+                disabled=not enable_target,
+            )
+
+            criteria_tabs = st.tabs(["Kriterien / Criteria", "Vorschau / Preview"])
+            with criteria_tabs[0]:
+                completion_criteria_md = st.text_area(
+                    "Erfüllungskriterien (Markdown) / Completion criteria (markdown)",
+                    value=st.session_state.get(NEW_TODO_COMPLETION_CRITERIA_KEY, ""),
+                    key=NEW_TODO_COMPLETION_CRITERIA_KEY,
+                    placeholder="Optional: Wie erkennst du den Abschluss? / Optional: how do you know it's done?",
+                    disabled=not enable_target,
+                )
+            with criteria_tabs[1]:
+                criteria_preview = st.session_state.get(NEW_TODO_COMPLETION_CRITERIA_KEY, "")
+                if enable_target and criteria_preview.strip():
+                    st.markdown(criteria_preview)
+                else:
+                    st.caption("Keine Kriterien gepflegt / No criteria provided.")
+
         action_cols = st.columns(2)
         suggest_quadrant_clicked = action_cols[0].form_submit_button(
             "AI: Quadrant vorschlagen / Suggest quadrant",
@@ -723,6 +891,10 @@ def render_todo_section(
             if not title.strip():
                 st.warning("Bitte Titel angeben / Please provide a title.")
             else:
+                resolved_target = target_value if enable_target else None
+                resolved_auto_complete = auto_complete if enable_target else False
+                resolved_unit = progress_unit if enable_target else ""
+                resolved_criteria = completion_criteria_md if enable_target else ""
                 add_todo(
                     title=title.strip(),
                     quadrant=quadrant,
@@ -730,6 +902,11 @@ def render_todo_section(
                     category=category,
                     priority=priority,
                     description_md=description_md,
+                    progress_current=current_value,
+                    progress_target=resolved_target,
+                    progress_unit=resolved_unit,
+                    auto_done_when_target_reached=resolved_auto_complete,
+                    completion_criteria_md=resolved_criteria,
                 )
                 st.success("ToDo gespeichert / Task saved.")
                 st.session_state[NEW_TODO_RESET_TRIGGER_KEY] = True

@@ -109,6 +109,12 @@ class TodoItem(BaseModel):
     description_md: str = ""
     completed: bool = False
     completed_at: Optional[datetime] = None
+    progress_current: float = 0.0
+    progress_target: Optional[float] = None
+    progress_unit: str = ""
+    auto_done_when_target_reached: bool = True
+    completion_criteria_md: str = ""
+    processed_progress_events: list[str] = Field(default_factory=list)
     kanban: TodoKanban = Field(default_factory=TodoKanban)
 
 
