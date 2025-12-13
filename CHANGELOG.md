@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Added per-task Kanban boards (Backlog/Doing/Done) with subtask cards, left/right move buttons, progress indicator inside each task expander, and default data-model columns.
 - Refactored the main task workflow into a default list tab with category grouping, priority→due→created sorting, filters (done toggle, category multi-select, sort override), detail expanders with quick edits, and tabs for Eisenhower board plus calendar to keep both views available.
 - Added task categories (Stellensuche, Administratives, Familie & Freunde, Drogen, Tagesstruktur), priority (1–5) and markdown descriptions across the ToDo model, state migration, and UI.
 - Dokumentation zu Deployment-Optionen ergänzt (lokal und Streamlit Cloud) sowie klargestellt, dass alle Daten im Session-State

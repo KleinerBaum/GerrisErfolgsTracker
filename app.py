@@ -65,7 +65,15 @@ from gerris_erfolgs_tracker.kpi import (
 from gerris_erfolgs_tracker.llm import get_default_model, get_openai_client
 from gerris_erfolgs_tracker.models import Category, GamificationMode, KpiStats, TodoItem
 from gerris_erfolgs_tracker.state import get_todos, init_state, reset_state
-from gerris_erfolgs_tracker.todos import add_todo, delete_todo, duplicate_todo, toggle_complete, update_todo
+from gerris_erfolgs_tracker.todos import (
+    add_kanban_card,
+    add_todo,
+    delete_todo,
+    duplicate_todo,
+    move_kanban_card,
+    toggle_complete,
+    update_todo,
+)
 
 
 def _sanitize_category_goals(settings: Mapping[str, object]) -> dict[str, int]:
@@ -101,6 +109,95 @@ def _task_sort_key(todo: TodoItem, sort_override: SortOverride) -> tuple[object,
     if sort_override == "created_at":
         return (created_key, todo.priority, due_key)
     return (todo.priority, *due_key, created_key)
+
+
+def _render_subtask_progress(todo: TodoItem) -> None:
+    kanban = todo.kanban
+    done_column_id = kanban.done_column_id()
+    total_cards = len(kanban.cards)
+    done_cards = len([card for card in kanban.cards if card.column_id == done_column_id])
+
+    if total_cards == 0:
+        st.caption("Keine Unteraufgaben vorhanden / No subtasks yet.")
+        return
+
+    completion_ratio = done_cards / total_cards
+    st.progress(
+        completion_ratio,
+        text=f"{done_cards}/{total_cards} Unteraufgaben erledigt / subtasks completed",
+    )
+
+
+def _render_todo_kanban(todo: TodoItem) -> None:
+    st.markdown("#### Kanban")
+    kanban = todo.kanban
+    ordered_columns = sorted(kanban.columns, key=lambda column: column.order)
+    column_labels: dict[str, str] = {
+        "backlog": "Backlog / Eingang",
+        "doing": "Doing / In Arbeit",
+        "done": "Done / Erledigt",
+    }
+
+    _render_subtask_progress(todo)
+
+    with st.form(f"kanban_add_{todo.id}", clear_on_submit=True):
+        subtask_title = st.text_input(
+            "Titel der Unteraufgabe / Subtask title",
+            key=f"kanban_title_{todo.id}",
+            placeholder="Nächsten Schritt ergänzen / Add the next step",
+        )
+        subtask_description = st.text_area(
+            "Beschreibung (optional) / Description (optional)",
+            key=f"kanban_description_{todo.id}",
+            placeholder="Kurze Details oder Akzeptanzkriterien / Short details or acceptance criteria",
+        )
+        create_subtask = st.form_submit_button("Karte anlegen / Add card")
+        if create_subtask:
+            if not subtask_title.strip():
+                st.warning("Bitte einen Titel für die Karte angeben / Please provide a card title.")
+            else:
+                add_kanban_card(todo.id, title=subtask_title.strip(), description_md=subtask_description.strip())
+                st.success("Unteraufgabe hinzugefügt / Subtask added.")
+                st.rerun()
+
+    st.markdown("#### Spalten / Columns")
+    column_containers = st.columns(len(ordered_columns))
+    cards_by_column: dict[str, list] = {column.id: [] for column in ordered_columns}
+    for card in sorted(kanban.cards, key=lambda card: card.created_at):
+        cards_by_column.setdefault(card.column_id, []).append(card)
+
+    for column_index, (column, container) in enumerate(zip(ordered_columns, column_containers)):
+        with container:
+            label = column_labels.get(column.id, column.title)
+            st.markdown(f"**{label}**")
+            column_cards = cards_by_column.get(column.id, [])
+            if not column_cards:
+                st.caption("Keine Karten hier / No cards yet.")
+                continue
+
+            for card in column_cards:
+                with st.container(border=True):
+                    st.markdown(card.title)
+                    if card.description_md.strip():
+                        snippet = card.description_md.strip().splitlines()[0]
+                        st.caption(snippet[:140] + ("…" if len(snippet) > 140 else ""))
+
+                    move_columns = st.columns(2)
+                    if move_columns[0].button(
+                        "← Links / Move left",
+                        key=f"kanban_move_left_{todo.id}_{card.id}",
+                        disabled=column_index == 0,
+                    ):
+                        move_kanban_card(todo.id, card_id=card.id, direction="left")
+                        st.rerun()
+
+                    if move_columns[1].button(
+                        "Rechts / Move right →",
+                        key=f"kanban_move_right_{todo.id}_{card.id}",
+                        disabled=column_index == len(ordered_columns) - 1,
+                    ):
+                        move_kanban_card(todo.id, card_id=card.id, direction="right")
+                        st.rerun()
 
 
 def render_task_row(todo: TodoItem) -> None:
@@ -899,6 +996,9 @@ def render_todo_card(todo: TodoItem) -> None:
                     )
                     st.success("Aktualisiert / Updated.")
                     st.rerun()
+
+            st.divider()
+            _render_todo_kanban(todo)
 
 
 def main() -> None:

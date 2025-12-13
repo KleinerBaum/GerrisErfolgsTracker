@@ -10,6 +10,70 @@ from pydantic import BaseModel, Field
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
 
 
+class KanbanColumn(BaseModel):
+    """Column inside a per-task kanban board."""
+
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    title: str
+    order: int
+
+
+class KanbanCard(BaseModel):
+    """Card representing a subtask in the per-task kanban board."""
+
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    title: str
+    description_md: str = ""
+    column_id: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    done_at: Optional[datetime] = None
+
+
+DEFAULT_KANBAN_COLUMNS: tuple[KanbanColumn, ...] = (
+    KanbanColumn(id="backlog", title="Backlog", order=0),
+    KanbanColumn(id="doing", title="Doing", order=1),
+    KanbanColumn(id="done", title="Done", order=2),
+)
+
+
+class TodoKanban(BaseModel):
+    """Per-task kanban board with default columns and cards."""
+
+    columns: list[KanbanColumn] = Field(
+        default_factory=lambda: [column.model_copy() for column in DEFAULT_KANBAN_COLUMNS]
+    )
+    cards: list[KanbanCard] = Field(default_factory=list)
+
+    def ensure_default_columns(self) -> "TodoKanban":
+        """Guarantee that the default columns exist and follow the canonical order."""
+
+        existing_ids = {column.id for column in self.columns}
+        columns = list(self.columns)
+        if len(existing_ids) < len(DEFAULT_KANBAN_COLUMNS):
+            for column in DEFAULT_KANBAN_COLUMNS:
+                if column.id not in existing_ids:
+                    columns.append(column.model_copy())
+
+        order_lookup = {column.id: column.order for column in DEFAULT_KANBAN_COLUMNS}
+        sorted_columns = sorted(
+            columns,
+            key=lambda item: (order_lookup.get(item.id, item.order), item.order, item.title.lower()),
+        )
+        return self.model_copy(update={"columns": sorted_columns})
+
+    def backlog_column_id(self) -> str:
+        for column in self.columns:
+            if column.id == "backlog":
+                return column.id
+        return DEFAULT_KANBAN_COLUMNS[0].id
+
+    def done_column_id(self) -> str:
+        for column in self.columns:
+            if column.id == "done":
+                return column.id
+        return DEFAULT_KANBAN_COLUMNS[-1].id
+
+
 class Category(str, Enum):
     """High-level life domains for tasks."""
 
@@ -45,6 +109,7 @@ class TodoItem(BaseModel):
     description_md: str = ""
     completed: bool = False
     completed_at: Optional[datetime] = None
+    kanban: TodoKanban = Field(default_factory=TodoKanban)
 
 
 class KpiDailyEntry(BaseModel):
