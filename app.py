@@ -480,26 +480,26 @@ def render_task_row(todo: TodoItem) -> None:
                         else:
                             st.caption("Kein Ziel aktiv / No target active.")
 
-            submitted_edit = st.form_submit_button("Speichern / Save")
-            if submitted_edit:
-                resolved_edit_target = edit_progress_target if enable_progress_target else None
-                resolved_edit_unit = edit_progress_unit if enable_progress_target else ""
-                resolved_edit_auto = edit_auto_complete if enable_progress_target else False
-                resolved_criteria = edit_completion_criteria if enable_progress_target else ""
-                update_todo(
-                    todo.id,
-                    category=new_category,
-                    priority=new_priority,
-                    due_date=new_due,
-                    quadrant=new_quadrant,
-                    progress_current=edit_progress_current,
-                    progress_target=resolved_edit_target,
-                    progress_unit=resolved_edit_unit,
-                    auto_done_when_target_reached=resolved_edit_auto,
-                    completion_criteria_md=resolved_criteria,
-                )
-                st.success("Aktualisiert / Updated.")
-                st.rerun()
+                submitted_edit = st.form_submit_button("Speichern / Save")
+                if submitted_edit:
+                    resolved_edit_target = edit_progress_target if enable_progress_target else None
+                    resolved_edit_unit = edit_progress_unit if enable_progress_target else ""
+                    resolved_edit_auto = edit_auto_complete if enable_progress_target else False
+                    resolved_criteria = edit_completion_criteria if enable_progress_target else ""
+                    update_todo(
+                        todo.id,
+                        category=new_category,
+                        priority=new_priority,
+                        due_date=new_due,
+                        quadrant=new_quadrant,
+                        progress_current=edit_progress_current,
+                        progress_target=resolved_edit_target,
+                        progress_unit=resolved_edit_unit,
+                        auto_done_when_target_reached=resolved_edit_auto,
+                        completion_criteria_md=resolved_criteria,
+                    )
+                    st.success("Aktualisiert / Updated.")
+                    st.rerun()
 
             action_cols = st.columns(2)
             if action_cols[0].button(
