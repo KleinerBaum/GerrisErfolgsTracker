@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Highlighted the **ToDo hinzufügen / Add task** submit button as a primary action to guide form submissions.
 - Added OneDrive-aware persistence: state files default to the synced `GerrisErfolgsTracker` folder (configurable via `GERRIS_ONEDRIVE_DIR`) to keep mobile and app data aligned, including bilingual UI notice and documentation updates.
 - Fixed ToDo creation form buttons to stay inside their Streamlit form columns and avoid `st.form_submit_button` API errors.
 - Fixed dark theme CSS injection by treating the background image style as literal markup to avoid runtime NameErrors in Streamlit.
