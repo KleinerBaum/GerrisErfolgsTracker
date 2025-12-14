@@ -4,6 +4,7 @@ SS_TODOS: str = "todos"
 SS_STATS: str = "stats"
 SS_SETTINGS: str = "settings"
 SS_GAMIFICATION: str = "gamification"
+SS_JOURNAL: str = "journal_entries"
 
 AI_ENABLED_KEY: str = "ai_enabled"
 AI_QUADRANT_RATIONALE_KEY: str = "ai_quadrant_rationale"
