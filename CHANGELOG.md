@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Modernisierte UI: weite Seitenbreite mit eingeklappter Sidebar, sofort sichtbares KPI-Dashboard, neu gruppierte Sidebar-Quick-Controls sowie ein dezenter Gradient statt Hintergrundbild.
 - Highlighted the **ToDo hinzufügen / Add task** submit button as a primary action to guide form submissions.
 - Added OneDrive-aware persistence: state files default to the synced `GerrisErfolgsTracker` folder (configurable via `GERRIS_ONEDRIVE_DIR`) to keep mobile and app data aligned, including bilingual UI notice and documentation updates.
 - Fixed ToDo creation form buttons to stay inside their Streamlit form columns and avoid `st.form_submit_button` API errors.
