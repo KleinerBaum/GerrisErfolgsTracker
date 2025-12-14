@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import base64
 import os
+from contextlib import nullcontext
 from datetime import date, datetime
 from typing import Any, Literal, Mapping, Optional
-from functools import lru_cache
-from pathlib import Path
 
+import plotly.graph_objects as go
 import streamlit as st
 from openai import OpenAI
-import plotly.graph_objects as go
 
 from gerris_erfolgs_tracker.ai_features import (
     AISuggestion,
@@ -94,55 +92,53 @@ from gerris_erfolgs_tracker.todos import (
 )
 
 
-@lru_cache(maxsize=1)
-def _get_background_data_url() -> str:
-    image_path = Path(__file__).parent / "images" / "background.png"
-    with image_path.open("rb") as image_file:
-        encoded = base64.b64encode(image_file.read()).decode("utf-8")
-    return f"data:image/png;base64,{encoded}"
-
-
 def _inject_dark_theme_styles() -> None:
-    background_url = _get_background_data_url()
-    style = """
+    st.markdown(
+        """
         <style>
-            .stApp {
-                background-image: linear-gradient(
-                        145deg,
-                        rgba(16, 33, 31, 0.9),
-                        rgba(14, 25, 23, 0.92)
-                    ),
-                    url('{background_url}');
-                background-size: cover;
-                background-attachment: fixed;
-                background-repeat: no-repeat;
-                background-position: center;
-            }
-
             :root {
                 --gerris-primary: #1c9c82;
                 --gerris-surface: #10211f;
                 --gerris-surface-alt: #0e1917;
                 --gerris-border: #1f4a42;
-                --gerris-text: #e6f2ec;
-                --gerris-muted: #b7c9c3;
+                --gerris-text: #f3f7f5;
+                --gerris-muted: #c5d5d1;
             }
 
-            .main, .block-container {
-                background-color: rgba(14, 25, 23, 0.92);
+            .stApp {
+                background: radial-gradient(circle at 20% 20%, rgba(34, 70, 60, 0.25), transparent 30%),
+                            radial-gradient(circle at 80% 0%, rgba(28, 156, 130, 0.18), transparent 30%),
+                            linear-gradient(160deg, #0f1b19 0%, #0c1412 60%, #0b1311 100%);
                 color: var(--gerris-text);
+            }
+
+            .block-container {
+                padding-top: 1.2rem;
+                padding-left: 1.5rem;
+                padding-right: 1.5rem;
+                max-width: 1600px;
+                width: 100%;
             }
 
             h1, h2, h3, h4, h5, h6, label, p {
                 color: var(--gerris-text);
             }
 
+            div[data-testid="stMetric"] {
+                background: linear-gradient(145deg, var(--gerris-surface), var(--gerris-surface-alt));
+                border: 1px solid var(--gerris-border);
+                border-radius: 14px;
+                padding: 12px;
+            }
+
             div[data-testid="stMetricValue"] {
                 color: var(--gerris-text);
+                font-weight: 700;
             }
 
             div[data-testid="stMetricDelta"] {
                 color: #9ce6c3;
+                font-weight: 600;
             }
 
             div[data-testid="stVerticalBlockBorderWrapper"] {
@@ -170,8 +166,9 @@ def _inject_dark_theme_styles() -> None:
                 margin-top: -0.25rem;
             }
         </style>
-    """.replace("{background_url}", background_url)
-    st.markdown(style, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
 
 def _sanitize_category_goals(settings: Mapping[str, object]) -> dict[str, int]:
@@ -615,11 +612,18 @@ def _resolve_goal_input_value(settings: dict[str, Any], stats: KpiStats) -> int:
     return resolved_goal
 
 
+def _sidebar_section(label: str) -> Any:
+    expander = getattr(st.sidebar, "expander", None)
+    if callable(expander):
+        return expander(label)
+    return nullcontext()
+
+
 def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
     st.sidebar.header("Einstellungen / Settings")
 
     settings = _ensure_settings_defaults(client=client, stats=stats)
-
+    st.sidebar.markdown("### Schnellzugriff / Quick controls")
     ai_enabled = st.sidebar.toggle(
         "AI aktiv / AI enabled",
         key=AI_ENABLED_KEY,
@@ -673,88 +677,88 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
             f"{badge} {goal_suggestion.payload.focus} — {goal_suggestion.payload.daily_goal} Ziele / goals. {tips}"
         )
 
-    st.sidebar.markdown("### Kategorienziele / Category goals")
-    category_goals = settings.get("category_goals", {})
-    goal_columns = st.sidebar.columns(2)
-    for index, category in enumerate(Category):
-        with goal_columns[index % 2]:
-            goal_value = st.number_input(
-                f"{category.label}",
-                min_value=0,
-                max_value=20,
-                step=1,
-                value=int(category_goals.get(category.value, 1)),
-                key=f"goal_{category.value}",
-                help="Tagesziel für diese Kategorie / Daily target for this category",
-            )
-            category_goals[category.value] = int(goal_value)
+    with _sidebar_section("Kategorienziele / Category goals"):
+        category_goals = settings.get("category_goals", {})
+        goal_columns = st.sidebar.columns(2)
+        for index, category in enumerate(Category):
+            with goal_columns[index % 2]:
+                goal_value = st.number_input(
+                    f"{category.label}",
+                    min_value=0,
+                    max_value=20,
+                    step=1,
+                    value=int(category_goals.get(category.value, 1)),
+                    key=f"goal_{category.value}",
+                    help="Tagesziel für diese Kategorie / Daily target for this category",
+                )
+                category_goals[category.value] = int(goal_value)
 
-    settings["category_goals"] = _sanitize_category_goals(settings)
-    settings["category_goals"].update(category_goals)
-
-    st.sidebar.divider()
-    st.sidebar.markdown("### Gamification-Stil / Gamification style")
-    gamification_mode_options = list(GamificationMode)
-    current_mode_value = settings.get("gamification_mode", GamificationMode.POINTS.value)
-    try:
-        current_mode = GamificationMode(current_mode_value)
-    except ValueError:
-        current_mode = GamificationMode.POINTS
-
-    selected_mode = st.sidebar.selectbox(
-        "Gamification-Variante / Gamification mode",
-        options=gamification_mode_options,
-        format_func=lambda option: option.label,
-        index=gamification_mode_options.index(current_mode),
-        help=(
-            "Wähle Punkte, Abzeichen oder die motivierende Avatar-Option Dipl.-Psych. Roß / "
-            "Choose points, badges, or the motivational avatar option Dipl.-Psych. Roß."
-        ),
-    )
-    settings["gamification_mode"] = selected_mode.value
-
-    st.sidebar.caption(
-        "Dipl.-Psych. Roß steht für warme, therapeutische Motivation (Brünette, ca. 45 Jahre, Brille) / "
-        "Dipl.-Psych. Roß offers warm, therapeutic motivation (brunette, about 45 years old, with glasses)."
-    )
+        settings["category_goals"] = _sanitize_category_goals(settings)
+        settings["category_goals"].update(category_goals)
 
     st.sidebar.divider()
-    st.sidebar.subheader("Sicherheit & Daten / Safety & data")
-    st.sidebar.info(
-        "Optionale lokale Persistenz speichert Daten in .data/gerris_state.json; "
-        "auf Streamlit Community Cloud können Dateien nach einem Neustart verschwinden. / "
-        "Optional local persistence writes to .data/gerris_state.json; on Streamlit Community Cloud "
-        "files may reset after a restart."
-    )
-    st.sidebar.warning(
-        "Dieses Tool ersetzt keine Krisenhilfe oder Diagnosen / This tool is not "
-        "a crisis or diagnostic service. Bei akuten Notfällen wende dich an lokale "
-        "Hotlines / In emergencies, contact local hotlines."
-    )
+    with _sidebar_section("Gamification-Stil / Gamification style"):
+        gamification_mode_options = list(GamificationMode)
+        current_mode_value = settings.get("gamification_mode", GamificationMode.POINTS.value)
+        try:
+            current_mode = GamificationMode(current_mode_value)
+        except ValueError:
+            current_mode = GamificationMode.POINTS
 
-    if st.sidebar.button(
-        "Session zurücksetzen / Reset session",
-        key="reset_session_btn",
-        help=(
-            "Löscht ToDos, KPIs, Gamification und Einstellungen aus dieser Sitzung / "
-            "Clear todos, KPIs, gamification, and settings for this session."
-        ),
-    ):
-        for cleanup_key in (
-            AI_ENABLED_KEY,
-            AI_GOAL_SUGGESTION_KEY,
-            AI_QUADRANT_RATIONALE_KEY,
-            AI_MOTIVATION_KEY,
-            NEW_TODO_TITLE_KEY,
-            NEW_TODO_DUE_KEY,
-            NEW_TODO_QUADRANT_KEY,
-            SETTINGS_GOAL_DAILY_KEY,
-            GOAL_SUGGESTED_VALUE_KEY,
+        selected_mode = st.sidebar.selectbox(
+            "Gamification-Variante / Gamification mode",
+            options=gamification_mode_options,
+            format_func=lambda option: option.label,
+            index=gamification_mode_options.index(current_mode),
+            help=(
+                "Wähle Punkte, Abzeichen oder die motivierende Avatar-Option Dipl.-Psych. Roß / "
+                "Choose points, badges, or the motivational avatar option Dipl.-Psych. Roß."
+            ),
+        )
+        settings["gamification_mode"] = selected_mode.value
+
+        st.sidebar.caption(
+            "Dipl.-Psych. Roß steht für warme, therapeutische Motivation (Brünette, ca. 45 Jahre, Brille) / "
+            "Dipl.-Psych. Roß offers warm, therapeutic motivation (brunette, about 45 years old, with glasses)."
+        )
+
+    st.sidebar.divider()
+    with _sidebar_section("Sicherheit & Daten / Safety & data"):
+        st.sidebar.info(
+            "Optionale lokale Persistenz speichert Daten in .data/gerris_state.json; "
+            "auf Streamlit Community Cloud können Dateien nach einem Neustart verschwinden. / "
+            "Optional local persistence writes to .data/gerris_state.json; on Streamlit Community Cloud "
+            "files may reset after a restart."
+        )
+        st.sidebar.warning(
+            "Dieses Tool ersetzt keine Krisenhilfe oder Diagnosen / This tool is not "
+            "a crisis or diagnostic service. Bei akuten Notfällen wende dich an lokale "
+            "Hotlines / In emergencies, contact local hotlines."
+        )
+
+        if st.sidebar.button(
+            "Session zurücksetzen / Reset session",
+            key="reset_session_btn",
+            help=(
+                "Löscht ToDos, KPIs, Gamification und Einstellungen aus dieser Sitzung / "
+                "Clear todos, KPIs, gamification, and settings for this session."
+            ),
         ):
-            st.session_state.pop(cleanup_key, None)
-        reset_state()
-        st.sidebar.success("Session zurückgesetzt / Session reset.")
-        st.rerun()
+            for cleanup_key in (
+                AI_ENABLED_KEY,
+                AI_GOAL_SUGGESTION_KEY,
+                AI_QUADRANT_RATIONALE_KEY,
+                AI_MOTIVATION_KEY,
+                NEW_TODO_TITLE_KEY,
+                NEW_TODO_DUE_KEY,
+                NEW_TODO_QUADRANT_KEY,
+                SETTINGS_GOAL_DAILY_KEY,
+                GOAL_SUGGESTED_VALUE_KEY,
+            ):
+                st.session_state.pop(cleanup_key, None)
+            reset_state()
+            st.sidebar.success("Session zurückgesetzt / Session reset.")
+            st.rerun()
 
     st.session_state[SS_SETTINGS] = settings
     persist_state()
@@ -1070,7 +1074,6 @@ def render_todo_section(
         render_task_list_view(todos)
 
     with board_tab:
-        render_kpi_dashboard(kpi_stats)
         render_gamification_panel(kpi_stats, ai_enabled=ai_enabled, client=client)
         st.subheader("Eisenhower-Matrix")
         grouped = group_by_quadrant(sort_todos(todos, by="due_date"))
@@ -1320,7 +1323,12 @@ def render_todo_card(todo: TodoItem) -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Gerris ErfolgsTracker", page_icon="✅")
+    st.set_page_config(
+        page_title="Gerris ErfolgsTracker",
+        page_icon="✅",
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
     _inject_dark_theme_styles()
     storage_backend = _bootstrap_storage()
     init_state()
@@ -1332,6 +1340,7 @@ def main() -> None:
 
     st.title("Gerris ErfolgsTracker")
     _render_storage_notice(storage_backend, is_cloud=is_cloud)
+    render_kpi_dashboard(stats)
     todos = get_todos()
     settings = st.session_state.get(SS_SETTINGS, {})
     render_category_dashboard(
