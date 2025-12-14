@@ -1012,7 +1012,10 @@ def render_todo_section(
                 help="Nutze OpenAI fuer eine Auto-Kategorisierung / Use OpenAI to classify the task.",
             )
         with action_cols[1]:
-            submitted = st.form_submit_button("ToDo hinzufügen / Add task")
+            submitted = st.form_submit_button(
+                "ToDo hinzufügen / Add task",
+                type="primary",
+            )
 
         if suggest_quadrant_clicked:
             if not title.strip():
