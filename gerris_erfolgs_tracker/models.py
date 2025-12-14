@@ -118,6 +118,23 @@ class TodoItem(BaseModel):
     kanban: TodoKanban = Field(default_factory=TodoKanban)
 
 
+class JournalEntry(BaseModel):
+    """Guided daily journal entry linked to goals and categories."""
+
+    date: date
+    moods: list[str] = Field(default_factory=list)
+    mood_notes: str = ""
+    triggers_and_reactions: str = ""
+    negative_thought: str = ""
+    rational_response: str = ""
+    self_care_today: str = ""
+    self_care_tomorrow: str = ""
+    gratitude_1: str = ""
+    gratitude_2: str = ""
+    gratitude_3: str = ""
+    categories: list[Category] = Field(default_factory=list)
+
+
 class KpiDailyEntry(BaseModel):
     """Daily summary of completions for KPI tracking."""
 

@@ -9,6 +9,7 @@ from pydantic_core import to_jsonable_python
 
 from gerris_erfolgs_tracker.constants import (
     SS_GAMIFICATION,
+    SS_JOURNAL,
     SS_SETTINGS,
     SS_STATS,
     SS_TODOS,
@@ -18,7 +19,7 @@ from gerris_erfolgs_tracker.storage import StorageBackend
 
 
 LOGGER = logging.getLogger(__name__)
-PERSISTED_KEYS: tuple[str, ...] = (SS_TODOS, SS_STATS, SS_GAMIFICATION, SS_SETTINGS)
+PERSISTED_KEYS: tuple[str, ...] = (SS_TODOS, SS_STATS, SS_GAMIFICATION, SS_SETTINGS, SS_JOURNAL)
 _storage_backend: StorageBackend | None = None
 _last_persisted_fingerprint: str | None = None
 
@@ -37,6 +38,10 @@ def _default_gamification() -> GamificationState:
 
 def _default_settings() -> dict[str, Any]:
     return {"category_goals": {category.value: 1 for category in Category}}
+
+
+def _default_journal() -> dict[str, Any]:
+    return {}
 
 
 def _coerce_todo(raw: Any) -> TodoItem:
@@ -88,6 +93,9 @@ def init_state() -> None:
     if SS_SETTINGS not in st.session_state:
         st.session_state[SS_SETTINGS] = _default_settings()
 
+    if SS_JOURNAL not in st.session_state:
+        st.session_state[SS_JOURNAL] = _default_journal()
+
     persist_state()
 
 
@@ -118,7 +126,7 @@ def save_todos(todos: Sequence[TodoItem]) -> None:
 def reset_state() -> None:
     """Clear managed keys and restore defaults."""
 
-    for key in (SS_TODOS, SS_STATS, SS_GAMIFICATION, SS_SETTINGS):
+    for key in (SS_TODOS, SS_STATS, SS_GAMIFICATION, SS_SETTINGS, SS_JOURNAL):
         if key in st.session_state:
             del st.session_state[key]
     init_state()

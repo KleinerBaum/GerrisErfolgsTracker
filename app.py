@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 from contextlib import nullcontext
 from datetime import date, datetime
 from typing import Any, Literal, Mapping, Optional
@@ -70,8 +71,14 @@ from gerris_erfolgs_tracker.kpi import (
     aggregate_category_kpis,
     last_7_days_completions_by_category,
 )
+from gerris_erfolgs_tracker.journal import (
+    ensure_journal_state,
+    get_journal_entries,
+    journal_gratitude_suggestions,
+    upsert_journal_entry,
+)
 from gerris_erfolgs_tracker.llm import get_default_model, get_openai_client
-from gerris_erfolgs_tracker.models import Category, GamificationMode, KpiStats, TodoItem
+from gerris_erfolgs_tracker.models import Category, GamificationMode, JournalEntry, KpiStats, TodoItem
 from gerris_erfolgs_tracker.state import (
     configure_storage,
     get_todos,
@@ -185,6 +192,18 @@ def _sanitize_category_goals(settings: Mapping[str, object]) -> dict[str, int]:
 
 
 SortOverride = Literal["priority", "due_date", "created_at"]
+JOURNAL_ACTIVE_DATE_KEY = "journal_active_date"
+JOURNAL_FORM_SEED_KEY = "journal_form_seed"
+JOURNAL_FIELD_PREFIX = "journal_field_"
+MOOD_PRESETS: tuple[str, ...] = (
+    "ruhig / calm",
+    "dankbar / grateful",
+    "hoffnungsvoll / hopeful",
+    "energievoll / energised",
+    "gestresst / stressed",
+    "überfordert / overwhelmed",
+    "fokussiert / focused",
+)
 
 
 def _is_streamlit_cloud() -> bool:
@@ -204,6 +223,68 @@ def _bootstrap_storage() -> FileStorageBackend:
         load_persisted_state()
         st.session_state["_storage_loaded"] = True
     return backend
+
+
+def _journal_field_key(name: str) -> str:
+    return f"{JOURNAL_FIELD_PREFIX}{name}"
+
+
+def _prefill_journal_form(entry: JournalEntry) -> None:
+    last_seed: date | None = st.session_state.get(JOURNAL_FORM_SEED_KEY)
+    if last_seed == entry.date:
+        return
+
+    st.session_state[JOURNAL_FORM_SEED_KEY] = entry.date
+    st.session_state[_journal_field_key("moods")] = entry.moods or list(MOOD_PRESETS[:2])
+    st.session_state[_journal_field_key("mood_notes")] = entry.mood_notes
+    st.session_state[_journal_field_key("triggers_and_reactions")] = entry.triggers_and_reactions
+    st.session_state[_journal_field_key("negative_thought")] = entry.negative_thought
+    st.session_state[_journal_field_key("rational_response")] = entry.rational_response
+    st.session_state[_journal_field_key("self_care_today")] = entry.self_care_today
+    st.session_state[_journal_field_key("self_care_tomorrow")] = entry.self_care_tomorrow
+    st.session_state[_journal_field_key("gratitude_1")] = entry.gratitude_1
+    st.session_state[_journal_field_key("gratitude_2")] = entry.gratitude_2
+    st.session_state[_journal_field_key("gratitude_3")] = entry.gratitude_3
+    st.session_state[_journal_field_key("categories")] = entry.categories
+
+
+def _journal_json_export(entries: Mapping[date, JournalEntry]) -> str:
+    payload = {entry_date.isoformat(): entry.model_dump() for entry_date, entry in entries.items()}
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _journal_markdown_export(entries: Mapping[date, JournalEntry]) -> str:
+    lines: list[str] = []
+    for entry_date in sorted(entries):
+        entry = entries[entry_date]
+        lines.append(f"## {entry_date.isoformat()}")
+        lines.append("")
+        moods = ", ".join(entry.moods) if entry.moods else "—"
+        lines.append(f"**Stimmung / Mood:** {moods}")
+        if entry.mood_notes.strip():
+            lines.append(entry.mood_notes.strip())
+        lines.append("")
+        lines.append("**Auslöser & Reaktionen / Triggers & reactions**")
+        lines.append(entry.triggers_and_reactions or "—")
+        lines.append("")
+        lines.append("**Gedanken-Challenge / Thought challenge**")
+        lines.append(f"- Automatischer Gedanke / Automatic thought: {entry.negative_thought or '—'}")
+        lines.append(f"- Reframing / Reframe: {entry.rational_response or '—'}")
+        lines.append("")
+        lines.append("**Selbstfürsorge / Self-care**")
+        lines.append(f"- Heute / Today: {entry.self_care_today or '—'}")
+        lines.append(f"- Morgen / Tomorrow: {entry.self_care_tomorrow or '—'}")
+        lines.append("")
+        lines.append("**Lichtblicke / Gratitude**")
+        for idx, value in enumerate((entry.gratitude_1, entry.gratitude_2, entry.gratitude_3), start=1):
+            lines.append(f"- Dankbarkeit {idx}: {value or '—'}")
+        if entry.categories:
+            labels = ", ".join(category.label for category in entry.categories)
+            lines.append("")
+            lines.append(f"**Kategorien / Categories:** {labels}")
+        lines.append("")
+
+    return "\n".join(lines).strip()
 
 
 def _render_storage_notice(backend: FileStorageBackend, *, is_cloud: bool) -> None:
@@ -1322,6 +1403,219 @@ def render_todo_card(todo: TodoItem) -> None:
             _render_todo_kanban(todo)
 
 
+def _resolve_active_journal_date() -> date:
+    raw = st.session_state.get(JOURNAL_ACTIVE_DATE_KEY)
+    if isinstance(raw, date):
+        return raw
+
+    try:
+        return date.fromisoformat(str(raw))
+    except Exception:
+        return date.today()
+
+
+def _render_journal_export(entries: Mapping[date, JournalEntry]) -> None:
+    st.markdown("#### Export / Backup")
+    if not entries:
+        st.caption(
+            "Noch keine Einträge vorhanden – speichern Sie zunächst einen Tageseintrag. / "
+            "No journal entries yet – save a daily entry first."
+        )
+        return
+
+    json_payload = _journal_json_export(entries)
+    markdown_payload = _journal_markdown_export(entries)
+    st.download_button(
+        "Journal als JSON exportieren / Export journal as JSON",
+        json_payload,
+        file_name="journal_entries.json",
+        mime="application/json",
+        use_container_width=True,
+    )
+    st.download_button(
+        "Journal als Markdown exportieren / Export journal as Markdown",
+        markdown_payload,
+        file_name="journal_entries.md",
+        mime="text/markdown",
+        use_container_width=True,
+    )
+
+
+def render_journal_section() -> None:
+    ensure_journal_state()
+    entries = get_journal_entries()
+    active_date = _resolve_active_journal_date()
+
+    st.subheader("Tagebuch / Journal")
+    st.caption(
+        "Ein geführter Eintrag pro Tag verknüpft Stimmung, Gedanken und Ziele. / "
+        "One guided entry per day links mood, thoughts, and goals."
+    )
+
+    header_cols = st.columns([0.7, 0.3])
+    with header_cols[0]:
+        if st.button(
+            "Tagebucheintrag erstellen / Create journal entry",
+            type="primary",
+            help="Öffnet das Formular für den heutigen Tag oder lädt den gespeicherten Entwurf. / "
+            "Opens today's form or loads the saved draft.",
+        ):
+            st.session_state[JOURNAL_ACTIVE_DATE_KEY] = date.today()
+            st.session_state[JOURNAL_FORM_SEED_KEY] = None
+            st.rerun()
+    with header_cols[1]:
+        _render_journal_export(entries)
+
+    selection_cols = st.columns([0.6, 0.4])
+    with selection_cols[0]:
+        selected_date = st.date_input(
+            "Datum des Eintrags / Entry date",
+            value=active_date,
+            format="YYYY-MM-DD",
+            max_value=date.today(),
+            key=JOURNAL_ACTIVE_DATE_KEY,
+            help="Ein Eintrag pro Kalendertag; bestehende Entwürfe werden automatisch geladen. / "
+            "One entry per calendar day; existing drafts load automatically.",
+        )
+    with selection_cols[1]:
+        st.info(
+            "Der Eintrag bleibt zwischengespeichert, bis du ihn speicherst. / "
+            "Drafts stay in the form until you hit save.",
+            icon="📝",
+        )
+
+    existing_entry = entries.get(selected_date)
+    if existing_entry:
+        st.success("Vorhandener Entwurf geladen / Existing draft loaded.")
+        entry = existing_entry
+    else:
+        entry = JournalEntry(date=selected_date, moods=list(MOOD_PRESETS[:2]))
+
+    gratitude_suggestions = journal_gratitude_suggestions(exclude_date=selected_date)
+    _prefill_journal_form(entry)
+
+    with st.form("journal_form"):
+        st.markdown("### Stimmung / Emotionen")
+        mood_cols = st.columns([0.6, 0.4])
+        with mood_cols[0]:
+            moods = st.multiselect(
+                "Wie fühlst du dich? / How do you feel?",
+                options=list(MOOD_PRESETS),
+                default=st.session_state.get(_journal_field_key("moods"), list(MOOD_PRESETS[:2])),
+                key=_journal_field_key("moods"),
+                help="Tags mit Autosuggest; eigene Einträge möglich. / Tag-based, searchable list (custom entries allowed).",
+            )
+        with mood_cols[1]:
+            mood_notes = st.text_area(
+                "Kurzbeschreibung / Notes",
+                value=st.session_state.get(_journal_field_key("mood_notes"), ""),
+                key=_journal_field_key("mood_notes"),
+                placeholder="z. B. ruhig nach dem Spaziergang / e.g., calm after a walk",
+            )
+
+        st.markdown("### Auslöser & Reaktionen / Triggers & reactions")
+        triggers_and_reactions = st.text_area(
+            "Was ist passiert und wie hast du reagiert? / What happened and how did you react?",
+            value=st.session_state.get(_journal_field_key("triggers_and_reactions"), ""),
+            key=_journal_field_key("triggers_and_reactions"),
+            placeholder="z. B. stressiges Telefonat, dann 5 Minuten geatmet / stressful call, then 5 minutes of breathing",
+        )
+
+        st.markdown("### Gedanken-Challenge / Thought challenge")
+        thought_cols = st.columns(2)
+        with thought_cols[0]:
+            negative_thought = st.text_area(
+                "Automatischer Gedanke / Automatic thought",
+                value=st.session_state.get(_journal_field_key("negative_thought"), ""),
+                key=_journal_field_key("negative_thought"),
+                placeholder="z. B. 'Ich schaffe das nie' / e.g., 'I will never manage this'",
+            )
+        with thought_cols[1]:
+            rational_response = st.text_area(
+                "Reframe / Rational response",
+                value=st.session_state.get(_journal_field_key("rational_response"), ""),
+                key=_journal_field_key("rational_response"),
+                placeholder="z. B. 'Ein Schritt nach dem anderen' / e.g., 'One step at a time'",
+            )
+
+        st.markdown("### Selbstfürsorge / Self-care")
+        care_cols = st.columns(2)
+        with care_cols[0]:
+            self_care_today = st.text_area(
+                "Was habe ich heute für mich getan? / What did I do for myself today?",
+                value=st.session_state.get(_journal_field_key("self_care_today"), ""),
+                key=_journal_field_key("self_care_today"),
+                placeholder="z. B. kurzer Spaziergang, Tee in Ruhe / e.g., short walk, mindful tea",
+            )
+        with care_cols[1]:
+            self_care_tomorrow = st.text_area(
+                "Was mache ich morgen besser? / What will I do better tomorrow?",
+                value=st.session_state.get(_journal_field_key("self_care_tomorrow"), ""),
+                key=_journal_field_key("self_care_tomorrow"),
+                placeholder="z. B. Pausen blocken, früher ins Bett / e.g., block breaks, go to bed earlier",
+            )
+
+        st.markdown("### Lichtblicke / Dankbarkeit / Gratitude")
+        gratitude_inputs: list[str] = []
+        for index, field_name in enumerate(["gratitude_1", "gratitude_2", "gratitude_3"], start=1):
+            gratitude_value = st.text_input(
+                f"Dankbarkeit {index} / Gratitude {index}",
+                value=st.session_state.get(_journal_field_key(field_name), ""),
+                key=_journal_field_key(field_name),
+                placeholder="z. B. Kaffee am Morgen, Gespräch mit Freund:in / e.g., morning coffee, chat with a friend",
+            )
+            gratitude_inputs.append(gratitude_value)
+
+        if gratitude_suggestions:
+            st.caption(
+                "Vorschläge aus früheren Einträgen / Suggestions from past entries: "
+                + ", ".join(gratitude_suggestions[:6])
+            )
+
+        st.markdown("### Kategorien & Ziele / Categories & goals")
+        selected_categories = st.multiselect(
+            "Welche Bereiche waren beteiligt? / Which categories apply?",
+            options=list(Category),
+            format_func=lambda option: option.label,
+            default=st.session_state.get(_journal_field_key("categories"), []),
+            key=_journal_field_key("categories"),
+            help="Mehrfachauswahl mit Suche; verbindet Eintrag und Ziele. / Multi-select with search to link goals.",
+        )
+
+        save_clicked = st.form_submit_button("Eintrag speichern / Save entry", type="primary")
+        if save_clicked:
+            journal_entry = JournalEntry(
+                date=selected_date,
+                moods=moods,
+                mood_notes=mood_notes,
+                triggers_and_reactions=triggers_and_reactions,
+                negative_thought=negative_thought,
+                rational_response=rational_response,
+                self_care_today=self_care_today,
+                self_care_tomorrow=self_care_tomorrow,
+                gratitude_1=gratitude_inputs[0],
+                gratitude_2=gratitude_inputs[1],
+                gratitude_3=gratitude_inputs[2],
+                categories=[Category(item) for item in selected_categories],
+            )
+            upsert_journal_entry(journal_entry)
+            st.success("Eintrag gespeichert / Entry saved.")
+            st.session_state[JOURNAL_FORM_SEED_KEY] = journal_entry.date
+            st.rerun()
+
+    if entries:
+        st.markdown("#### Letzte Einträge / Recent entries")
+        sorted_entries = sorted(entries.items(), key=lambda item: item[0], reverse=True)
+        for entry_date, history_entry in sorted_entries[:5]:
+            with st.expander(entry_date.isoformat()):
+                st.write(" · ".join(history_entry.moods) if history_entry.moods else "—")
+                st.caption(history_entry.triggers_and_reactions or "Keine Auslöser notiert / No triggers noted")
+                if history_entry.categories:
+                    st.caption(
+                        "Kategorien / Categories: " + ", ".join(category.label for category in history_entry.categories)
+                    )
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Gerris ErfolgsTracker",
@@ -1356,8 +1650,15 @@ def main() -> None:
     else:
         st.caption(f"Aktives Modell: {get_default_model()} (konfigurierbar via OPENAI_MODEL).")
 
-    st.header("ToDos / Tasks")
-    render_todo_section(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
+    st.header("Arbeitsbereich / Workspace")
+    tasks_tab, journal_tab = st.tabs(["ToDos", "Tagebuch"])
+
+    with tasks_tab:
+        st.header("ToDos / Tasks")
+        render_todo_section(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
+
+    with journal_tab:
+        render_journal_section()
 
 
 if __name__ == "__main__":

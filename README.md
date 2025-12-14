@@ -102,6 +102,13 @@ OPENAI_API_KEY = "sk-..."
 - Eisenhower-Matrix mit vier Quadranten (dringend/wichtig) als Board-Ansicht mit je einer Spalte pro Quadrant im entsprechenden Tab, zusätzlich bleibt die Monats-Kalender-Ansicht als eigener Tab verfügbar.
 - Pro Aufgabe steht im Expander ein **Kanban**-Abschnitt bereit: Drei Spalten (Backlog/Doing/Done) mit Unteraufgaben-Karten, die per Buttons nach links/rechts verschoben werden können. Karten lassen sich mit Titel + Beschreibung anlegen (Standard-Spalte Backlog), und ein Fortschrittsbalken zeigt den Subtask-Abschluss in % an / Each task expander now offers a **Kanban** section with three columns (Backlog/Doing/Done). Add cards with title + description (default to Backlog), move them left/right via buttons, and track subtask completion via a progress bar.
 
+## Tagebuch / Daily journal
+
+- Neues Top-Level-Tab **Tagebuch / Journal** mit geführtem Formular pro Kalendertag. Der Button **Tagebucheintrag erstellen / Create journal entry** lädt bestehende Entwürfe oder öffnet ein leeres Formular für heute.
+- Formularfelder mit Platzhaltern und Autosuggest: Stimmungstags (bearbeitbar) plus Freitext, Auslöser & Reaktionen, Gedanken-Challenge (automatischer Gedanke + Reframe), Selbstfürsorge (heute/morgen) sowie drei Dankbarkeitsfelder mit Vorschlägen aus bisherigen Einträgen. Kategorien lassen sich per Multi-Select (Suchleiste) an vorhandene Lebensbereiche koppeln.
+- Speichern erfolgt explizit über **Eintrag speichern / Save entry** (kein Auto-Save pro Tastendruck). Bestehende Entwürfe werden geladen und können überschrieben werden.
+- Export/Backup: Buttons für **JSON** (Rohdaten) und **Markdown** (lesbare Chronik) ohne Zusatzabhängigkeiten.
+
 ## Kalenderansicht / Calendar view
 
 - Monatlicher Überblick über ToDos mit Fälligkeitsdatum in einem 7-Spalten-Raster.
@@ -139,7 +146,30 @@ OPENAI_API_KEY = "sk-..."
 
 ## Session-State-Management
 
-Die zentrale Session-State-Initialisierung liegt in `gerris_erfolgs_tracker/state.py`. Dort werden alle Schlüssel aus `gerris_erfolgs_tracker/constants.py` verwendet, um Konsistenz zu gewährleisten und Tippfehler zu vermeiden. Modelle für Todos, KPI-Statistiken und Gamification befinden sich in `gerris_erfolgs_tracker/models.py`.
+Die zentrale Session-State-Initialisierung liegt in `gerris_erfolgs_tracker/state.py`. Dort werden alle Schlüssel aus `gerris_erfolgs_tracker/constants.py` verwendet, um Konsistenz zu gewährleisten und Tippfehler zu vermeiden. Modelle für Todos, KPI-Statistiken, Gamification und das Tagebuch befinden sich in `gerris_erfolgs_tracker/models.py`.
+
+Persistenter JSON-Schema-Ausschnitt (`gerris_state.json`):
+
+```json
+{
+  "journal_entries": {
+    "2024-08-01": {
+      "date": "2024-08-01",
+      "moods": ["ruhig / calm", "dankbar / grateful"],
+      "mood_notes": "kurz notiert",
+      "triggers_and_reactions": "stressiges Gespräch, dann geatmet",
+      "negative_thought": "Ich schaffe das nicht",
+      "rational_response": "Ein Schritt nach dem anderen",
+      "self_care_today": "Spaziergang",
+      "self_care_tomorrow": "früher schlafen",
+      "gratitude_1": "Kaffee",
+      "gratitude_2": "Freunde",
+      "gratitude_3": "Sonne",
+      "categories": ["daily_structure", "friends_family"]
+    }
+  }
+}
+```
 
 ## Architektur-Hinweis
 
