@@ -1280,7 +1280,12 @@ def render_navigation() -> str:
 
 
 def render_gamification_panel(
-    stats: KpiStats, *, ai_enabled: bool, client: Optional[OpenAI], panel: Any | None = None
+    stats: KpiStats,
+    *,
+    ai_enabled: bool,
+    client: Optional[OpenAI],
+    panel: Any | None = None,
+    motivation_key_suffix: str = "panel",
 ) -> None:
     panel = panel or st
     gamification_state = get_gamification_state()
@@ -1360,7 +1365,7 @@ def render_gamification_panel(
 
     if panel.button(
         "AI: Motivation / Motivation",
-        key="ai_motivation_btn",
+        key=f"ai_motivation_btn_{motivation_key_suffix}",
         disabled=not ai_enabled,
         help=(
             "Lässt OpenAI eine kurze Motivation erstellen; ohne Key wird ein Fallback genutzt / "
@@ -1747,7 +1752,13 @@ def main() -> None:
     ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
 
     with st.sidebar.expander("Gamification", expanded=True) as gamification_panel:
-        render_gamification_panel(stats, ai_enabled=ai_enabled, client=client, panel=gamification_panel)
+        render_gamification_panel(
+            stats,
+            ai_enabled=ai_enabled,
+            client=client,
+            panel=gamification_panel,
+            motivation_key_suffix="sidebar",
+        )
 
     if not client:
         st.info(
