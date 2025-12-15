@@ -172,6 +172,14 @@ def _inject_dark_theme_styles() -> None:
                 font-size: 0.9rem;
                 margin-top: -0.25rem;
             }
+
+            .stAlert {
+                margin-bottom: 0.8rem;
+            }
+
+            .stCaption {
+                margin-bottom: 0.5rem;
+            }
         </style>
     """,
         unsafe_allow_html=True,
@@ -1156,7 +1164,6 @@ def render_todo_section(
         render_task_list_view(todos)
 
     with board_tab:
-        render_gamification_panel(kpi_stats, ai_enabled=ai_enabled, client=client)
         st.subheader("Eisenhower-Matrix")
         grouped = group_by_quadrant(sort_todos(todos, by="due_date"))
         quadrant_columns = st.columns(4)
