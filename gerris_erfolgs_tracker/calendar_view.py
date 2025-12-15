@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 from calendar import monthrange
 from datetime import date, datetime
 from typing import Iterable, Optional
@@ -59,25 +60,110 @@ def _month_grid(first_weekday: int, days_in_month: int) -> list[list[Optional[in
     return weeks
 
 
-def _render_day_cell(day: Optional[int], tasks_by_day: dict[int, list[TodoItem]]) -> None:
-    with st.container(border=True):
-        if day is None:
-            st.write("\u00a0")
-            return
+def _ensure_calendar_styles() -> None:
+    st.markdown(
+        """
+        <style>
+            .calendar-day {
+                border: 1px solid var(--gerris-border);
+                background: linear-gradient(145deg, var(--gerris-surface), var(--gerris-surface-alt));
+                border-radius: 12px;
+                padding: 10px 12px;
+                min-height: 120px;
+            }
 
-        st.markdown(f"**{day}**")
-        tasks = tasks_by_day.get(day, [])
-        if not tasks:
-            st.caption("Keine Aufgaben / No tasks")
-            return
+            .calendar-day--today {
+                border: 2px solid var(--gerris-primary);
+                box-shadow: 0 0 0 1px rgba(28, 156, 130, 0.35);
+                background: linear-gradient(160deg, rgba(28, 156, 130, 0.16), var(--gerris-surface));
+            }
 
-        for task in tasks:
-            status = "⏳" if not task.completed else "✅"
-            st.write(f"{status} {task.title}")
+            .calendar-day__header {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                color: var(--gerris-text);
+                margin-bottom: 6px;
+                font-weight: 700;
+            }
+
+            .calendar-day__badge {
+                padding: 2px 8px;
+                border-radius: 10px;
+                background: rgba(28, 156, 130, 0.2);
+                color: var(--gerris-text);
+                font-size: 0.8rem;
+                border: 1px solid var(--gerris-primary);
+            }
+
+            .calendar-day__tasks {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+
+            .calendar-day__task {
+                color: var(--gerris-text);
+                font-size: 0.95rem;
+                line-height: 1.4;
+            }
+
+            .calendar-day__empty {
+                color: var(--gerris-muted);
+                font-size: 0.9rem;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_day_cell(
+    day: Optional[int],
+    tasks_by_day: dict[int, list[TodoItem]],
+    *,
+    is_today: bool,
+) -> None:
+    classes = ["calendar-day"]
+    if is_today:
+        classes.append("calendar-day--today")
+
+    if day is None:
+        st.markdown(f'<div class="{" ".join(classes)}" aria-hidden="true">\u00a0</div>', unsafe_allow_html=True)
+        return
+
+    tasks = tasks_by_day.get(day, [])
+    task_lines: list[str] = []
+    for task in tasks:
+        status = "⏳" if not task.completed else "✅"
+        task_lines.append(
+            f'<div class="calendar-day__task">{status} {html.escape(task.title)}</div>'
+        )
+
+    content = "\n".join(task_lines) if task_lines else '<div class="calendar-day__empty">Keine Aufgaben / No tasks</div>'
+    badge = '<span class="calendar-day__badge">Heute / Today</span>' if is_today else ""
+    st.markdown(
+        """
+        <div class="{classes}">
+            <div class="calendar-day__header">
+                {badge}
+                <span>{day}</span>
+            </div>
+            <div class="calendar-day__tasks">{tasks}</div>
+        </div>
+        """.format(
+            classes=" ".join(classes),
+            day=day,
+            tasks=content,
+            badge=badge,
+        ),
+        unsafe_allow_html=True,
+    )
 
 
 def render_calendar_view() -> None:
     st.subheader("Kalenderansicht / Calendar view")
+    _ensure_calendar_styles()
     selected_date = st.date_input(
         "Monat auswählen / Select month",
         value=date.today().replace(day=1),
@@ -121,7 +207,13 @@ def render_calendar_view() -> None:
         week_columns = st.columns(7)
         for idx, day in enumerate(week):
             with week_columns[idx]:
-                _render_day_cell(day, tasks_by_day)
+                is_today = bool(
+                    day
+                    and day == date.today().day
+                    and month == date.today().month
+                    and year == date.today().year
+                )
+                _render_day_cell(day, tasks_by_day, is_today=is_today)
 
 
 __all__ = ["render_calendar_view"]

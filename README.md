@@ -113,6 +113,8 @@ OPENAI_API_KEY = "sk-..."
 - Monatlicher Überblick über ToDos mit Fälligkeitsdatum in einem 7-Spalten-Raster.
 - Monatsauswahl über Date-Picker (nur Monat/Jahr relevant) und optionaler Filter **Nur offene Aufgaben / Only open tasks**.
 - Aufgaben erscheinen an ihrem jeweiligen Kalendertag mit Status-Emoji (⏳ offen, ✅ erledigt).
+- Der heutige Kalendertag ist im Date-Picker und in der Rasteransicht durch Rahmen + leicht aufgehellten Hintergrund klar
+  hervorgehoben / Today's date is visibly highlighted in the date picker and month grid with a border and subtle brightening.
 
 ## KPI-Dashboard
 

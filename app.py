@@ -192,6 +192,23 @@ def _inject_dark_theme_styles() -> None:
             .stCaption {
                 margin-bottom: 0.5rem;
             }
+
+            /* Highlight today's date inside Streamlit date pickers without breaking dark mode */
+            .stDateInput .flatpickr-day.today:not(.selected) {
+                border: 1.5px solid var(--gerris-primary);
+                background: rgba(28, 156, 130, 0.18);
+                color: var(--gerris-text);
+                font-weight: 700;
+            }
+
+            .stDateInput .flatpickr-day.today.selected,
+            .stDateInput .flatpickr-day.today:focus {
+                border: 1.5px solid var(--gerris-primary);
+                background: rgba(28, 156, 130, 0.28);
+                color: var(--gerris-text);
+                font-weight: 700;
+                box-shadow: 0 0 0 1px rgba(28, 156, 130, 0.35) inset;
+            }
         </style>
     """,
         unsafe_allow_html=True,
