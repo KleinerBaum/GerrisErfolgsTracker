@@ -46,6 +46,7 @@ from gerris_erfolgs_tracker.constants import (
     NEW_TODO_RESET_TRIGGER_KEY,
     NEW_TODO_TITLE_KEY,
     SETTINGS_GOAL_DAILY_KEY,
+    SHOW_STORAGE_NOTICE_KEY,
     SS_SETTINGS,
 )
 from gerris_erfolgs_tracker.calendar_view import render_calendar_view
@@ -693,6 +694,7 @@ def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> d
         settings = {}
 
     settings.setdefault(AI_ENABLED_KEY, bool(client))
+    settings.setdefault(SHOW_STORAGE_NOTICE_KEY, False)
     settings.setdefault("goal_daily", stats.goal_daily)
     settings.setdefault("gamification_mode", GamificationMode.POINTS.value)
     settings["category_goals"] = _sanitize_category_goals(settings)
@@ -851,6 +853,15 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
                 "a crisis or diagnostic service. Bei akuten Notfällen wende dich an lokale "
                 "Hotlines / In emergencies, contact local hotlines."
             )
+            show_storage_notice = panel.toggle(
+                "Speicherhinweis anzeigen / Show storage notice",
+                value=bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False)),
+                help=(
+                    "Blendet den Hinweis zum aktuellen Speicherpfad oberhalb des Titels ein oder aus / "
+                    "Toggle the storage location notice above the title on or off."
+                ),
+            )
+            settings[SHOW_STORAGE_NOTICE_KEY] = show_storage_notice
         with safety_cols[1]:
             if panel.button(
                 "Session zurücksetzen / Reset session",
@@ -1721,8 +1732,11 @@ def main() -> None:
     render_language_toggle()
     selection = render_navigation()
 
+    show_storage_notice = bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False))
+
     st.title("Gerris ErfolgsTracker")
-    _render_storage_notice(storage_backend, is_cloud=is_cloud)
+    if show_storage_notice:
+        _render_storage_notice(storage_backend, is_cloud=is_cloud)
     todos = get_todos()
     ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
 
