@@ -87,7 +87,7 @@ OPENAI_API_KEY = "sk-..."
 - Auf der Seite **Ziele / Goals** findest du **AI aktiv / AI enabled**, **Tagesziel / Daily goal** inklusive KI-Vorschlag und die Kategorienziele (0–20 pro Tag) in einem kompakten, mehrspaltigen Panel.
 - AI-Zielvorschläge übernehmen den empfohlenen Wert automatisch in das Zahlenfeld (kein manuelles Nachtragen nötig) / AI goal suggestions now auto-fill the number input for convenience.
 - Der Button **Session zurücksetzen / Reset session** löscht ToDos, KPIs, Gamification und Einstellungen und stellt die Defaults wieder her.
-- Hinweisboxen informieren über den aktuell genutzten Speicherort (OneDrive, lokale Datei oder flüchtiger Cloud-Speicher); das Tool ist nicht als Krisen- oder Diagnoseinstrument gedacht.
+- Hinweisboxen informieren über den aktuell genutzten Speicherort (OneDrive, lokale Datei oder flüchtiger Cloud-Speicher); das Tool ist nicht als Krisen- oder Diagnoseinstrument gedacht. Über den Toggle **Speicherhinweis anzeigen / Show storage notice** steuerst du, ob der Hinweis unter dem Titel erscheint (Standard: aus) / Use the **Speicherhinweis anzeigen / Show storage notice** toggle to control the title-level storage notice (default: off).
 
 ## ToDo-Verwaltung
 
