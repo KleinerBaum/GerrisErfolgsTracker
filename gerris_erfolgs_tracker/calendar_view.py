@@ -136,11 +136,11 @@ def _render_day_cell(
     task_lines: list[str] = []
     for task in tasks:
         status = "⏳" if not task.completed else "✅"
-        task_lines.append(
-            f'<div class="calendar-day__task">{status} {html.escape(task.title)}</div>'
-        )
+        task_lines.append(f'<div class="calendar-day__task">{status} {html.escape(task.title)}</div>')
 
-    content = "\n".join(task_lines) if task_lines else '<div class="calendar-day__empty">Keine Aufgaben / No tasks</div>'
+    content = (
+        "\n".join(task_lines) if task_lines else '<div class="calendar-day__empty">Keine Aufgaben / No tasks</div>'
+    )
     badge = '<span class="calendar-day__badge">Heute / Today</span>' if is_today else ""
     st.markdown(
         """
@@ -208,10 +208,7 @@ def render_calendar_view() -> None:
         for idx, day in enumerate(week):
             with week_columns[idx]:
                 is_today = bool(
-                    day
-                    and day == date.today().day
-                    and month == date.today().month
-                    and year == date.today().year
+                    day and day == date.today().day and month == date.today().month and year == date.today().year
                 )
                 _render_day_cell(day, tasks_by_day, is_today=is_today)
 

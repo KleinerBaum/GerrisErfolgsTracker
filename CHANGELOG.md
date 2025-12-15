@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Kompakte Aufgabenlisten-Zeilen mit schmaleren Rändern, farbigen Quadranten-Tags und eingeklappten Details-Expandern für sichtbar mehr Aufgaben pro Bildschirm.
 - Markiert den aktuellen Tag im Date-Picker und in der Kalenderansicht durch klaren Rahmen und sanft helleren Hintergrund, der im Dark Theme gut lesbar bleibt.
 - Begrenzte die Titel- und Beschreibungsfelder im Formular **ToDo hinzufügen / Add task** auf ca. 50 % Breite für eine kompaktere Desktop-Ansicht, während Mobilgeräte weiter sauber stapeln / Limited the **Add task** title and description inputs to ~50% width on desktop for a tidier layout while keeping mobile stacking intact.
 - Fixed a `StreamlitDuplicateElementKey` crash by assigning a context-specific key to the "AI: Motivation" button in the gamification panel (e.g., sidebar usage).
