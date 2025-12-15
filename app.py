@@ -714,38 +714,43 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
 
     settings = _ensure_settings_defaults(client=client, stats=stats)
     panel.markdown("### Schnellzugriff / Quick controls")
-    ai_enabled = panel.toggle(
-        "AI aktiv / AI enabled",
-        key=AI_ENABLED_KEY,
-        value=bool(settings.get(AI_ENABLED_KEY, bool(client))),
-        help=(
-            "Aktiviere KI-gestützte Vorschläge. Ohne Schlüssel werden Fallback-Texte genutzt / "
-            "Enable AI suggestions. Without a key, fallback texts are used."
-        ),
-    )
+    quick_cols = panel.columns(2)
+    with quick_cols[0]:
+        ai_enabled = panel.toggle(
+            "AI aktiv / AI enabled",
+            key=AI_ENABLED_KEY,
+            value=bool(settings.get(AI_ENABLED_KEY, bool(client))),
+            help=(
+                "Aktiviere KI-gestützte Vorschläge. Ohne Schlüssel werden Fallback-Texte genutzt / "
+                "Enable AI suggestions. Without a key, fallback texts are used."
+            ),
+        )
+    with quick_cols[1]:
+        panel.info(
+            "Aktiviere die KI bei Bedarf oder arbeite komplett manuell / Toggle AI as needed or work fully manually.",
+            icon="🤖",
+        )
     settings[AI_ENABLED_KEY] = ai_enabled
 
     panel.markdown("### Tagesziel / Daily goal")
     goal_input_value = _resolve_goal_input_value(settings=settings, stats=stats)
-    goal_value = panel.number_input(
-        "Ziel pro Tag / Target per day",
-        min_value=1,
-        step=1,
-        value=goal_input_value,
-        key=SETTINGS_GOAL_DAILY_KEY,
-        help=("Lege ein realistisches Tagesziel fest / Set a realistic daily target."),
-    )
-    settings["goal_daily"] = int(goal_value)
-
-    goal_action_cols = panel.columns(2)
-    with goal_action_cols[0]:
-        if goal_action_cols[0].button("Ziel speichern / Save goal", key="settings_save_goal"):
+    goal_row = panel.columns(3)
+    with goal_row[0]:
+        goal_value = panel.number_input(
+            "Ziel pro Tag / Target per day",
+            min_value=1,
+            step=1,
+            value=goal_input_value,
+            key=SETTINGS_GOAL_DAILY_KEY,
+            help=("Lege ein realistisches Tagesziel fest / Set a realistic daily target."),
+        )
+    with goal_row[1]:
+        if panel.button("Ziel speichern / Save goal", key="settings_save_goal"):
             update_goal_daily(int(goal_value))
             panel.success("Tagesziel aktualisiert / Daily goal updated.")
             st.rerun()
-
-    with goal_action_cols[1]:
-        if goal_action_cols[1].button(
+    with goal_row[2]:
+        if panel.button(
             "AI: Ziel vorschlagen / Suggest goal",
             key="settings_ai_goal",
             disabled=not ai_enabled,
@@ -758,6 +763,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
             st.session_state[AI_GOAL_SUGGESTION_KEY] = suggestion
             st.session_state[GOAL_SUGGESTED_VALUE_KEY] = suggestion.payload.daily_goal
             st.rerun()
+    settings["goal_daily"] = int(goal_value)
 
     goal_suggestion: AISuggestion[Any] | None = st.session_state.get(AI_GOAL_SUGGESTION_KEY)
     if goal_suggestion:
@@ -795,60 +801,64 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
         except ValueError:
             current_mode = GamificationMode.POINTS
 
-        selected_mode = panel.selectbox(
-            "Gamification-Variante / Gamification mode",
-            options=gamification_mode_options,
-            format_func=lambda option: option.label,
-            index=gamification_mode_options.index(current_mode),
-            help=(
-                "Wähle Punkte, Abzeichen oder die motivierende Avatar-Option Dipl.-Psych. Roß / "
-                "Choose points, badges, or the motivational avatar option Dipl.-Psych. Roß."
-            ),
-        )
+        gamification_cols = panel.columns(2)
+        with gamification_cols[0]:
+            selected_mode = panel.selectbox(
+                "Gamification-Variante / Gamification mode",
+                options=gamification_mode_options,
+                format_func=lambda option: option.label,
+                index=gamification_mode_options.index(current_mode),
+                help=(
+                    "Wähle Punkte, Abzeichen oder die motivierende Avatar-Option Dipl.-Psych. Roß / "
+                    "Choose points, badges, or the motivational avatar option Dipl.-Psych. Roß."
+                ),
+            )
+        with gamification_cols[1]:
+            panel.caption(
+                "Dipl.-Psych. Roß steht für warme, therapeutische Motivation (Brünette, ca. 45 Jahre, Brille) / "
+                "Dipl.-Psych. Roß offers warm, therapeutic motivation (brunette, about 45 years old, with glasses)."
+            )
         settings["gamification_mode"] = selected_mode.value
-
-        panel.caption(
-            "Dipl.-Psych. Roß steht für warme, therapeutische Motivation (Brünette, ca. 45 Jahre, Brille) / "
-            "Dipl.-Psych. Roß offers warm, therapeutic motivation (brunette, about 45 years old, with glasses)."
-        )
 
     panel.divider()
     with _panel_section(panel, "Sicherheit & Daten / Safety & data"):
-        panel.info(
-            "Optionale lokale Persistenz speichert Daten in .data/gerris_state.json; "
-            "auf Streamlit Community Cloud können Dateien nach einem Neustart verschwinden. / "
-            "Optional local persistence writes to .data/gerris_state.json; on Streamlit Community Cloud "
-            "files may reset after a restart."
-        )
-        panel.warning(
-            "Dieses Tool ersetzt keine Krisenhilfe oder Diagnosen / This tool is not "
-            "a crisis or diagnostic service. Bei akuten Notfällen wende dich an lokale "
-            "Hotlines / In emergencies, contact local hotlines."
-        )
-
-        if panel.button(
-            "Session zurücksetzen / Reset session",
-            key="reset_session_btn",
-            help=(
-                "Löscht ToDos, KPIs, Gamification und Einstellungen aus dieser Sitzung / "
-                "Clear todos, KPIs, gamification, and settings for this session."
-            ),
-        ):
-            for cleanup_key in (
-                AI_ENABLED_KEY,
-                AI_GOAL_SUGGESTION_KEY,
-                AI_QUADRANT_RATIONALE_KEY,
-                AI_MOTIVATION_KEY,
-                NEW_TODO_TITLE_KEY,
-                NEW_TODO_DUE_KEY,
-                NEW_TODO_QUADRANT_KEY,
-                SETTINGS_GOAL_DAILY_KEY,
-                GOAL_SUGGESTED_VALUE_KEY,
+        safety_cols = panel.columns(2)
+        with safety_cols[0]:
+            panel.info(
+                "Optionale lokale Persistenz speichert Daten in .data/gerris_state.json; "
+                "auf Streamlit Community Cloud können Dateien nach einem Neustart verschwinden. / "
+                "Optional local persistence writes to .data/gerris_state.json; on Streamlit Community Cloud "
+                "files may reset after a restart."
+            )
+            panel.warning(
+                "Dieses Tool ersetzt keine Krisenhilfe oder Diagnosen / This tool is not "
+                "a crisis or diagnostic service. Bei akuten Notfällen wende dich an lokale "
+                "Hotlines / In emergencies, contact local hotlines."
+            )
+        with safety_cols[1]:
+            if panel.button(
+                "Session zurücksetzen / Reset session",
+                key="reset_session_btn",
+                help=(
+                    "Löscht ToDos, KPIs, Gamification und Einstellungen aus dieser Sitzung / "
+                    "Clear todos, KPIs, gamification, and settings for this session."
+                ),
             ):
-                st.session_state.pop(cleanup_key, None)
-            reset_state()
-            panel.success("Session zurückgesetzt / Session reset.")
-            st.rerun()
+                for cleanup_key in (
+                    AI_ENABLED_KEY,
+                    AI_GOAL_SUGGESTION_KEY,
+                    AI_QUADRANT_RATIONALE_KEY,
+                    AI_MOTIVATION_KEY,
+                    NEW_TODO_TITLE_KEY,
+                    NEW_TODO_DUE_KEY,
+                    NEW_TODO_QUADRANT_KEY,
+                    SETTINGS_GOAL_DAILY_KEY,
+                    GOAL_SUGGESTED_VALUE_KEY,
+                ):
+                    st.session_state.pop(cleanup_key, None)
+                reset_state()
+                panel.success("Session zurückgesetzt / Session reset.")
+                st.rerun()
 
     st.session_state[SS_SETTINGS] = settings
     persist_state()
@@ -939,7 +949,6 @@ def render_todo_section(
     todos: Optional[list[TodoItem]] = None,
     stats: Optional[KpiStats] = None,
 ) -> None:
-    kpi_stats = stats or get_kpi_stats()
     todos = todos or get_todos()
     quadrant_options = list(EisenhowerQuadrant)
 
@@ -1211,14 +1220,19 @@ JOURNAL_PAGE_LABEL = "Tagebuch / Journal"
 
 def render_navigation() -> str:
     st.sidebar.title("Navigation")
-    return st.sidebar.radio(
+    selection = st.sidebar.radio(
         "Bereich wählen / Choose a page",
         [GOALS_PAGE_LABEL, TASKS_PAGE_LABEL, JOURNAL_PAGE_LABEL],
         label_visibility="collapsed",
     )
+    st.sidebar.divider()
+    return selection
 
 
-def render_gamification_panel(stats: KpiStats, *, ai_enabled: bool, client: Optional[OpenAI]) -> None:
+def render_gamification_panel(
+    stats: KpiStats, *, ai_enabled: bool, client: Optional[OpenAI], panel: Any | None = None
+) -> None:
+    panel = panel or st
     gamification_state = get_gamification_state()
     settings: dict[str, Any] = st.session_state.get(SS_SETTINGS, {})
     try:
@@ -1226,11 +1240,11 @@ def render_gamification_panel(stats: KpiStats, *, ai_enabled: bool, client: Opti
     except ValueError:
         gamification_mode = GamificationMode.POINTS
 
-    st.subheader("Gamification")
-    st.caption(gamification_mode.label)
+    panel.subheader("Gamification")
+    panel.caption(gamification_mode.label)
 
     if gamification_mode is GamificationMode.POINTS:
-        col_level, col_points = st.columns(2)
+        col_level, col_points = panel.columns(2)
         col_level.metric("Level", gamification_state.level)
         col_points.metric("Punkte / Points", gamification_state.points)
 
@@ -1239,7 +1253,7 @@ def render_gamification_panel(stats: KpiStats, *, ai_enabled: bool, client: Opti
             required_points,
             progress_ratio,
         ) = calculate_progress_to_next_level(gamification_state)
-        st.progress(
+        panel.progress(
             progress_ratio,
             text=(
                 "Fortschritt / Progress: "
@@ -1248,47 +1262,46 @@ def render_gamification_panel(stats: KpiStats, *, ai_enabled: bool, client: Opti
             ),
         )
 
-        st.caption(
+        panel.caption(
             "Aktueller Streak / Current streak: "
             f"{stats.streak} Tage / days · Erledigt gesamt / Done total: {stats.done_total}"
         )
 
     elif gamification_mode is GamificationMode.BADGES:
-        st.markdown("#### Badges")
+        panel.markdown("#### Badges")
         if gamification_state.badges:
             badge_labels = " ".join(f"🏅 {badge}" for badge in gamification_state.badges)
-            st.markdown(
+            panel.markdown(
                 f"{badge_labels}<br/>(jede Auszeichnung wird nur einmal vergeben / each badge is awarded once)",
                 unsafe_allow_html=True,
             )
         else:
-            st.caption("Noch keine Badges gesammelt / No badges earned yet. Arbeite an deinen Zielen!")
-        st.info(
+            panel.caption("Noch keine Badges gesammelt / No badges earned yet. Arbeite an deinen Zielen!")
+        panel.info(
             "Sammle Abzeichen für Meilensteine wie erste Aufgabe, 3-Tage-Streak und 10 Abschlüsse / "
             "Earn badges for milestones like your first task, a 3-day streak, and 10 completions."
         )
 
     else:
-        st.markdown("#### Dipl.-Psych. Roß")
-        st.caption(
+        panel.markdown("#### Dipl.-Psych. Roß")
+        panel.caption(
             "Avatar: brünette Therapeutin (~45 Jahre) mit Brille, warme Ansprache / "
             "Avatar: brunette therapist (~45 years) with glasses, warm encouragement."
         )
         message_index = int(st.session_state.get(AVATAR_PROMPT_INDEX_KEY, 0))
         avatar_message = next_avatar_prompt(message_index)
-        st.info(f"👩‍⚕️ Dipl.-Psych. Roß: {avatar_message}")
+        panel.info(f"👩‍⚕️ Dipl.-Psych. Roß: {avatar_message}")
 
-        if st.button("Neuen Spruch anzeigen / Show another quote", key="avatar_prompt_btn"):
+        if panel.button("Neuen Spruch anzeigen / Show another quote", key="avatar_prompt_btn"):
             st.session_state[AVATAR_PROMPT_INDEX_KEY] = message_index + 1
             st.rerun()
 
-        st.caption(
+        panel.caption(
             "Klicke erneut für weitere motivierende Botschaften im Therapiezimmer-Stil / "
             "Click again for more therapeutic, motivational messages."
         )
 
-    motivation_col, _ = st.columns([1, 1])
-    if motivation_col.button(
+    if panel.button(
         "AI: Motivation / Motivation",
         key="ai_motivation_btn",
         disabled=not ai_enabled,
@@ -1303,7 +1316,7 @@ def render_gamification_panel(stats: KpiStats, *, ai_enabled: bool, client: Opti
     motivation: AISuggestion[Any] | None = st.session_state.get(AI_MOTIVATION_KEY)
     if motivation:
         badge = "🤖" if motivation.from_ai else "💡"
-        st.success(f"{badge} {motivation.payload}")
+        panel.success(f"{badge} {motivation.payload}")
 
 
 def render_quadrant_board(
@@ -1660,6 +1673,9 @@ def main() -> None:
     todos = get_todos()
     ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
 
+    with st.sidebar.expander("Gamification", expanded=True) as gamification_panel:
+        render_gamification_panel(stats, ai_enabled=ai_enabled, client=client, panel=gamification_panel)
+
     if not client:
         st.info(
             "Kein OPENAI_API_KEY gefunden. Vorschläge nutzen Fallbacks, bis ein Key in "
@@ -1680,7 +1696,6 @@ def main() -> None:
     elif selection == TASKS_PAGE_LABEL:
         st.header("Aufgaben / Tasks")
         st.caption("Verwalte und plane deine Aufgaben. Ziele & KI konfigurierst du im Bereich 'Ziele'.")
-        render_gamification_panel(stats, ai_enabled=ai_enabled, client=client)
         render_todo_section(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
     else:
         st.header("Tagebuch / Journal")

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Gamification-Übersicht in die Sidebar verschoben (Level, Punkte, Badges, Motivation) und das Panel **Ziele & Einstellungen / Goals & settings** stärker in Spalten organisiert für AI-Toggle und Tagesziel-Buttons / Moved the gamification overview into the sidebar and expanded the Goals & settings panel with more multi-column controls for AI and daily goal actions.
 - Added daily journal tab with guided form per day (mood tags, triggers, thought challenge, self-care, gratitude suggestions) linked to categories, explicit save plus JSON/Markdown export, and schema migration tests.
 - Restructured navigation into three sidebar pages (Ziele/Goals, Aufgaben/Tasks, Tagebuch/Journal) with the goal, AI, and gamification settings consolidated on the Goals page and clearer task/journal workspaces.
 - Modernisierte UI: weite Seitenbreite mit eingeklappter Sidebar, sofort sichtbares KPI-Dashboard, neu gruppierte Sidebar-Quick-Controls sowie ein dezenter Gradient statt Hintergrundbild.

@@ -83,8 +83,8 @@ OPENAI_API_KEY = "sk-..."
 
 ## Einstellungen & Sicherheit / Settings & Safety
 
-- Die Seitenleiste dient ausschließlich der Navigation zwischen **Ziele / Goals**, **Aufgaben / Tasks** und **Tagebuch / Journal**; die App startet mit geöffneter Navigation.
-- Auf der Seite **Ziele / Goals** findest du **AI aktiv / AI enabled**, **Tagesziel / Daily goal** inklusive KI-Vorschlag und die Kategorienziele (0–20 pro Tag) in einem kompakten Panel.
+- Die Seitenleiste bündelt die Navigation zwischen **Ziele / Goals**, **Aufgaben / Tasks** und **Tagebuch / Journal** und zeigt direkt darunter das Gamification-Panel; die App startet mit geöffneter Sidebar / The sidebar hosts navigation plus the gamification section and starts expanded.
+- Auf der Seite **Ziele / Goals** findest du **AI aktiv / AI enabled**, **Tagesziel / Daily goal** inklusive KI-Vorschlag und die Kategorienziele (0–20 pro Tag) in einem kompakten, mehrspaltigen Panel.
 - AI-Zielvorschläge übernehmen den empfohlenen Wert automatisch in das Zahlenfeld (kein manuelles Nachtragen nötig) / AI goal suggestions now auto-fill the number input for convenience.
 - Der Button **Session zurücksetzen / Reset session** löscht ToDos, KPIs, Gamification und Einstellungen und stellt die Defaults wieder her.
 - Hinweisboxen informieren über den aktuell genutzten Speicherort (OneDrive, lokale Datei oder flüchtiger Cloud-Speicher); das Tool ist nicht als Krisen- oder Diagnoseinstrument gedacht.
@@ -130,7 +130,7 @@ OPENAI_API_KEY = "sk-..."
   - **Double Digits / Zweistellig** – 10 erledigte Tasks insgesamt.
 - Anti-Doppelzählung: Abschlüsse werden als Events protokolliert, sodass Punkte und Badges auch nach einem Reload nicht mehrfach vergeben werden.
 - Abschluss-Events werden zusätzlich als Verlaufseinträge mit Token gespeichert, um Wiederholungen durch doppelte Toggles oder Neustarts zu verhindern / Completion events are stored with tokens in the history to avoid repeated rewards after reloads.
-- Drop-down für Gamification-Modus (Punkte, Abzeichen oder neuer Avatar **Dipl.-Psych. Roß** mit motivierenden Sprüchen; brünette Therapeutin ca. 45 Jahre mit Brille), auswählbar in der Seitenleiste.
+- Drop-down für Gamification-Modus (Punkte, Abzeichen oder neuer Avatar **Dipl.-Psych. Roß** mit motivierenden Sprüchen; brünette Therapeutin ca. 45 Jahre mit Brille) auf der Seite **Ziele / Goals**; Fortschritt, Level und Motivation erscheinen im Gamification-Panel der Sidebar.
 
 ## KI-Features / AI features
 
