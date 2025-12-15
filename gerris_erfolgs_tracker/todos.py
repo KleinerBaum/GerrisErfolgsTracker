@@ -4,7 +4,14 @@ from datetime import date, datetime, time, timezone
 from typing import Final, Literal, Optional
 
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, ensure_quadrant
-from gerris_erfolgs_tracker.models import Category, KanbanCard, TodoItem, TodoKanban
+from gerris_erfolgs_tracker.models import (
+    Category,
+    EmailReminderOffset,
+    KanbanCard,
+    RecurrencePattern,
+    TodoItem,
+    TodoKanban,
+)
 from gerris_erfolgs_tracker.state import get_todos, save_todos
 
 
@@ -73,6 +80,8 @@ def add_todo(
     progress_unit: str = "",
     auto_done_when_target_reached: Optional[bool] = None,
     completion_criteria_md: str = "",
+    recurrence: RecurrencePattern = RecurrencePattern.ONCE,
+    email_reminder: EmailReminderOffset = EmailReminderOffset.NONE,
 ) -> TodoItem:
     todos: list[TodoItem] = get_todos()
     todo = TodoItem(
@@ -91,6 +100,8 @@ def add_todo(
             else progress_target is not None
         ),
         completion_criteria_md=completion_criteria_md,
+        recurrence=recurrence,
+        email_reminder=email_reminder,
     )
     todos.append(todo)
     index = len(todos) - 1
@@ -143,6 +154,8 @@ def update_todo(
     progress_unit: Optional[str] = None,
     auto_done_when_target_reached: Optional[bool] = None,
     completion_criteria_md: Optional[str] = None,
+    recurrence: Optional[RecurrencePattern] = None,
+    email_reminder: Optional[EmailReminderOffset] = None,
 ) -> Optional[TodoItem]:
     todos: list[TodoItem] = get_todos()
     updated: Optional[TodoItem] = None
@@ -175,6 +188,10 @@ def update_todo(
             updates["auto_done_when_target_reached"] = bool(auto_done_when_target_reached)
         if completion_criteria_md is not None:
             updates["completion_criteria_md"] = completion_criteria_md
+        if recurrence is not None:
+            updates["recurrence"] = recurrence
+        if email_reminder is not None:
+            updates["email_reminder"] = email_reminder
 
         todos[index] = todo.model_copy(update=updates)
         updated = _apply_auto_completion_if_ready(todos, index, previous_completed=todo.completed)
@@ -196,6 +213,8 @@ def duplicate_todo(todo_id: str) -> Optional[TodoItem]:
             category=todo.category,
             priority=todo.priority,
             description_md=todo.description_md,
+            recurrence=todo.recurrence,
+            email_reminder=todo.email_reminder,
         )
 
     return None

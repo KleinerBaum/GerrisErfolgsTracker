@@ -14,7 +14,15 @@ from gerris_erfolgs_tracker.constants import (
     SS_STATS,
     SS_TODOS,
 )
-from gerris_erfolgs_tracker.models import Category, GamificationState, KpiStats, TodoItem, TodoKanban
+from gerris_erfolgs_tracker.models import (
+    Category,
+    EmailReminderOffset,
+    GamificationState,
+    KpiStats,
+    RecurrencePattern,
+    TodoItem,
+    TodoKanban,
+)
 from gerris_erfolgs_tracker.storage import StorageBackend
 
 
@@ -61,6 +69,8 @@ def _coerce_todo(raw: Any) -> TodoItem:
         migrated.setdefault("processed_progress_events", [])
         kanban_default_factory = cast(Callable[[], object] | None, TodoItem.model_fields["kanban"].default_factory)
         migrated.setdefault("kanban", (kanban_default_factory or TodoKanban)())
+        migrated.setdefault("recurrence", RecurrencePattern.ONCE)
+        migrated.setdefault("email_reminder", EmailReminderOffset.NONE)
         todo = TodoItem.model_validate(migrated)
         return todo.model_copy(update={"kanban": todo.kanban.ensure_default_columns()})
 

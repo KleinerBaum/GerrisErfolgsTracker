@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from gerris_erfolgs_tracker.constants import SS_TODOS
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
-from gerris_erfolgs_tracker.models import Category, TodoItem
+from gerris_erfolgs_tracker.models import Category, EmailReminderOffset, RecurrencePattern, TodoItem
 from gerris_erfolgs_tracker.state import get_todos, init_state
 
 
@@ -18,6 +18,8 @@ def test_todo_item_defaults() -> None:
     assert todo.auto_done_when_target_reached is True
     assert todo.completion_criteria_md == ""
     assert todo.processed_progress_events == []
+    assert todo.recurrence is RecurrencePattern.ONCE
+    assert todo.email_reminder is EmailReminderOffset.NONE
 
 
 def test_legacy_todo_migration(session_state: dict[str, object]) -> None:
@@ -49,3 +51,5 @@ def test_legacy_todo_migration(session_state: dict[str, object]) -> None:
     assert stored["auto_done_when_target_reached"] is False
     assert stored["completion_criteria_md"] == ""
     assert stored["processed_progress_events"] == []
+    assert stored["recurrence"] == RecurrencePattern.ONCE
+    assert stored["email_reminder"] == EmailReminderOffset.NONE
