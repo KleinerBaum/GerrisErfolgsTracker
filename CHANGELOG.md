@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Markiert den aktuellen Tag im Date-Picker und in der Kalenderansicht durch klaren Rahmen und sanft helleren Hintergrund, der im Dark Theme gut lesbar bleibt.
 - Fixed a `StreamlitDuplicateElementKey` crash by assigning a context-specific key to the "AI: Motivation" button in the gamification panel (e.g., sidebar usage).
 - Added a sidebar language toggle (Deutsch/English) that renders the UI in a single language instead of mixed bilingual labels.
 - Gamification-Übersicht in die Sidebar verschoben (Level, Punkte, Badges, Motivation) und das Panel **Ziele & Einstellungen / Goals & settings** stärker in Spalten organisiert für AI-Toggle und Tagesziel-Buttons / Moved the gamification overview into the sidebar and expanded the Goals & settings panel with more multi-column controls for AI and daily goal actions.
