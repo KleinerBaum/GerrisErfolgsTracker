@@ -45,11 +45,21 @@ class _ColumnStub:
         return self._plan.pop(key)
 
 
-class _SidebarStub:
+class _PanelStub:
     def __init__(self, session_state: Dict[str, object], plan: _ButtonPlan) -> None:
         self.session_state = session_state
         self._plan = plan
         self.number_input_value: Optional[int] = None
+        self.number_inputs: Dict[str, int] = {}
+
+    def __enter__(self) -> "_PanelStub":
+        return self
+
+    def __exit__(self, *_: Any) -> None:  # noqa: ANN401
+        return None
+
+    def expander(self, *_: Any, **__: Any) -> "_PanelStub":
+        return self
 
     def header(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
         """No-op header stub."""
@@ -62,6 +72,7 @@ class _SidebarStub:
 
     def number_input(self, *_: Any, value: int, key: str, **__: Any) -> int:  # noqa: ANN401
         self.number_input_value = value
+        self.number_inputs[key] = value
         self.session_state[key] = value
         return value
 
@@ -102,7 +113,7 @@ class _SidebarStub:
 class _StreamlitStub:
     def __init__(self, session_state: Dict[str, object], plan: _ButtonPlan) -> None:
         self.session_state = session_state
-        self.sidebar = _SidebarStub(session_state, plan)
+        self._plan = plan
 
     def rerun(self) -> None:
         raise RerunSentinel()
@@ -131,22 +142,23 @@ def test_goal_suggestion_sets_widget_value(session_state: Dict[str, object], mon
 
     plan = _ButtonPlan(responses={"settings_ai_goal": [True, False]})
     st_stub = _StreamlitStub(session_state, plan)
+    panel_stub = _PanelStub(session_state, plan)
 
     monkeypatch.setattr("app.st", st_stub)
     monkeypatch.setattr("app.suggest_goals", lambda *_, **__: suggestion)
 
     with pytest.raises(RerunSentinel):
-        render_settings_panel(stats, client=None)
+        render_settings_panel(stats, client=None, panel=panel_stub)
 
     assert session_state[AI_GOAL_SUGGESTION_KEY] is suggestion
     assert session_state[GOAL_SUGGESTED_VALUE_KEY] == suggestion.payload.daily_goal
 
-    st_stub.sidebar.number_input_value = None
-    ai_enabled = render_settings_panel(stats, client=None)
+    panel_stub.number_input_value = None
+    ai_enabled = render_settings_panel(stats, client=None, panel=panel_stub)
 
     assert ai_enabled is True
     assert session_state["settings_goal_daily"] == suggestion.payload.daily_goal
-    assert st_stub.sidebar.number_input_value == suggestion.payload.daily_goal
+    assert panel_stub.number_inputs["settings_goal_daily"] == suggestion.payload.daily_goal
 
 
 def test_resolve_goal_value_prefers_suggestion(session_state: Dict[str, object]) -> None:

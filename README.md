@@ -83,15 +83,10 @@ OPENAI_API_KEY = "sk-..."
 
 ## Einstellungen & Sicherheit / Settings & Safety
 
-- Seitenleiste mit **AI aktiv / AI enabled** sowie **Tagesziel / Daily goal** inklusive KI-Vorschlag.
-- Seitenleiste startet standardmäßig eingeklappt, Quick Controls (AI-Toggle & Tagesziel) bleiben sofort sichtbar / Sidebar starts collapsed by default while keeping quick controls (AI toggle & daily goal) accessible.
-- AI-Zielvorschläge übernehmen den empfohlenen Wert automatisch in das Zahlenfeld (kein manuelles Nachtragen nötig) / AI goal
-  suggestions now auto-fill the number input for convenience.
-- Kategorienziele pro Lebensbereich (z. B. Stellensuche, Admin) lassen sich in der Seitenleiste zwischen 0 und 20 Abschlüssen
-  pro Tag einstellen und aktualisieren die Fortschrittskarten sofort / Per-category daily goals (0–20) live-update the dashboard
-  cards.
-- Button **Session zurücksetzen / Reset session** löscht ToDos, KPIs, Gamification und Einstellungen und stellt die Defaults wieder
-  her.
+- Die Seitenleiste dient ausschließlich der Navigation zwischen **Ziele / Goals**, **Aufgaben / Tasks** und **Tagebuch / Journal**; die App startet mit geöffneter Navigation.
+- Auf der Seite **Ziele / Goals** findest du **AI aktiv / AI enabled**, **Tagesziel / Daily goal** inklusive KI-Vorschlag und die Kategorienziele (0–20 pro Tag) in einem kompakten Panel.
+- AI-Zielvorschläge übernehmen den empfohlenen Wert automatisch in das Zahlenfeld (kein manuelles Nachtragen nötig) / AI goal suggestions now auto-fill the number input for convenience.
+- Der Button **Session zurücksetzen / Reset session** löscht ToDos, KPIs, Gamification und Einstellungen und stellt die Defaults wieder her.
 - Hinweisboxen informieren über den aktuell genutzten Speicherort (OneDrive, lokale Datei oder flüchtiger Cloud-Speicher); das Tool ist nicht als Krisen- oder Diagnoseinstrument gedacht.
 
 ## ToDo-Verwaltung
@@ -104,7 +99,7 @@ OPENAI_API_KEY = "sk-..."
 
 ## Tagebuch / Daily journal
 
-- Neues Top-Level-Tab **Tagebuch / Journal** mit geführtem Formular pro Kalendertag. Der Button **Tagebucheintrag erstellen / Create journal entry** lädt bestehende Entwürfe oder öffnet ein leeres Formular für heute.
+- Neuer Bereich **Tagebuch / Journal** über die Sidebar-Navigation mit geführtem Formular pro Kalendertag. Der Button **Tagebucheintrag erstellen / Create journal entry** lädt bestehende Entwürfe oder öffnet ein leeres Formular für heute.
 - Formularfelder mit Platzhaltern und Autosuggest: Stimmungstags (bearbeitbar) plus Freitext, Auslöser & Reaktionen, Gedanken-Challenge (automatischer Gedanke + Reframe), Selbstfürsorge (heute/morgen) sowie drei Dankbarkeitsfelder mit Vorschlägen aus bisherigen Einträgen. Kategorien lassen sich per Multi-Select (Suchleiste) an vorhandene Lebensbereiche koppeln.
 - Speichern erfolgt explizit über **Eintrag speichern / Save entry** (kein Auto-Save pro Tastendruck). Bestehende Entwürfe werden geladen und können überschrieben werden.
 - Export/Backup: Buttons für **JSON** (Rohdaten) und **Markdown** (lesbare Chronik) ohne Zusatzabhängigkeiten.
