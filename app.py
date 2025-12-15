@@ -693,19 +693,20 @@ def _resolve_goal_input_value(settings: dict[str, Any], stats: KpiStats) -> int:
     return resolved_goal
 
 
-def _sidebar_section(label: str) -> Any:
-    expander = getattr(st.sidebar, "expander", None)
+def _panel_section(panel: Any, label: str) -> Any:
+    expander = getattr(panel, "expander", None)
     if callable(expander):
         return expander(label)
     return nullcontext()
 
 
-def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
-    st.sidebar.header("Einstellungen / Settings")
+def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: Any | None = None) -> bool:
+    panel = panel or st
+    panel.header("Ziele & Einstellungen / Goals & settings")
 
     settings = _ensure_settings_defaults(client=client, stats=stats)
-    st.sidebar.markdown("### Schnellzugriff / Quick controls")
-    ai_enabled = st.sidebar.toggle(
+    panel.markdown("### Schnellzugriff / Quick controls")
+    ai_enabled = panel.toggle(
         "AI aktiv / AI enabled",
         key=AI_ENABLED_KEY,
         value=bool(settings.get(AI_ENABLED_KEY, bool(client))),
@@ -716,9 +717,9 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
     )
     settings[AI_ENABLED_KEY] = ai_enabled
 
-    st.sidebar.markdown("### Tagesziel / Daily goal")
+    panel.markdown("### Tagesziel / Daily goal")
     goal_input_value = _resolve_goal_input_value(settings=settings, stats=stats)
-    goal_value = st.sidebar.number_input(
+    goal_value = panel.number_input(
         "Ziel pro Tag / Target per day",
         min_value=1,
         step=1,
@@ -728,11 +729,11 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
     )
     settings["goal_daily"] = int(goal_value)
 
-    goal_action_cols = st.sidebar.columns(2)
+    goal_action_cols = panel.columns(2)
     with goal_action_cols[0]:
         if goal_action_cols[0].button("Ziel speichern / Save goal", key="settings_save_goal"):
             update_goal_daily(int(goal_value))
-            st.sidebar.success("Tagesziel aktualisiert / Daily goal updated.")
+            panel.success("Tagesziel aktualisiert / Daily goal updated.")
             st.rerun()
 
     with goal_action_cols[1]:
@@ -754,16 +755,16 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
     if goal_suggestion:
         badge = "🤖" if goal_suggestion.from_ai else "🧭"
         tips = " · ".join(goal_suggestion.payload.tips)
-        st.sidebar.info(
+        panel.info(
             f"{badge} {goal_suggestion.payload.focus} — {goal_suggestion.payload.daily_goal} Ziele / goals. {tips}"
         )
 
-    with _sidebar_section("Kategorienziele / Category goals"):
+    with _panel_section(panel, "Kategorienziele / Category goals"):
         category_goals = settings.get("category_goals", {})
-        goal_columns = st.sidebar.columns(2)
+        goal_columns = panel.columns(2)
         for index, category in enumerate(Category):
             with goal_columns[index % 2]:
-                goal_value = st.number_input(
+                goal_value = panel.number_input(
                     f"{category.label}",
                     min_value=0,
                     max_value=20,
@@ -777,8 +778,8 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
         settings["category_goals"] = _sanitize_category_goals(settings)
         settings["category_goals"].update(category_goals)
 
-    st.sidebar.divider()
-    with _sidebar_section("Gamification-Stil / Gamification style"):
+    panel.divider()
+    with _panel_section(panel, "Gamification-Stil / Gamification style"):
         gamification_mode_options = list(GamificationMode)
         current_mode_value = settings.get("gamification_mode", GamificationMode.POINTS.value)
         try:
@@ -786,7 +787,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
         except ValueError:
             current_mode = GamificationMode.POINTS
 
-        selected_mode = st.sidebar.selectbox(
+        selected_mode = panel.selectbox(
             "Gamification-Variante / Gamification mode",
             options=gamification_mode_options,
             format_func=lambda option: option.label,
@@ -798,26 +799,26 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
         )
         settings["gamification_mode"] = selected_mode.value
 
-        st.sidebar.caption(
+        panel.caption(
             "Dipl.-Psych. Roß steht für warme, therapeutische Motivation (Brünette, ca. 45 Jahre, Brille) / "
             "Dipl.-Psych. Roß offers warm, therapeutic motivation (brunette, about 45 years old, with glasses)."
         )
 
-    st.sidebar.divider()
-    with _sidebar_section("Sicherheit & Daten / Safety & data"):
-        st.sidebar.info(
+    panel.divider()
+    with _panel_section(panel, "Sicherheit & Daten / Safety & data"):
+        panel.info(
             "Optionale lokale Persistenz speichert Daten in .data/gerris_state.json; "
             "auf Streamlit Community Cloud können Dateien nach einem Neustart verschwinden. / "
             "Optional local persistence writes to .data/gerris_state.json; on Streamlit Community Cloud "
             "files may reset after a restart."
         )
-        st.sidebar.warning(
+        panel.warning(
             "Dieses Tool ersetzt keine Krisenhilfe oder Diagnosen / This tool is not "
             "a crisis or diagnostic service. Bei akuten Notfällen wende dich an lokale "
             "Hotlines / In emergencies, contact local hotlines."
         )
 
-        if st.sidebar.button(
+        if panel.button(
             "Session zurücksetzen / Reset session",
             key="reset_session_btn",
             help=(
@@ -838,7 +839,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI]) -> bool:
             ):
                 st.session_state.pop(cleanup_key, None)
             reset_state()
-            st.sidebar.success("Session zurückgesetzt / Session reset.")
+            panel.success("Session zurückgesetzt / Session reset.")
             st.rerun()
 
     st.session_state[SS_SETTINGS] = settings
@@ -1191,8 +1192,22 @@ def render_kpi_dashboard(stats: KpiStats) -> None:
     )
 
     st.info(
-        "Passe das Tagesziel und die KI-Einstellungen im Seitenbereich an / "
-        "Adjust the daily goal and AI settings in the sidebar."
+        "Passe Tagesziel, Kategorien und KI-Optionen im Bereich 'Ziele' an / "
+        "Adjust the daily goal, categories, and AI options inside the 'Goals' view."
+    )
+
+
+GOALS_PAGE_LABEL = "Ziele / Goals"
+TASKS_PAGE_LABEL = "Aufgaben / Tasks"
+JOURNAL_PAGE_LABEL = "Tagebuch / Journal"
+
+
+def render_navigation() -> str:
+    st.sidebar.title("Navigation")
+    return st.sidebar.radio(
+        "Bereich wählen / Choose a page",
+        [GOALS_PAGE_LABEL, TASKS_PAGE_LABEL, JOURNAL_PAGE_LABEL],
+        label_visibility="collapsed",
     )
 
 
@@ -1621,7 +1636,7 @@ def main() -> None:
         page_title="Gerris ErfolgsTracker",
         page_icon="✅",
         layout="wide",
-        initial_sidebar_state="collapsed",
+        initial_sidebar_state="expanded",
     )
     _inject_dark_theme_styles()
     storage_backend = _bootstrap_storage()
@@ -1630,18 +1645,14 @@ def main() -> None:
 
     client = get_openai_client()
     stats = get_kpi_stats()
-    ai_enabled = render_settings_panel(stats, client)
+    settings = _ensure_settings_defaults(client=client, stats=stats)
+    selection = render_navigation()
 
     st.title("Gerris ErfolgsTracker")
     _render_storage_notice(storage_backend, is_cloud=is_cloud)
-    render_kpi_dashboard(stats)
     todos = get_todos()
-    settings = st.session_state.get(SS_SETTINGS, {})
-    render_category_dashboard(
-        todos,
-        stats=stats,
-        category_goals=_sanitize_category_goals(settings),
-    )
+    ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
+
     if not client:
         st.info(
             "Kein OPENAI_API_KEY gefunden. Vorschläge nutzen Fallbacks, bis ein Key in "
@@ -1650,14 +1661,23 @@ def main() -> None:
     else:
         st.caption(f"Aktives Modell: {get_default_model()} (konfigurierbar via OPENAI_MODEL).")
 
-    st.header("Arbeitsbereich / Workspace")
-    tasks_tab, journal_tab = st.tabs(["ToDos", "Tagebuch"])
-
-    with tasks_tab:
-        st.header("ToDos / Tasks")
+    if selection == GOALS_PAGE_LABEL:
+        settings_container = st.container()
+        ai_enabled = render_settings_panel(stats, client, panel=settings_container)
+        render_kpi_dashboard(stats)
+        render_category_dashboard(
+            todos,
+            stats=stats,
+            category_goals=_sanitize_category_goals(st.session_state.get(SS_SETTINGS, {})),
+        )
+    elif selection == TASKS_PAGE_LABEL:
+        st.header("Aufgaben / Tasks")
+        st.caption("Verwalte und plane deine Aufgaben. Ziele & KI konfigurierst du im Bereich 'Ziele'.")
+        render_gamification_panel(stats, ai_enabled=ai_enabled, client=client)
         render_todo_section(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
-
-    with journal_tab:
+    else:
+        st.header("Tagebuch / Journal")
+        st.caption("Dokumentiere deinen Alltag und verknüpfe Einträge mit Kategorien und Zielen.")
         render_journal_section()
 
 
