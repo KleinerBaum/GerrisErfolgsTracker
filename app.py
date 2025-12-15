@@ -111,6 +111,14 @@ from gerris_erfolgs_tracker.todos import (
 localize_streamlit()
 
 
+def quadrant_badge(quadrant: EisenhowerQuadrant, *, include_full_label: bool = False) -> str:
+    label = translate_text((quadrant.short_label, quadrant.short_label))
+    if include_full_label:
+        full_label = translate_text(quadrant.label)
+        label = f"{label} — {full_label}"
+    return f"<span style='color:{quadrant.color_hex}; font-weight:600'>{label}</span>"
+
+
 def _inject_dark_theme_styles() -> None:
     st.markdown(
         """
@@ -485,7 +493,10 @@ def render_task_row(todo: TodoItem) -> None:
                 st.caption("Kein Fälligkeitsdatum / No due date")
 
         with row_columns[4]:
-            st.caption(f"Quadrant: {todo.quadrant.short_label}")
+            st.caption(
+                f"Quadrant: {quadrant_badge(todo.quadrant)}",
+                unsafe_allow_html=True,
+            )
 
         with st.expander("Details"):
             st.caption(f"Kategorie / Category: {todo.category.label}")
@@ -1411,7 +1422,10 @@ def render_quadrant_board(
     todos: list[TodoItem],
 ) -> None:
     with container:
-        st.markdown(f"### {quadrant.label}")
+        st.markdown(
+            f"### {quadrant_badge(quadrant, include_full_label=True)}",
+            unsafe_allow_html=True,
+        )
         if not todos:
             st.caption("Keine Aufgaben in diesem Quadranten / No tasks in this quadrant.")
             return
@@ -1424,14 +1438,15 @@ def render_todo_card(todo: TodoItem) -> None:
     with st.container(border=True):
         status = ("Erledigt", "Done") if todo.completed else ("Offen", "Open")
         due_text = todo.due_date.date().isoformat() if todo.due_date is not None else "—"
-        quadrant_label = translate_text(todo.quadrant.label)
+        quadrant_label = quadrant_badge(todo.quadrant, include_full_label=True)
         category_label = translate_text(todo.category.label)
         st.markdown(f"**{todo.title}**")
         st.caption(
             (
                 f"Fällig: {due_text} · Quadrant: {quadrant_label} · Status: {status[0]}",
                 f"Due: {due_text} · Quadrant: {quadrant_label} · Status: {status[1]}",
-            )
+            ),
+            unsafe_allow_html=True,
         )
         st.caption(
             (
