@@ -84,6 +84,7 @@ OPENAI_API_KEY = "sk-..."
 ## Einstellungen & Sicherheit / Settings & Safety
 
 - Die Seitenleiste bündelt die Navigation zwischen **Ziele / Goals**, **Aufgaben / Tasks** und **Tagebuch / Journal** und zeigt direkt darunter das Gamification-Panel; die App startet mit geöffneter Sidebar / The sidebar hosts navigation plus the gamification section and starts expanded.
+- Über einen Sprachumschalter **Deutsch / English** in der Sidebar lässt sich die gesamte UI einsprachig darstellen / A sidebar language toggle (**Deutsch / English**) renders the whole UI in the selected language without bilingual labels.
 - Auf der Seite **Ziele / Goals** findest du **AI aktiv / AI enabled**, **Tagesziel / Daily goal** inklusive KI-Vorschlag und die Kategorienziele (0–20 pro Tag) in einem kompakten, mehrspaltigen Panel.
 - AI-Zielvorschläge übernehmen den empfohlenen Wert automatisch in das Zahlenfeld (kein manuelles Nachtragen nötig) / AI goal suggestions now auto-fill the number input for convenience.
 - Der Button **Session zurücksetzen / Reset session** löscht ToDos, KPIs, Gamification und Einstellungen und stellt die Defaults wieder her.
