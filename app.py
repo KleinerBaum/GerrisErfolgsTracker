@@ -1054,11 +1054,13 @@ def render_todo_section(
     st.session_state.setdefault(NEW_TODO_ENABLE_TARGET_KEY, False)
 
     with st.form("add_todo_form", clear_on_submit=False):
-        title = st.text_input(
-            "Titel / Title",
-            key=NEW_TODO_TITLE_KEY,
-            placeholder="Nächstes ToDo eingeben / Enter next task",
-        )
+        title_col, _ = st.columns([1, 1])
+        with title_col:
+            title = st.text_input(
+                "Titel / Title",
+                key=NEW_TODO_TITLE_KEY,
+                placeholder="Nächstes ToDo eingeben / Enter next task",
+            )
         col_left, col_right = st.columns(2)
         with col_left:
             due_date: Optional[date] = st.date_input(
@@ -1090,19 +1092,23 @@ def render_todo_section(
                 key=NEW_TODO_PRIORITY_KEY,
             )
 
-        description_tabs = st.tabs(["Schreiben / Write", "Vorschau / Preview"])
-        with description_tabs[0]:
-            description_md = st.text_area(
-                "Beschreibung (Markdown) / Description (markdown)",
-                key=NEW_TODO_DESCRIPTION_KEY,
-                placeholder=("Optional: Details, Checkliste oder Kontext / Optional: details, checklist, or context"),
-            )
-        with description_tabs[1]:
-            preview_text = st.session_state.get(NEW_TODO_DESCRIPTION_KEY, "")
-            if preview_text.strip():
-                st.markdown(preview_text)
-            else:
-                st.caption("Keine Beschreibung vorhanden / No description yet.")
+        description_col, _ = st.columns([1, 1])
+        with description_col:
+            description_tabs = st.tabs(["Schreiben / Write", "Vorschau / Preview"])
+            with description_tabs[0]:
+                description_md = st.text_area(
+                    "Beschreibung (Markdown) / Description (markdown)",
+                    key=NEW_TODO_DESCRIPTION_KEY,
+                    placeholder=(
+                        "Optional: Details, Checkliste oder Kontext / Optional: details, checklist, or context"
+                    ),
+                )
+            with description_tabs[1]:
+                preview_text = st.session_state.get(NEW_TODO_DESCRIPTION_KEY, "")
+                if preview_text.strip():
+                    st.markdown(preview_text)
+                else:
+                    st.caption("Keine Beschreibung vorhanden / No description yet.")
 
         with st.expander("Fortschrittsregel (optional) / Progress rule (optional)"):
             enable_target: bool = st.checkbox(

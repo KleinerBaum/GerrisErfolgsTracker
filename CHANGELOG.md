@@ -2,6 +2,7 @@
 
 ## Unreleased
 - Markiert den aktuellen Tag im Date-Picker und in der Kalenderansicht durch klaren Rahmen und sanft helleren Hintergrund, der im Dark Theme gut lesbar bleibt.
+- Begrenzte die Titel- und Beschreibungsfelder im Formular **ToDo hinzufügen / Add task** auf ca. 50 % Breite für eine kompaktere Desktop-Ansicht, während Mobilgeräte weiter sauber stapeln / Limited the **Add task** title and description inputs to ~50% width on desktop for a tidier layout while keeping mobile stacking intact.
 - Fixed a `StreamlitDuplicateElementKey` crash by assigning a context-specific key to the "AI: Motivation" button in the gamification panel (e.g., sidebar usage).
 - Added a sidebar language toggle (Deutsch/English) that renders the UI in a single language instead of mixed bilingual labels.
 - Harmonized Eisenhower-Quadranten mit neuen Labels (U+I, I+nU, nI+U, nI+nU) und eindeutigen Farben für Board-Spalten, Listen-Badges und Detail-Ansichten / Harmonized Eisenhower quadrants with new labels (U+I, I+nU, nI+U, nI+nU) and distinct colors across board columns, list badges, and detail views.
