@@ -77,6 +77,14 @@ from gerris_erfolgs_tracker.journal import (
     journal_gratitude_suggestions,
     upsert_journal_entry,
 )
+from gerris_erfolgs_tracker.i18n import (
+    LANGUAGE_OPTIONS,
+    LanguageCode,
+    get_language,
+    localize_streamlit,
+    set_language,
+    translate_text,
+)
 from gerris_erfolgs_tracker.llm import get_default_model, get_openai_client
 from gerris_erfolgs_tracker.models import Category, GamificationMode, JournalEntry, KpiStats, TodoItem
 from gerris_erfolgs_tracker.state import (
@@ -97,6 +105,9 @@ from gerris_erfolgs_tracker.todos import (
     toggle_complete,
     update_todo,
 )
+
+
+localize_streamlit()
 
 
 def _inject_dark_theme_styles() -> None:
@@ -257,9 +268,7 @@ def _prefill_journal_form(entry: JournalEntry) -> None:
 
 
 def _journal_json_export(entries: Mapping[date, JournalEntry]) -> str:
-    payload = {
-        entry_date.isoformat(): entry.model_dump(mode="json") for entry_date, entry in entries.items()
-    }
+    payload = {entry_date.isoformat(): entry.model_dump(mode="json") for entry_date, entry in entries.items()}
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
@@ -471,14 +480,19 @@ def render_task_row(todo: TodoItem) -> None:
                     text=f"{todo.progress_current:.2f} / {todo.progress_target:.2f} {todo.progress_unit}",
                 )
                 st.caption(
-                    "Automatisch abschließen: " + ("Ja / Yes" if todo.auto_done_when_target_reached else "Nein / No")
+                    (
+                        f"Automatisch abschließen: {'Ja' if todo.auto_done_when_target_reached else 'Nein'}",
+                        f"Auto-complete when target reached: {'Yes' if todo.auto_done_when_target_reached else 'No'}",
+                    )
                 )
                 if todo.completion_criteria_md.strip():
                     st.markdown(todo.completion_criteria_md)
             else:
                 st.caption(
-                    "Kein Ziel hinterlegt / No target configured. Aktueller Stand: "
-                    f"{todo.progress_current:.2f} {todo.progress_unit}"
+                    (
+                        f"Kein Ziel hinterlegt. Aktueller Stand: {todo.progress_current:.2f} {todo.progress_unit}",
+                        f"No target configured. Current progress: {todo.progress_current:.2f} {todo.progress_unit}",
+                    )
                 )
 
             with st.form(f"quick_edit_{todo.id}"):
@@ -1191,9 +1205,14 @@ def render_kpi_dashboard(stats: KpiStats) -> None:
 
     col_total.metric("Erledigt gesamt / Done total", stats.done_total)
     col_today.metric("Heute erledigt / Done today", stats.done_today)
-    col_streak.metric("Kontinuität / Streak", f"{stats.streak} Tage / days")
+    col_streak.metric(
+        "Kontinuität / Streak",
+        translate_text((f"{stats.streak} Tage", f"{stats.streak} days")),
+    )
 
-    goal_delta = "🎯 Ziel erreicht / Goal achieved" if stats.goal_hit_today else "Noch nicht erreicht / Not reached yet"
+    goal_delta = translate_text(("🎯 Ziel erreicht", "🎯 Goal achieved"))
+    if not stats.goal_hit_today:
+        goal_delta = translate_text(("Noch nicht erreicht", "Not reached yet"))
     col_goal.metric(
         "Zielerreichung / Goal progress",
         f"{stats.done_today}/{stats.goal_daily}",
@@ -1218,6 +1237,24 @@ def render_kpi_dashboard(stats: KpiStats) -> None:
 GOALS_PAGE_LABEL = "Ziele / Goals"
 TASKS_PAGE_LABEL = "Aufgaben / Tasks"
 JOURNAL_PAGE_LABEL = "Tagebuch / Journal"
+
+
+def render_language_toggle() -> LanguageCode:
+    current_language = get_language()
+    language_labels = list(LANGUAGE_OPTIONS.keys())
+    selected_label = st.sidebar.radio(
+        translate_text("Sprache / Language"),
+        options=language_labels,
+        index=list(LANGUAGE_OPTIONS.values()).index(current_language),
+    )
+    chosen_language = LANGUAGE_OPTIONS[selected_label]
+
+    if chosen_language != current_language:
+        set_language(chosen_language)
+        st.rerun()
+
+    st.sidebar.divider()
+    return chosen_language
 
 
 def render_navigation() -> str:
@@ -1258,15 +1295,16 @@ def render_gamification_panel(
         panel.progress(
             progress_ratio,
             text=(
-                "Fortschritt / Progress: "
-                f"{progress_points}/{required_points} Punkte bis Level {gamification_state.level + 1} "
-                "/ points to next level"
+                f"Fortschritt: {progress_points}/{required_points} Punkte bis Level {gamification_state.level + 1}",
+                f"Progress: {progress_points}/{required_points} points to reach level {gamification_state.level + 1}",
             ),
         )
 
         panel.caption(
-            "Aktueller Streak / Current streak: "
-            f"{stats.streak} Tage / days · Erledigt gesamt / Done total: {stats.done_total}"
+            (
+                f"Aktueller Streak: {stats.streak} Tage · Erledigt gesamt: {stats.done_total}",
+                f"Current streak: {stats.streak} days · Done total: {stats.done_total}",
+            )
         )
 
     elif gamification_mode is GamificationMode.BADGES:
@@ -1338,11 +1376,23 @@ def render_quadrant_board(
 
 def render_todo_card(todo: TodoItem) -> None:
     with st.container(border=True):
-        status = "Erledigt / Done" if todo.completed else "Offen / Open"
+        status = ("Erledigt", "Done") if todo.completed else ("Offen", "Open")
         due_text = todo.due_date.date().isoformat() if todo.due_date is not None else "—"
+        quadrant_label = translate_text(todo.quadrant.label)
+        category_label = translate_text(todo.category.label)
         st.markdown(f"**{todo.title}**")
-        st.caption(f"Fällig / Due: {due_text} · Quadrant: {todo.quadrant.label} · Status: {status}")
-        st.caption(f"Kategorie / Category: {todo.category.label} · Priorität / Priority: {todo.priority}")
+        st.caption(
+            (
+                f"Fällig: {due_text} · Quadrant: {quadrant_label} · Status: {status[0]}",
+                f"Due: {due_text} · Quadrant: {quadrant_label} · Status: {status[1]}",
+            )
+        )
+        st.caption(
+            (
+                f"Kategorie: {category_label} · Priorität: {todo.priority}",
+                f"Category: {category_label} · Priority: {todo.priority}",
+            )
+        )
         if todo.description_md:
             st.markdown(todo.description_md)
 
@@ -1592,7 +1642,7 @@ def render_journal_section() -> None:
                 placeholder="z. B. Pausen blocken, früher ins Bett / e.g., block breaks, go to bed earlier",
             )
 
-        st.markdown("### Lichtblicke / Dankbarkeit / Gratitude")
+        st.markdown(("### Lichtblicke & Dankbarkeit", "### Highlights & gratitude"))
         gratitude_inputs: list[str] = []
         for index, field_name in enumerate(["gratitude_1", "gratitude_2", "gratitude_3"], start=1):
             gratitude_value = st.text_input(
@@ -1668,6 +1718,7 @@ def main() -> None:
     client = get_openai_client()
     stats = get_kpi_stats()
     settings = _ensure_settings_defaults(client=client, stats=stats)
+    render_language_toggle()
     selection = render_navigation()
 
     st.title("Gerris ErfolgsTracker")
@@ -1686,7 +1737,7 @@ def main() -> None:
     else:
         st.caption(f"Aktives Modell: {get_default_model()} (konfigurierbar via OPENAI_MODEL).")
 
-    if selection == GOALS_PAGE_LABEL:
+    if selection == translate_text(GOALS_PAGE_LABEL):
         settings_container = st.container()
         ai_enabled = render_settings_panel(stats, client, panel=settings_container)
         render_kpi_dashboard(stats)
@@ -1695,7 +1746,7 @@ def main() -> None:
             stats=stats,
             category_goals=_sanitize_category_goals(st.session_state.get(SS_SETTINGS, {})),
         )
-    elif selection == TASKS_PAGE_LABEL:
+    elif selection == translate_text(TASKS_PAGE_LABEL):
         st.header("Aufgaben / Tasks")
         st.caption("Verwalte und plane deine Aufgaben. Ziele & KI konfigurierst du im Bereich 'Ziele'.")
         render_todo_section(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
