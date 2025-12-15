@@ -837,9 +837,8 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
     panel.header("Ziele & Einstellungen / Goals & settings")
 
     settings = _ensure_settings_defaults(client=client, stats=stats)
-    panel.markdown("### Schnellzugriff / Quick controls")
-    quick_cols = panel.columns(2)
-    with quick_cols[0]:
+    ai_row = panel.columns(2)
+    with ai_row[0]:
         ai_enabled = panel.toggle(
             "AI aktiv / AI enabled",
             key=AI_ENABLED_KEY,
@@ -848,11 +847,6 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
                 "Aktiviere KI-gestützte Vorschläge. Ohne Schlüssel werden Fallback-Texte genutzt / "
                 "Enable AI suggestions. Without a key, fallback texts are used."
             ),
-        )
-    with quick_cols[1]:
-        panel.info(
-            "Aktiviere die KI bei Bedarf oder arbeite komplett manuell / Toggle AI as needed or work fully manually.",
-            icon="🤖",
         )
     settings[AI_ENABLED_KEY] = ai_enabled
 
@@ -915,83 +909,6 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
 
         settings["category_goals"] = _sanitize_category_goals(settings)
         settings["category_goals"].update(category_goals)
-
-    panel.divider()
-    with _panel_section(panel, "Gamification-Stil / Gamification style"):
-        gamification_mode_options = list(GamificationMode)
-        current_mode_value = settings.get("gamification_mode", GamificationMode.POINTS.value)
-        try:
-            current_mode = GamificationMode(current_mode_value)
-        except ValueError:
-            current_mode = GamificationMode.POINTS
-
-        gamification_cols = panel.columns(2)
-        with gamification_cols[0]:
-            selected_mode = panel.selectbox(
-                "Gamification-Variante / Gamification mode",
-                options=gamification_mode_options,
-                format_func=lambda option: option.label,
-                index=gamification_mode_options.index(current_mode),
-                help=(
-                    "Wähle Punkte, Abzeichen oder die motivierende Avatar-Option Dipl.-Psych. Roß / "
-                    "Choose points, badges, or the motivational avatar option Dipl.-Psych. Roß."
-                ),
-            )
-        with gamification_cols[1]:
-            panel.caption(
-                "Dipl.-Psych. Roß steht für warme, therapeutische Motivation (Brünette, ca. 45 Jahre, Brille) / "
-                "Dipl.-Psych. Roß offers warm, therapeutic motivation (brunette, about 45 years old, with glasses)."
-            )
-        settings["gamification_mode"] = selected_mode.value
-
-    panel.divider()
-    with _panel_section(panel, "Sicherheit & Daten / Safety & data"):
-        safety_cols = panel.columns(2)
-        with safety_cols[0]:
-            panel.info(
-                "Optionale lokale Persistenz speichert Daten in .data/gerris_state.json; "
-                "auf Streamlit Community Cloud können Dateien nach einem Neustart verschwinden. / "
-                "Optional local persistence writes to .data/gerris_state.json; on Streamlit Community Cloud "
-                "files may reset after a restart."
-            )
-            panel.warning(
-                "Dieses Tool ersetzt keine Krisenhilfe oder Diagnosen / This tool is not "
-                "a crisis or diagnostic service. Bei akuten Notfällen wende dich an lokale "
-                "Hotlines / In emergencies, contact local hotlines."
-            )
-            show_storage_notice = panel.toggle(
-                "Speicherhinweis anzeigen / Show storage notice",
-                value=bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False)),
-                help=(
-                    "Blendet den Hinweis zum aktuellen Speicherpfad oberhalb des Titels ein oder aus / "
-                    "Toggle the storage location notice above the title on or off."
-                ),
-            )
-            settings[SHOW_STORAGE_NOTICE_KEY] = show_storage_notice
-        with safety_cols[1]:
-            if panel.button(
-                "Session zurücksetzen / Reset session",
-                key="reset_session_btn",
-                help=(
-                    "Löscht ToDos, KPIs, Gamification und Einstellungen aus dieser Sitzung / "
-                    "Clear todos, KPIs, gamification, and settings for this session."
-                ),
-            ):
-                for cleanup_key in (
-                    AI_ENABLED_KEY,
-                    AI_GOAL_SUGGESTION_KEY,
-                    AI_QUADRANT_RATIONALE_KEY,
-                    AI_MOTIVATION_KEY,
-                    NEW_TODO_TITLE_KEY,
-                    NEW_TODO_DUE_KEY,
-                    NEW_TODO_QUADRANT_KEY,
-                    SETTINGS_GOAL_DAILY_KEY,
-                    GOAL_SUGGESTED_VALUE_KEY,
-                ):
-                    st.session_state.pop(cleanup_key, None)
-                reset_state()
-                panel.success("Session zurückgesetzt / Session reset.")
-                st.rerun()
 
     st.session_state[SS_SETTINGS] = settings
     persist_state()
@@ -1391,6 +1308,32 @@ def render_navigation() -> str:
     return selection
 
 
+def render_sidebar_sections(
+    stats: KpiStats,
+    *,
+    ai_enabled: bool,
+    client: Optional[OpenAI],
+    settings: Mapping[str, Any],
+) -> bool:
+    with st.sidebar.expander("Gamification", expanded=True) as gamification_panel:
+        render_gamification_panel(
+            stats,
+            ai_enabled=ai_enabled,
+            client=client,
+            panel=gamification_panel,
+            motivation_key_suffix="sidebar",
+            allow_mode_selection=True,
+        )
+
+    with st.sidebar.expander("Sicherheit & Daten / Safety & data", expanded=False) as safety_panel:
+        show_storage_notice = render_safety_panel(panel=safety_panel)
+
+    st.sidebar.divider()
+    return (
+        show_storage_notice if show_storage_notice is not None else bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False))
+    )
+
+
 def render_gamification_panel(
     stats: KpiStats,
     *,
@@ -1398,9 +1341,9 @@ def render_gamification_panel(
     client: Optional[OpenAI],
     panel: Any | None = None,
     motivation_key_suffix: str = "panel",
+    allow_mode_selection: bool = False,
 ) -> None:
     panel = panel or st
-    gamification_state = get_gamification_state()
     settings: dict[str, Any] = st.session_state.get(SS_SETTINGS, {})
     try:
         gamification_mode = GamificationMode(settings.get("gamification_mode", GamificationMode.POINTS.value))
@@ -1408,7 +1351,36 @@ def render_gamification_panel(
         gamification_mode = GamificationMode.POINTS
 
     panel.subheader("Gamification")
-    panel.caption(gamification_mode.label)
+
+    if allow_mode_selection:
+        gamification_mode_options = list(GamificationMode)
+        mode_index = gamification_mode_options.index(gamification_mode)
+        selected_mode = panel.selectbox(
+            "Gamification-Variante / Gamification mode",
+            options=gamification_mode_options,
+            format_func=lambda option: option.label,
+            index=mode_index,
+            help=(
+                "Wähle Punkte, Abzeichen oder die motivierende Avatar-Option Dipl.-Psych. Roß / "
+                "Choose points, badges, or the motivational avatar option Dipl.-Psych. Roß."
+            ),
+        )
+
+        if selected_mode is not gamification_mode:
+            gamification_mode = selected_mode
+            settings["gamification_mode"] = selected_mode.value
+            st.session_state[SS_SETTINGS] = settings
+            persist_state()
+
+        panel.caption(gamification_mode.label)
+        panel.caption(
+            "Dipl.-Psych. Roß steht für warme, therapeutische Motivation (Brünette, ca. 45 Jahre, Brille) / "
+            "Dipl.-Psych. Roß offers warm, therapeutic motivation (brunette, about 45 years old, with glasses)."
+        )
+    else:
+        panel.caption(gamification_mode.label)
+
+    gamification_state = get_gamification_state()
 
     if gamification_mode is GamificationMode.POINTS:
         col_level, col_points = panel.columns(2)
@@ -1491,6 +1463,58 @@ def render_gamification_panel(
     if motivation:
         badge = "🤖" if motivation.from_ai else "💡"
         panel.success(f"{badge} {motivation.payload}")
+
+
+def render_safety_panel(panel: Any) -> bool:
+    settings: dict[str, Any] = st.session_state.get(SS_SETTINGS, {})
+    panel.info(
+        "Optionale lokale Persistenz speichert Daten in .data/gerris_state.json; "
+        "auf Streamlit Community Cloud können Dateien nach einem Neustart verschwinden. / "
+        "Optional local persistence writes to .data/gerris_state.json; on Streamlit Community Cloud "
+        "files may reset after a restart.",
+    )
+    panel.warning(
+        "Dieses Tool ersetzt keine Krisenhilfe oder Diagnosen / This tool is not "
+        "a crisis or diagnostic service. Bei akuten Notfällen wende dich an lokale "
+        "Hotlines / In emergencies, contact local hotlines.",
+    )
+    show_storage_notice = panel.toggle(
+        "Speicherhinweis anzeigen / Show storage notice",
+        value=bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False)),
+        help=(
+            "Blendet den Hinweis zum aktuellen Speicherpfad oberhalb des Titels ein oder aus / "
+            "Toggle the storage location notice above the title on or off."
+        ),
+    )
+    settings[SHOW_STORAGE_NOTICE_KEY] = show_storage_notice
+
+    if panel.button(
+        "Session zurücksetzen / Reset session",
+        key="reset_session_btn",
+        help=(
+            "Löscht ToDos, KPIs, Gamification und Einstellungen aus dieser Sitzung / "
+            "Clear todos, KPIs, gamification, and settings for this session."
+        ),
+    ):
+        for cleanup_key in (
+            AI_ENABLED_KEY,
+            AI_GOAL_SUGGESTION_KEY,
+            AI_QUADRANT_RATIONALE_KEY,
+            AI_MOTIVATION_KEY,
+            NEW_TODO_TITLE_KEY,
+            NEW_TODO_DUE_KEY,
+            NEW_TODO_QUADRANT_KEY,
+            SETTINGS_GOAL_DAILY_KEY,
+            GOAL_SUGGESTED_VALUE_KEY,
+        ):
+            st.session_state.pop(cleanup_key, None)
+        reset_state()
+        panel.success("Session zurückgesetzt / Session reset.")
+        st.rerun()
+
+    st.session_state[SS_SETTINGS] = settings
+    persist_state()
+    return show_storage_notice
 
 
 def render_quadrant_board(
@@ -1858,23 +1882,19 @@ def main() -> None:
     settings = _ensure_settings_defaults(client=client, stats=stats)
     render_language_toggle()
     selection = render_navigation()
+    ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
 
-    show_storage_notice = bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False))
+    show_storage_notice = render_sidebar_sections(
+        stats,
+        ai_enabled=ai_enabled,
+        client=client,
+        settings=settings,
+    )
 
     st.title("Gerris ErfolgsTracker")
     if show_storage_notice:
         _render_storage_notice(storage_backend, is_cloud=is_cloud)
     todos = get_todos()
-    ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
-
-    with st.sidebar.expander("Gamification", expanded=True) as gamification_panel:
-        render_gamification_panel(
-            stats,
-            ai_enabled=ai_enabled,
-            client=client,
-            panel=gamification_panel,
-            motivation_key_suffix="sidebar",
-        )
 
     if not client:
         st.info(
