@@ -1306,15 +1306,21 @@ def render_gamification_panel(
         panel.progress(
             progress_ratio,
             text=(
-                f"Fortschritt: {progress_points}/{required_points} Punkte bis Level {gamification_state.level + 1}",
-                f"Progress: {progress_points}/{required_points} points to reach level {gamification_state.level + 1}",
+                "\n".join(
+                    (
+                        f"Fortschritt: {progress_points}/{required_points} Punkte bis Level {gamification_state.level + 1}",
+                        f"Progress: {progress_points}/{required_points} points to reach level {gamification_state.level + 1}",
+                    )
+                )
             ),
         )
 
         panel.caption(
-            (
-                f"Aktueller Streak: {stats.streak} Tage · Erledigt gesamt: {stats.done_total}",
-                f"Current streak: {stats.streak} days · Done total: {stats.done_total}",
+            "\n".join(
+                (
+                    f"Aktueller Streak: {stats.streak} Tage · Erledigt gesamt: {stats.done_total}",
+                    f"Current streak: {stats.streak} days · Done total: {stats.done_total}",
+                )
             )
         )
 
