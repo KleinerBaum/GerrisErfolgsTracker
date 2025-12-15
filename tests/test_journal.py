@@ -23,23 +23,22 @@ def test_create_and_update_journal_entry(session_state) -> None:
         rational_response="Ich plane kleine Schritte",
         self_care_today="Spaziergang",
         self_care_tomorrow="Früher schlafen",
-        gratitude_1="Kaffee",
-        gratitude_2="Sonne",
-        gratitude_3="Freund:in",
+        gratitudes=["Kaffee", "Sonne", "Freund:in"],
         categories=[Category.ADMIN],
     )
 
     upsert_journal_entry(base_entry)
     stored = get_journal_entry(entry_date)
     assert stored is not None
+    assert stored.gratitudes == ["Kaffee", "Sonne", "Freund:in"]
     assert stored.gratitude_1 == "Kaffee"
     assert stored.categories == [Category.ADMIN]
 
-    updated = base_entry.model_copy(update={"gratitude_1": "Tee", "categories": [Category.FRIENDS_FAMILY]})
+    updated = base_entry.model_copy(update={"gratitudes": ["Tee"], "categories": [Category.FRIENDS_FAMILY]})
     upsert_journal_entry(updated)
     refreshed = get_journal_entry(entry_date)
     assert refreshed is not None
-    assert refreshed.gratitude_1 == "Tee"
+    assert refreshed.gratitudes == ["Tee"]
     assert refreshed.categories == [Category.FRIENDS_FAMILY]
 
 
@@ -66,7 +65,7 @@ def test_journal_serialization_roundtrip(session_state) -> None:
     assert entry_date in entries
     entry = entries[entry_date]
     assert entry.categories == [Category.DAILY_STRUCTURE]
-    assert entry.gratitude_2 == "Gesundheit"
+    assert entry.gratitudes == ["Familie", "Gesundheit", "Lernen"]
 
 
 def test_journal_migration_missing_key(session_state) -> None:
@@ -96,6 +95,7 @@ def test_journal_json_export_serializes_categories_and_date(session_state) -> No
             "rational_response": "",
             "self_care_today": "",
             "self_care_tomorrow": "",
+            "gratitudes": ["Test"],
             "gratitude_1": "Test",
             "gratitude_2": "",
             "gratitude_3": "",

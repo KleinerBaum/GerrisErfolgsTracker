@@ -287,10 +287,16 @@ def _prefill_journal_form(entry: JournalEntry) -> None:
     st.session_state[_journal_field_key("rational_response")] = entry.rational_response
     st.session_state[_journal_field_key("self_care_today")] = entry.self_care_today
     st.session_state[_journal_field_key("self_care_tomorrow")] = entry.self_care_tomorrow
-    st.session_state[_journal_field_key("gratitude_1")] = entry.gratitude_1
-    st.session_state[_journal_field_key("gratitude_2")] = entry.gratitude_2
-    st.session_state[_journal_field_key("gratitude_3")] = entry.gratitude_3
     st.session_state[_journal_field_key("categories")] = entry.categories
+
+    for key in [key for key in st.session_state if key.startswith("journal_gratitude_")]:
+        del st.session_state[key]
+
+    gratitudes = entry.gratitudes or [entry.gratitude_1, entry.gratitude_2, entry.gratitude_3]
+    cleaned_gratitudes = [value for value in gratitudes if value.strip()]
+    st.session_state[_journal_field_key("gratitudes")] = cleaned_gratitudes
+    for index, value in enumerate(cleaned_gratitudes):
+        st.session_state[f"journal_gratitude_{index}"] = value
 
 
 def _json_default(value: Any) -> str:
@@ -328,7 +334,11 @@ def _journal_markdown_export(entries: Mapping[date, JournalEntry]) -> str:
         lines.append(f"- Morgen / Tomorrow: {entry.self_care_tomorrow or '—'}")
         lines.append("")
         lines.append("**Lichtblicke / Gratitude**")
-        for idx, value in enumerate((entry.gratitude_1, entry.gratitude_2, entry.gratitude_3), start=1):
+        gratitudes = entry.gratitudes or [entry.gratitude_1, entry.gratitude_2, entry.gratitude_3]
+        if not gratitudes:
+            gratitudes = [""]
+
+        for idx, value in enumerate(gratitudes, start=1):
             lines.append(f"- Dankbarkeit {idx}: {value or '—'}")
         if entry.categories:
             labels = ", ".join(category.label for category in entry.categories)
@@ -337,6 +347,39 @@ def _journal_markdown_export(entries: Mapping[date, JournalEntry]) -> str:
         lines.append("")
 
     return "\n".join(lines).strip()
+
+
+def _render_gratitude_inputs(gratitude_suggestions: list[str]) -> list[str]:
+    stored_gratitudes = st.session_state.get(_journal_field_key("gratitudes"), [])
+    if not isinstance(stored_gratitudes, list):
+        stored_gratitudes = []
+
+    base_values = [value for value in stored_gratitudes if isinstance(value, str)]
+    display_values = [value for value in base_values if value.strip()]
+    if not display_values:
+        display_values = [""]
+    if display_values[-1].strip():
+        display_values.append("")
+
+    rendered_values: list[str] = []
+    for index, default_value in enumerate(display_values):
+        rendered = st.text_input(
+            f"Dankbarkeit {index + 1} / Gratitude {index + 1}",
+            value=default_value,
+            key=f"journal_gratitude_{index}",
+            placeholder=("z. B. Kaffee am Morgen, Gespräch mit Freund:in / e.g., morning coffee, chat with a friend"),
+        )
+        rendered_values.append(rendered)
+
+    cleaned_gratitudes = [value.strip() for value in rendered_values if value.strip()]
+    st.session_state[_journal_field_key("gratitudes")] = cleaned_gratitudes
+
+    if gratitude_suggestions:
+        st.caption(
+            "Vorschläge aus früheren Einträgen / Suggestions from past entries: " + ", ".join(gratitude_suggestions[:6])
+        )
+
+    return cleaned_gratitudes
 
 
 def _render_storage_notice(backend: FileStorageBackend, *, is_cloud: bool) -> None:
@@ -1663,46 +1706,13 @@ def _resolve_active_journal_date() -> date:
         return date.today()
 
 
-def _render_journal_export(entries: Mapping[date, JournalEntry]) -> None:
-    st.markdown("#### Export / Backup")
-    if not entries:
-        st.caption(
-            "Noch keine Einträge vorhanden – speichern Sie zunächst einen Tageseintrag. / "
-            "No journal entries yet – save a daily entry first."
-        )
-        return
-
-    json_payload = _journal_json_export(entries)
-    markdown_payload = _journal_markdown_export(entries)
-    st.download_button(
-        "Journal als JSON exportieren / Export journal as JSON",
-        json_payload,
-        file_name="journal_entries.json",
-        mime="application/json",
-        use_container_width=True,
-    )
-    st.download_button(
-        "Journal als Markdown exportieren / Export journal as Markdown",
-        markdown_payload,
-        file_name="journal_entries.md",
-        mime="text/markdown",
-        use_container_width=True,
-    )
-
-
 def render_journal_section() -> None:
     ensure_journal_state()
     entries = get_journal_entries()
     active_date = _resolve_active_journal_date()
 
-    st.subheader("Tagebuch / Journal")
-    st.caption(
-        "Ein geführter Eintrag pro Tag verknüpft Stimmung, Gedanken und Ziele. / "
-        "One guided entry per day links mood, thoughts, and goals."
-    )
-
-    header_cols = st.columns([0.7, 0.3])
-    with header_cols[0]:
+    action_cols = st.columns([0.45, 0.55])
+    with action_cols[0]:
         if st.button(
             "Tagebucheintrag erstellen / Create journal entry",
             type="primary",
@@ -1712,8 +1722,12 @@ def render_journal_section() -> None:
             st.session_state[JOURNAL_ACTIVE_DATE_KEY] = date.today()
             st.session_state[JOURNAL_FORM_SEED_KEY] = None
             st.rerun()
-    with header_cols[1]:
-        _render_journal_export(entries)
+    with action_cols[1]:
+        st.info(
+            "Der Eintrag bleibt zwischengespeichert, bis du ihn speicherst. / "
+            "Drafts stay in the form until you hit save.",
+            icon="📝",
+        )
 
     selection_cols = st.columns([0.6, 0.4])
     with selection_cols[0]:
@@ -1725,12 +1739,6 @@ def render_journal_section() -> None:
             key=JOURNAL_ACTIVE_DATE_KEY,
             help="Ein Eintrag pro Kalendertag; bestehende Entwürfe werden automatisch geladen. / "
             "One entry per calendar day; existing drafts load automatically.",
-        )
-    with selection_cols[1]:
-        st.info(
-            "Der Eintrag bleibt zwischengespeichert, bis du ihn speicherst. / "
-            "Drafts stay in the form until you hit save.",
-            icon="📝",
         )
 
     existing_entry = entries.get(selected_date)
@@ -1762,24 +1770,25 @@ def render_journal_section() -> None:
                 placeholder="z. B. ruhig nach dem Spaziergang / e.g., calm after a walk",
             )
 
-        st.markdown("### Auslöser & Reaktionen / Triggers & reactions")
-        triggers_and_reactions = st.text_area(
-            "Was ist passiert und wie hast du reagiert? / What happened and how did you react?",
-            value=st.session_state.get(_journal_field_key("triggers_and_reactions"), ""),
-            key=_journal_field_key("triggers_and_reactions"),
-            placeholder="z. B. stressiges Telefonat, dann 5 Minuten geatmet / stressful call, then 5 minutes of breathing",
-        )
+        journal_cols = st.columns(4)
 
-        st.markdown("### Gedanken-Challenge / Thought challenge")
-        thought_cols = st.columns(2)
-        with thought_cols[0]:
+        with journal_cols[0]:
+            st.markdown("#### Auslöser & Reaktionen / Triggers & reactions")
+            triggers_and_reactions = st.text_area(
+                "Was ist passiert und wie hast du reagiert? / What happened and how did you react?",
+                value=st.session_state.get(_journal_field_key("triggers_and_reactions"), ""),
+                key=_journal_field_key("triggers_and_reactions"),
+                placeholder="z. B. stressiges Telefonat, dann 5 Minuten geatmet / stressful call, then 5 minutes of breathing",
+            )
+
+        with journal_cols[1]:
+            st.markdown("#### Gedanken-Challenge / Thought challenge")
             negative_thought = st.text_area(
                 "Automatischer Gedanke / Automatic thought",
                 value=st.session_state.get(_journal_field_key("negative_thought"), ""),
                 key=_journal_field_key("negative_thought"),
                 placeholder="z. B. 'Ich schaffe das nie' / e.g., 'I will never manage this'",
             )
-        with thought_cols[1]:
             rational_response = st.text_area(
                 "Reframe / Rational response",
                 value=st.session_state.get(_journal_field_key("rational_response"), ""),
@@ -1787,16 +1796,14 @@ def render_journal_section() -> None:
                 placeholder="z. B. 'Ein Schritt nach dem anderen' / e.g., 'One step at a time'",
             )
 
-        st.markdown("### Selbstfürsorge / Self-care")
-        care_cols = st.columns(2)
-        with care_cols[0]:
+        with journal_cols[2]:
+            st.markdown("#### Selbstfürsorge / Self-care")
             self_care_today = st.text_area(
                 "Was habe ich heute für mich getan? / What did I do for myself today?",
                 value=st.session_state.get(_journal_field_key("self_care_today"), ""),
                 key=_journal_field_key("self_care_today"),
                 placeholder="z. B. kurzer Spaziergang, Tee in Ruhe / e.g., short walk, mindful tea",
             )
-        with care_cols[1]:
             self_care_tomorrow = st.text_area(
                 "Was mache ich morgen besser? / What will I do better tomorrow?",
                 value=st.session_state.get(_journal_field_key("self_care_tomorrow"), ""),
@@ -1804,22 +1811,9 @@ def render_journal_section() -> None:
                 placeholder="z. B. Pausen blocken, früher ins Bett / e.g., block breaks, go to bed earlier",
             )
 
-        st.markdown(("### Lichtblicke & Dankbarkeit", "### Highlights & gratitude"))
-        gratitude_inputs: list[str] = []
-        for index, field_name in enumerate(["gratitude_1", "gratitude_2", "gratitude_3"], start=1):
-            gratitude_value = st.text_input(
-                f"Dankbarkeit {index} / Gratitude {index}",
-                value=st.session_state.get(_journal_field_key(field_name), ""),
-                key=_journal_field_key(field_name),
-                placeholder="z. B. Kaffee am Morgen, Gespräch mit Freund:in / e.g., morning coffee, chat with a friend",
-            )
-            gratitude_inputs.append(gratitude_value)
-
-        if gratitude_suggestions:
-            st.caption(
-                "Vorschläge aus früheren Einträgen / Suggestions from past entries: "
-                + ", ".join(gratitude_suggestions[:6])
-            )
+        with journal_cols[3]:
+            st.markdown("#### Lichtblicke & Dankbarkeit / Highlights & gratitude")
+            gratitude_inputs = _render_gratitude_inputs(gratitude_suggestions)
 
         st.markdown("### Kategorien & Ziele / Categories & goals")
         selected_categories = st.multiselect(
@@ -1842,9 +1836,7 @@ def render_journal_section() -> None:
                 rational_response=rational_response,
                 self_care_today=self_care_today,
                 self_care_tomorrow=self_care_tomorrow,
-                gratitude_1=gratitude_inputs[0],
-                gratitude_2=gratitude_inputs[1],
-                gratitude_3=gratitude_inputs[2],
+                gratitudes=gratitude_inputs,
                 categories=[Category(item) for item in selected_categories],
             )
             upsert_journal_entry(journal_entry)
@@ -1918,8 +1910,6 @@ def main() -> None:
         st.caption("Verwalte und plane deine Aufgaben. Ziele & KI konfigurierst du im Bereich 'Ziele'.")
         render_todo_section(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
     else:
-        st.header("Tagebuch / Journal")
-        st.caption("Dokumentiere deinen Alltag und verknüpfe Einträge mit Kategorien und Zielen.")
         render_journal_section()
 
 
