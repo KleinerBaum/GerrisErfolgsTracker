@@ -105,8 +105,8 @@ OPENAI_API_KEY = "sk-..."
 - Formularfelder mit Platzhaltern und Autosuggest: Stimmungstags (bearbeitbar) plus Freitext, Auslöser & Reaktionen, Gedanken-Challenge (automatischer Gedanke + Reframe), Selbstfürsorge (heute/morgen) sowie drei Dankbarkeitsfelder mit Vorschlägen aus bisherigen Einträgen. Kategorien lassen sich per Multi-Select (Suchleiste) an vorhandene Lebensbereiche koppeln.
 - Speichern erfolgt explizit über **Eintrag speichern / Save entry** (kein Auto-Save pro Tastendruck). Bestehende Entwürfe werden geladen und können überschrieben werden.
 - Export/Backup: Buttons für **JSON** (Rohdaten) und **Markdown** (lesbare Chronik) ohne Zusatzabhängigkeiten; der JSON-Export
-  nutzt Pydantic-Serialisierung, damit Datums- und Kategorie-Felder als Strings im Ergebnis landen / JSON export relies on
-  Pydantic serialization so date and category fields are emitted as strings for downstream consumers.
+  serialisiert Datum- und Kategorie-Felder als Strings (ISO-Format), sodass Downloads ohne `TypeError` funktionieren / JSON
+  export serializes date and category fields as ISO strings to avoid `TypeError` crashes and stay downstream-friendly.
 
 ## Kalenderansicht / Calendar view
 

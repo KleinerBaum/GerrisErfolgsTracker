@@ -5,7 +5,7 @@
 - Added a sidebar language toggle (Deutsch/English) that renders the UI in a single language instead of mixed bilingual labels.
 - Gamification-Übersicht in die Sidebar verschoben (Level, Punkte, Badges, Motivation) und das Panel **Ziele & Einstellungen / Goals & settings** stärker in Spalten organisiert für AI-Toggle und Tagesziel-Buttons / Moved the gamification overview into the sidebar and expanded the Goals & settings panel with more multi-column controls for AI and daily goal actions.
 - Added daily journal tab with guided form per day (mood tags, triggers, thought challenge, self-care, gratitude suggestions) linked to categories, explicit save plus JSON/Markdown export, and schema migration tests.
-- Fixed journal JSON export to use Pydantic JSON serialization for dates and categories and added regression coverage.
+- Fixed the journal JSON export to serialize date fields as `YYYY-MM-DD` strings, preventing `Object of type date is not JSON serializable` crashes during download.
 - Restructured navigation into three sidebar pages (Ziele/Goals, Aufgaben/Tasks, Tagebuch/Journal) with the goal, AI, and gamification settings consolidated on the Goals page and clearer task/journal workspaces.
 - Modernisierte UI: weite Seitenbreite mit eingeklappter Sidebar, sofort sichtbares KPI-Dashboard, neu gruppierte Sidebar-Quick-Controls sowie ein dezenter Gradient statt Hintergrundbild.
 - Highlighted the **ToDo hinzufügen / Add task** submit button as a primary action to guide form submissions.

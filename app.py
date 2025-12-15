@@ -268,9 +268,16 @@ def _prefill_journal_form(entry: JournalEntry) -> None:
     st.session_state[_journal_field_key("categories")] = entry.categories
 
 
+def _json_default(value: Any) -> str:
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 def _journal_json_export(entries: Mapping[date, JournalEntry]) -> str:
     payload = {entry_date.isoformat(): entry.model_dump(mode="json") for entry_date, entry in entries.items()}
-    return json.dumps(payload, ensure_ascii=False, indent=2)
+    return json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default)
 
 
 def _journal_markdown_export(entries: Mapping[date, JournalEntry]) -> str:
