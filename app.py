@@ -45,6 +45,8 @@ from gerris_erfolgs_tracker.constants import (
     NEW_TODO_QUADRANT_PREFILL_KEY,
     NEW_TODO_RESET_TRIGGER_KEY,
     NEW_TODO_TITLE_KEY,
+    NEW_TODO_RECURRENCE_KEY,
+    NEW_TODO_REMINDER_KEY,
     SETTINGS_GOAL_DAILY_KEY,
     SHOW_STORAGE_NOTICE_KEY,
     SS_SETTINGS,
@@ -87,7 +89,15 @@ from gerris_erfolgs_tracker.i18n import (
     translate_text,
 )
 from gerris_erfolgs_tracker.llm import get_default_model, get_openai_client
-from gerris_erfolgs_tracker.models import Category, GamificationMode, JournalEntry, KpiStats, TodoItem
+from gerris_erfolgs_tracker.models import (
+    Category,
+    EmailReminderOffset,
+    GamificationMode,
+    JournalEntry,
+    KpiStats,
+    RecurrencePattern,
+    TodoItem,
+)
 from gerris_erfolgs_tracker.state import (
     configure_storage,
     get_todos,
@@ -557,6 +567,10 @@ def render_task_row(todo: TodoItem, *, parent: Any | None = None) -> None:
             else:
                 st.caption("Keine Beschreibung vorhanden / No description yet.")
 
+            st.markdown("#### Terminierung / Scheduling")
+            st.caption(f"Wiederholung / Recurrence: {todo.recurrence.label}")
+            st.caption(f"Erinnerung / Reminder: {todo.email_reminder.label}")
+
             st.markdown("#### Fortschrittsregel / Progress rule")
             if todo.progress_target is not None:
                 if todo.progress_target > 0:
@@ -618,6 +632,26 @@ def render_task_row(todo: TodoItem, *, parent: Any | None = None) -> None:
                         format_func=lambda option: option.label,
                         index=list(EisenhowerQuadrant).index(todo.quadrant),
                         key=f"quick_quadrant_{todo.id}",
+                        label_visibility="collapsed",
+                    )
+
+                recurrence_cols = st.columns(2)
+                with recurrence_cols[0]:
+                    new_recurrence = st.selectbox(
+                        "Wiederholung / Recurrence",
+                        options=list(RecurrencePattern),
+                        format_func=lambda option: option.label,
+                        index=list(RecurrencePattern).index(todo.recurrence),
+                        key=f"quick_recurrence_{todo.id}",
+                        label_visibility="collapsed",
+                    )
+                with recurrence_cols[1]:
+                    new_reminder = st.selectbox(
+                        "E-Mail-Erinnerung / Email reminder",
+                        options=list(EmailReminderOffset),
+                        format_func=lambda option: option.label,
+                        index=list(EmailReminderOffset).index(todo.email_reminder),
+                        key=f"quick_reminder_{todo.id}",
                         label_visibility="collapsed",
                     )
 
@@ -698,6 +732,8 @@ def render_task_row(todo: TodoItem, *, parent: Any | None = None) -> None:
                         progress_unit=resolved_edit_unit,
                         auto_done_when_target_reached=resolved_edit_auto,
                         completion_criteria_md=resolved_criteria,
+                        recurrence=new_recurrence,
+                        email_reminder=new_reminder,
                     )
                     st.success("Aktualisiert / Updated.")
                     st.rerun()
@@ -1063,6 +1099,8 @@ def render_todo_section(
             NEW_TODO_AUTO_COMPLETE_KEY,
             NEW_TODO_COMPLETION_CRITERIA_KEY,
             NEW_TODO_ENABLE_TARGET_KEY,
+            NEW_TODO_RECURRENCE_KEY,
+            NEW_TODO_REMINDER_KEY,
         ):
             st.session_state.pop(cleanup_key, None)
 
@@ -1083,6 +1121,8 @@ def render_todo_section(
     st.session_state.setdefault(NEW_TODO_AUTO_COMPLETE_KEY, True)
     st.session_state.setdefault(NEW_TODO_COMPLETION_CRITERIA_KEY, "")
     st.session_state.setdefault(NEW_TODO_ENABLE_TARGET_KEY, False)
+    st.session_state.setdefault(NEW_TODO_RECURRENCE_KEY, RecurrencePattern.ONCE)
+    st.session_state.setdefault(NEW_TODO_REMINDER_KEY, EmailReminderOffset.NONE)
 
     with st.form("add_todo_form", clear_on_submit=False):
         title_col, _ = st.columns([1, 1])
@@ -1106,6 +1146,24 @@ def render_todo_section(
                 quadrant_options,
                 key=NEW_TODO_QUADRANT_KEY,
                 format_func=lambda option: option.label,
+            )
+
+        recurrence_left, recurrence_right = st.columns(2)
+        with recurrence_left:
+            recurrence = st.selectbox(
+                "Wiederholung / Recurrence",
+                options=list(RecurrencePattern),
+                key=NEW_TODO_RECURRENCE_KEY,
+                format_func=lambda option: option.label,
+                help="Einmalig, werktags oder feste Intervalle / One-time, weekdays, or fixed intervals.",
+            )
+        with recurrence_right:
+            reminder = st.selectbox(
+                "E-Mail-Erinnerung / Email reminder",
+                options=list(EmailReminderOffset),
+                key=NEW_TODO_REMINDER_KEY,
+                format_func=lambda option: option.label,
+                help="Optionale Mail-Erinnerung vor Fälligkeit / Optional email reminder before due date.",
             )
 
         meta_left, meta_right = st.columns(2)
@@ -1250,6 +1308,8 @@ def render_todo_section(
                     progress_unit=resolved_unit,
                     auto_done_when_target_reached=resolved_auto_complete,
                     completion_criteria_md=resolved_criteria,
+                    recurrence=recurrence,
+                    email_reminder=reminder,
                 )
                 st.success("ToDo gespeichert / Task saved.")
                 st.session_state[NEW_TODO_RESET_TRIGGER_KEY] = True

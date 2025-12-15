@@ -13,6 +13,8 @@ from app import (
     NEW_TODO_PRIORITY_KEY,
     NEW_TODO_QUADRANT_KEY,
     NEW_TODO_QUADRANT_PREFILL_KEY,
+    NEW_TODO_RECURRENCE_KEY,
+    NEW_TODO_REMINDER_KEY,
     NEW_TODO_RESET_TRIGGER_KEY,
     NEW_TODO_TITLE_KEY,
     render_todo_section,
@@ -20,7 +22,7 @@ from app import (
 from gerris_erfolgs_tracker.ai_features import AISuggestion
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
 from gerris_erfolgs_tracker.llm_schemas import QuadrantName, TodoCategorization
-from gerris_erfolgs_tracker.models import Category, KpiStats
+from gerris_erfolgs_tracker.models import Category, EmailReminderOffset, KpiStats, RecurrencePattern
 
 
 class RerunSentinel(Exception):
@@ -292,6 +294,8 @@ def test_submit_resets_form_state_without_widget_writes(
         progress_unit: str = "",
         auto_done_when_target_reached: bool = False,
         completion_criteria_md: str = "",
+        recurrence: RecurrencePattern = RecurrencePattern.ONCE,
+        email_reminder: EmailReminderOffset = EmailReminderOffset.NONE,
     ) -> None:
         added.update(
             {
@@ -306,6 +310,8 @@ def test_submit_resets_form_state_without_widget_writes(
                 "progress_unit": progress_unit,
                 "auto_done_when_target_reached": auto_done_when_target_reached,
                 "completion_criteria_md": completion_criteria_md,
+                "recurrence": recurrence,
+                "email_reminder": email_reminder,
             }
         )
 
@@ -322,6 +328,8 @@ def test_submit_resets_form_state_without_widget_writes(
     assert added["category"].value == "daily_structure"
     assert added["priority"] == 3
     assert added["description_md"] == ""
+    assert added["recurrence"] == RecurrencePattern.ONCE
+    assert added["email_reminder"] == EmailReminderOffset.NONE
     assert session_state[NEW_TODO_RESET_TRIGGER_KEY] is True
 
     # Second render applies the reset before drawing widgets.
@@ -340,6 +348,8 @@ def test_submit_resets_form_state_without_widget_writes(
     assert session_state.get(NEW_TODO_CATEGORY_KEY) == Category.DAILY_STRUCTURE
     assert session_state.get(NEW_TODO_PRIORITY_KEY) == 3
     assert session_state.get(NEW_TODO_DESCRIPTION_KEY, "") == ""
+    assert session_state.get(NEW_TODO_RECURRENCE_KEY) == RecurrencePattern.ONCE
+    assert session_state.get(NEW_TODO_REMINDER_KEY) == EmailReminderOffset.NONE
     assert NEW_TODO_QUADRANT_PREFILL_KEY not in session_state
     assert AI_QUADRANT_RATIONALE_KEY not in session_state
     assert NEW_TODO_RESET_TRIGGER_KEY not in session_state

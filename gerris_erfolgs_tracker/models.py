@@ -96,6 +96,47 @@ class Category(str, Enum):
         return "Tagesstruktur / Daily structure"
 
 
+class RecurrencePattern(str, Enum):
+    """Repeating schedule for a todo item."""
+
+    ONCE = "once"
+    DAILY = "daily"
+    WEEKDAYS = "weekdays"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+    YEARLY = "yearly"
+
+    @property
+    def label(self) -> str:
+        if self is RecurrencePattern.ONCE:
+            return "Einmalig / One-time"
+        if self is RecurrencePattern.DAILY:
+            return "Täglich / Daily"
+        if self is RecurrencePattern.WEEKDAYS:
+            return "Werktags / Weekdays"
+        if self is RecurrencePattern.WEEKLY:
+            return "Wöchentlich / Weekly"
+        if self is RecurrencePattern.MONTHLY:
+            return "Monatlich / Monthly"
+        return "Jährlich / Yearly"
+
+
+class EmailReminderOffset(str, Enum):
+    """Lead time for optional email reminders."""
+
+    NONE = "none"
+    ONE_HOUR = "one_hour"
+    ONE_DAY = "one_day"
+
+    @property
+    def label(self) -> str:
+        if self is EmailReminderOffset.ONE_HOUR:
+            return "E-Mail 1 Stunde vorher / Email 1 hour before"
+        if self is EmailReminderOffset.ONE_DAY:
+            return "E-Mail 1 Tag vorher / Email 1 day before"
+        return "Keine Erinnerung / No reminder"
+
+
 class TodoItem(BaseModel):
     """Representation of a todo item stored in session state."""
 
@@ -116,6 +157,8 @@ class TodoItem(BaseModel):
     completion_criteria_md: str = ""
     processed_progress_events: list[str] = Field(default_factory=list)
     kanban: TodoKanban = Field(default_factory=TodoKanban)
+    recurrence: RecurrencePattern = RecurrencePattern.ONCE
+    email_reminder: EmailReminderOffset = EmailReminderOffset.NONE
 
 
 class JournalEntry(BaseModel):
