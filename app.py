@@ -466,9 +466,11 @@ def _render_todo_kanban(todo: TodoItem) -> None:
                         st.rerun()
 
 
-def render_task_row(todo: TodoItem) -> None:
-    with st.container(border=True):
-        row_columns = st.columns([0.1, 0.45, 0.15, 0.15, 0.15])
+def render_task_row(todo: TodoItem, *, parent: Any | None = None) -> None:
+    container = (parent or st).container(border=True)
+    with container:
+        container.markdown("<div class='task-list-row'>", unsafe_allow_html=True)
+        row_columns = st.columns([0.1, 0.38, 0.16, 0.18, 0.18])
         with row_columns[0]:
             st.checkbox(
                 "Erledigt / Done",
@@ -482,23 +484,30 @@ def render_task_row(todo: TodoItem) -> None:
 
         with row_columns[1]:
             st.markdown(f"**{todo.title}**")
+            st.caption(f"{translate_text(('Kategorie', 'Category'))}: {todo.category.label}")
 
         with row_columns[2]:
-            st.markdown(f"Priorität / Priority: **P{todo.priority}**")
+            st.markdown(f"<div class='task-priority'>P{todo.priority}</div>", unsafe_allow_html=True)
+            st.caption("Priorität / Priority")
 
         with row_columns[3]:
             if todo.due_date:
-                st.caption(f"Fällig / Due: {todo.due_date.date().isoformat()}")
+                st.markdown(
+                    f"<div class='task-due'>{translate_text(('Fällig', 'Due'))}: {todo.due_date.date().isoformat()}</div>",
+                    unsafe_allow_html=True,
+                )
             else:
                 st.caption("Kein Fälligkeitsdatum / No due date")
 
         with row_columns[4]:
-            st.caption(
-                f"Quadrant: {quadrant_badge(todo.quadrant)}",
+            st.markdown(
+                f"<div class='task-quadrant'>{quadrant_badge(todo.quadrant, include_full_label=True)}</div>",
                 unsafe_allow_html=True,
             )
 
-        with st.expander("Details"):
+        container.markdown("</div>", unsafe_allow_html=True)
+
+        with st.expander("Details anzeigen / Show details"):
             st.caption(f"Kategorie / Category: {todo.category.label}")
             if todo.description_md.strip():
                 st.markdown(todo.description_md)
@@ -540,12 +549,16 @@ def render_task_row(todo: TodoItem) -> None:
                         format_func=lambda option: option.label,
                         index=list(Category).index(todo.category),
                         key=f"quick_category_{todo.id}",
+                        label_visibility="collapsed",
                     )
-                    new_priority = st.selectbox(
-                        "Priorität (1=hoch) / Priority (1=high)",
-                        options=list(range(1, 6)),
-                        index=list(range(1, 6)).index(todo.priority),
+                    new_priority = st.slider(
+                        "Priorität / Priority",
+                        min_value=1,
+                        max_value=5,
+                        value=todo.priority,
                         key=f"quick_priority_{todo.id}",
+                        label_visibility="collapsed",
+                        help="1 = höchste Priorität, 5 = niedrigste / 1 = highest priority, 5 = lowest.",
                     )
 
                 with right:
@@ -554,6 +567,7 @@ def render_task_row(todo: TodoItem) -> None:
                         value=todo.due_date.date() if todo.due_date else None,
                         format="YYYY-MM-DD",
                         key=f"quick_due_{todo.id}",
+                        label_visibility="collapsed",
                     )
                     new_quadrant = st.selectbox(
                         "Eisenhower-Quadrant / Quadrant",
@@ -561,6 +575,7 @@ def render_task_row(todo: TodoItem) -> None:
                         format_func=lambda option: option.label,
                         index=list(EisenhowerQuadrant).index(todo.quadrant),
                         key=f"quick_quadrant_{todo.id}",
+                        label_visibility="collapsed",
                     )
 
                 with st.expander("Fortschrittsregel bearbeiten / Edit progress rule"):
@@ -568,6 +583,7 @@ def render_task_row(todo: TodoItem) -> None:
                         "Ziel hinterlegen / Set target",
                         value=todo.progress_target is not None,
                         key=f"quick_progress_enable_{todo.id}",
+                        label_visibility="collapsed",
                     )
                     progress_cols = st.columns([0.5, 0.5])
                     with progress_cols[0]:
@@ -578,6 +594,7 @@ def render_task_row(todo: TodoItem) -> None:
                             step=1.0,
                             key=f"quick_progress_target_{todo.id}",
                             disabled=not enable_progress_target,
+                            label_visibility="collapsed",
                         )
                     with progress_cols[1]:
                         edit_progress_unit = st.text_input(
@@ -585,6 +602,7 @@ def render_task_row(todo: TodoItem) -> None:
                             value=todo.progress_unit,
                             key=f"quick_progress_unit_{todo.id}",
                             disabled=not enable_progress_target,
+                            label_visibility="collapsed",
                         )
 
                     edit_progress_current = st.number_input(
@@ -593,6 +611,7 @@ def render_task_row(todo: TodoItem) -> None:
                         value=float(todo.progress_current),
                         step=0.5,
                         key=f"quick_progress_current_{todo.id}",
+                        label_visibility="collapsed",
                     )
 
                     edit_auto_complete = st.toggle(
@@ -609,6 +628,7 @@ def render_task_row(todo: TodoItem) -> None:
                             value=todo.completion_criteria_md,
                             key=f"quick_progress_criteria_{todo.id}",
                             disabled=not enable_progress_target,
+                            label_visibility="collapsed",
                         )
                     with edit_criteria_tabs[1]:
                         if enable_progress_target and todo.completion_criteria_md.strip():
@@ -665,6 +685,53 @@ def render_task_list_view(todos: list[TodoItem]) -> None:
         "Grouped by category with priority first, then due date and created timestamp."
     )
 
+    st.markdown(
+        """
+        <style>
+            .task-list-container [data-testid="stVerticalBlockBorderWrapper"] {
+                margin-bottom: 0.45rem;
+                padding: 0.6rem 0.8rem;
+            }
+
+            .task-list-container .task-list-row {
+                display: flex;
+                align-items: center;
+                gap: 0.6rem;
+            }
+
+            .task-list-container .task-priority {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 2.5rem;
+                padding: 0.2rem 0.5rem;
+                border-radius: 0.5rem;
+                background: rgba(255, 255, 255, 0.06);
+                border: 1px solid var(--gerris-border, #1f4a42);
+                font-weight: 700;
+            }
+
+            .task-list-container .task-due,
+            .task-list-container .task-quadrant {
+                font-weight: 600;
+            }
+
+            .task-list-container [data-testid="stExpander"] {
+                margin-top: 0.25rem;
+            }
+
+            .task-list-container [data-testid="stExpander"] > details {
+                padding: 0.35rem 0.65rem;
+            }
+
+            .task-list-container [data-testid="stExpander"] summary {
+                padding: 0.2rem 0.4rem;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     filter_columns = st.columns(3)
     with filter_columns[0]:
         show_done = st.checkbox(
@@ -709,18 +776,22 @@ def render_task_list_view(todos: list[TodoItem]) -> None:
         st.info("Keine passenden Aufgaben gefunden / No matching tasks.")
         return
 
-    for category in Category:
-        if category not in selected_categories:
-            continue
+    task_list_container = st.container()
+    with task_list_container:
+        st.markdown('<div class="task-list-container">', unsafe_allow_html=True)
+        for category in Category:
+            if category not in selected_categories:
+                continue
 
-        category_todos = [todo for todo in visible_todos if todo.category is category]
-        if not category_todos:
-            st.caption(f"Keine Aufgaben in {category.label} / No tasks in {category.label}.")
-            continue
+            category_todos = [todo for todo in visible_todos if todo.category is category]
+            if not category_todos:
+                st.caption(f"Keine Aufgaben in {category.label} / No tasks in {category.label}.")
+                continue
 
-        st.markdown(f"### {category.label}")
-        for todo in sorted(category_todos, key=lambda item: _task_sort_key(item, sort_override)):
-            render_task_row(todo)
+            st.markdown(f"### {category.label}")
+            for todo in sorted(category_todos, key=lambda item: _task_sort_key(item, sort_override)):
+                render_task_row(todo, parent=task_list_container)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> dict[str, Any]:
