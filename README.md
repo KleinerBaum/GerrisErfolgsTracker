@@ -78,6 +78,7 @@ OPENAI_API_KEY = "sk-..."
 - Tests: `pytest -q`
 - CI: GitHub Actions Workflow (`.github/workflows/ci.yml`) führt `ruff check .` und `pytest -q` bei Push/PR aus.
 - Streamlit-Forms: Alle Submit-Buttons müssen innerhalb ihres `st.form` stehen; die Quick-Edit-Speicheraktion im Aufgabenlisten-Formular ist entsprechend eingebettet, sodass keine `st.form_submit_button`-API-Fehler auftreten.
+- Widget-Keys: Der "AI: Motivation"-Button nutzt kontextspezifische Keys pro Panel (z. B. Sidebar), um `StreamlitDuplicateElementKey`-Fehler zu vermeiden / The "AI: Motivation" button uses context-specific keys per panel (e.g., sidebar) to avoid `StreamlitDuplicateElementKey` crashes.
 
 > **Formulare / Forms:** Platzieren Sie `st.form_submit_button` immer innerhalb eines `st.form`-Blocks und bei Bedarf innerhalb von Spalten mittels `with col:`. So vermeiden Sie `StreamlitAPIException`-Meldungen zur Formularplatzierung.
 
