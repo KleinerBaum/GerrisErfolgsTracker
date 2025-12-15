@@ -1418,7 +1418,8 @@ def render_sidebar_sections(
     client: Optional[OpenAI],
     settings: Mapping[str, Any],
 ) -> bool:
-    with st.sidebar.expander("Gamification", expanded=True) as gamification_panel:
+    gamification_panel = st.sidebar.expander("Gamification", expanded=True)
+    with gamification_panel:
         render_gamification_panel(
             stats,
             ai_enabled=ai_enabled,
@@ -1428,7 +1429,8 @@ def render_sidebar_sections(
             allow_mode_selection=True,
         )
 
-    with st.sidebar.expander("Sicherheit & Daten / Safety & data", expanded=False) as safety_panel:
+    safety_panel = st.sidebar.expander("Sicherheit & Daten / Safety & data", expanded=False)
+    with safety_panel:
         show_storage_notice = render_safety_panel(panel=safety_panel)
 
     st.sidebar.divider()
