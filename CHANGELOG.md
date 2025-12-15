@@ -2,6 +2,7 @@
 
 ## Unreleased
 - Added daily journal tab with guided form per day (mood tags, triggers, thought challenge, self-care, gratitude suggestions) linked to categories, explicit save plus JSON/Markdown export, and schema migration tests.
+- Fixed journal JSON export to use Pydantic JSON serialization for dates and categories and added regression coverage.
 - Restructured navigation into three sidebar pages (Ziele/Goals, Aufgaben/Tasks, Tagebuch/Journal) with the goal, AI, and gamification settings consolidated on the Goals page and clearer task/journal workspaces.
 - Modernisierte UI: weite Seitenbreite mit eingeklappter Sidebar, sofort sichtbares KPI-Dashboard, neu gruppierte Sidebar-Quick-Controls sowie ein dezenter Gradient statt Hintergrundbild.
 - Highlighted the **ToDo hinzufügen / Add task** submit button as a primary action to guide form submissions.

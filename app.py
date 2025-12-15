@@ -257,7 +257,9 @@ def _prefill_journal_form(entry: JournalEntry) -> None:
 
 
 def _journal_json_export(entries: Mapping[date, JournalEntry]) -> str:
-    payload = {entry_date.isoformat(): entry.model_dump() for entry_date, entry in entries.items()}
+    payload = {
+        entry_date.isoformat(): entry.model_dump(mode="json") for entry_date, entry in entries.items()
+    }
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
