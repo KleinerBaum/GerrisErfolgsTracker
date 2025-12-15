@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Überarbeitete Tagebuch-Seite ohne Kopfzeile und Export-Block: Auslöser & Reaktionen, Gedanken-Challenge, Selbstfürsorge und Dankbarkeit liegen nun in einer vierteiligen Zeile; Dankbarkeitsfelder erscheinen progressiv beim Ausfüllen und werden migriert/gespeichert als Liste / Journal page cleanup removes the header and export block: triggers & reactions, thought challenge, self-care, and gratitude sit in a single four-column row; gratitude inputs reveal progressively as you fill them and persist via a migrated list.
 - Kompakte Aufgabenlisten-Zeilen mit schmaleren Rändern, farbigen Quadranten-Tags und eingeklappten Details-Expandern für sichtbar mehr Aufgaben pro Bildschirm.
 - Markiert den aktuellen Tag im Date-Picker und in der Kalenderansicht durch klaren Rahmen und sanft helleren Hintergrund, der im Dark Theme gut lesbar bleibt.
 - Begrenzte die Titel- und Beschreibungsfelder im Formular **ToDo hinzufügen / Add task** auf ca. 50 % Breite für eine kompaktere Desktop-Ansicht, während Mobilgeräte weiter sauber stapeln / Limited the **Add task** title and description inputs to ~50% width on desktop for a tidier layout while keeping mobile stacking intact.

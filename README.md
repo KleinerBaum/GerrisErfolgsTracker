@@ -104,11 +104,8 @@ OPENAI_API_KEY = "sk-..."
 ## Tagebuch / Daily journal
 
 - Neuer Bereich **Tagebuch / Journal** über die Sidebar-Navigation mit geführtem Formular pro Kalendertag. Der Button **Tagebucheintrag erstellen / Create journal entry** lädt bestehende Entwürfe oder öffnet ein leeres Formular für heute.
-- Formularfelder mit Platzhaltern und Autosuggest: Stimmungstags (bearbeitbar) plus Freitext, Auslöser & Reaktionen, Gedanken-Challenge (automatischer Gedanke + Reframe), Selbstfürsorge (heute/morgen) sowie drei Dankbarkeitsfelder mit Vorschlägen aus bisherigen Einträgen. Kategorien lassen sich per Multi-Select (Suchleiste) an vorhandene Lebensbereiche koppeln.
-- Speichern erfolgt explizit über **Eintrag speichern / Save entry** (kein Auto-Save pro Tastendruck). Bestehende Entwürfe werden geladen und können überschrieben werden.
-- Export/Backup: Buttons für **JSON** (Rohdaten) und **Markdown** (lesbare Chronik) ohne Zusatzabhängigkeiten; der JSON-Export
-  serialisiert Datum- und Kategorie-Felder als Strings (ISO-Format), sodass Downloads ohne `TypeError` funktionieren / JSON
-  export serializes date and category fields as ISO strings to avoid `TypeError` crashes and stay downstream-friendly.
+- Formularfelder mit Platzhaltern und Autosuggest: Stimmungstags (bearbeitbar) plus Freitext, dazu eine vierteilige Zeile mit **Auslöser & Reaktionen**, **Gedanken-Challenge** (automatischer Gedanke + Reframe), **Selbstfürsorge** (heute/morgen) sowie progressiven **Dankbarkeit**-Feldern, die nacheinander erscheinen, sobald das vorherige gefüllt ist; Vorschläge kommen aus bisherigen Einträgen. Kategorien lassen sich per Multi-Select (Suchleiste) an vorhandene Lebensbereiche koppeln / Mood tags with notes plus a four-part row covering **triggers & reactions**, **thought challenge** (automatic thought + reframe), **self-care** (today/tomorrow), and progressive **gratitude** inputs that show up one after another when the previous field is filled; suggestions reuse past entries. Categories connect via multi-select to the existing life domains.
+- Speichern erfolgt explizit über **Eintrag speichern / Save entry** (kein Auto-Save pro Tastendruck). Bestehende Entwürfe werden geladen und können überschrieben werden; die Export-/Backup-Sektion entfällt zugunsten eines fokussierten Editors / Saving stays explicit via **Save entry** (no per-keystroke auto-save). Existing drafts reload and can be overwritten; the export/backup section was removed to keep the editor focused.
 
 ## Kalenderansicht / Calendar view
 

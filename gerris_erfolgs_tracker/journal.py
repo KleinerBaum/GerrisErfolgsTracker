@@ -44,11 +44,26 @@ def _coerce_entry(entry_date: date, raw: Any) -> JournalEntry:
     migrated.setdefault("rational_response", "")
     migrated.setdefault("self_care_today", "")
     migrated.setdefault("self_care_tomorrow", "")
+    migrated.setdefault("gratitudes", [])
     migrated.setdefault("gratitude_1", "")
     migrated.setdefault("gratitude_2", "")
     migrated.setdefault("gratitude_3", "")
     migrated["categories"] = _coerce_categories(migrated.get("categories", []))
     migrated["date"] = entry_date
+
+    gratitudes = migrated.get("gratitudes", [])
+    if not isinstance(gratitudes, list):
+        gratitudes = []
+
+    if not gratitudes:
+        legacy_values = [
+            migrated.get("gratitude_1", ""),
+            migrated.get("gratitude_2", ""),
+            migrated.get("gratitude_3", ""),
+        ]
+        gratitudes = [str(value).strip() for value in legacy_values if str(value).strip()]
+
+    migrated["gratitudes"] = gratitudes
 
     return JournalEntry.model_validate(migrated)
 
@@ -85,7 +100,8 @@ def journal_gratitude_suggestions(*, exclude_date: date | None = None) -> list[s
     for entry_date, entry in get_journal_entries().items():
         if exclude_date is not None and entry_date == exclude_date:
             continue
-        for gratitude in (entry.gratitude_1, entry.gratitude_2, entry.gratitude_3):
+        gratitudes = entry.gratitudes or [entry.gratitude_1, entry.gratitude_2, entry.gratitude_3]
+        for gratitude in gratitudes:
             value = gratitude.strip()
             if value and value not in suggestions:
                 suggestions.append(value)

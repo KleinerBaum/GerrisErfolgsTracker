@@ -5,7 +5,7 @@ from enum import Enum
 from typing import List, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
 
@@ -129,10 +129,26 @@ class JournalEntry(BaseModel):
     rational_response: str = ""
     self_care_today: str = ""
     self_care_tomorrow: str = ""
+    gratitudes: list[str] = Field(default_factory=list)
     gratitude_1: str = ""
     gratitude_2: str = ""
     gratitude_3: str = ""
     categories: list[Category] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _sync_gratitudes(self) -> "JournalEntry":
+        cleaned_gratitudes = [value.strip() for value in self.gratitudes if value and value.strip()]
+
+        legacy_values = [self.gratitude_1, self.gratitude_2, self.gratitude_3]
+        legacy_cleaned = [value.strip() for value in legacy_values if value and value.strip()]
+
+        if not cleaned_gratitudes:
+            cleaned_gratitudes = legacy_cleaned
+
+        padded = (cleaned_gratitudes + ["", "", ""])[:3]
+        self.gratitudes = cleaned_gratitudes
+        self.gratitude_1, self.gratitude_2, self.gratitude_3 = padded
+        return self
 
 
 class KpiDailyEntry(BaseModel):
