@@ -1721,13 +1721,13 @@ def render_todo_section(
                 key=NEW_MILESTONE_NOTE_KEY,
                 placeholder="Kurze Beschreibung oder DoD / Brief description or DoD",
             )
-            add_milestone_draft = st.button(
+            add_milestone_draft = st.form_submit_button(
                 "Meilenstein vormerken / Queue milestone",
                 key="queue_new_milestone",
                 help="Unterziel für diese Aufgabe vormerken / Queue a milestone for this task.",
             )
 
-            generate_suggestions = st.button(
+            generate_suggestions = st.form_submit_button(
                 "AI: Meilensteine vorschlagen / Suggest milestones",
                 key="ai_suggest_new_milestones",
                 disabled=not ai_enabled,
@@ -1771,7 +1771,10 @@ def render_todo_section(
                     complexity = MilestoneComplexity(candidate.complexity)
                     default_points = _points_for_complexity(complexity)
                     st.caption(f"{candidate.title} · {complexity.label} · ~{default_points} Punkte")
-                    if st.button(f"Übernehmen #{idx + 1}", key=f"apply_new_milestone_{idx}"):
+                    if st.form_submit_button(
+                        f"Übernehmen #{idx + 1}",
+                        key=f"apply_new_milestone_{idx}",
+                    ):
                         draft_milestones.append(
                             {
                                 "title": candidate.title,
@@ -1791,7 +1794,9 @@ def render_todo_section(
                     st.caption(f"{entry.get('title')} · {complexity_label} · {entry.get('points', 0)} Punkte")
                     if entry.get("note"):
                         st.caption(entry["note"])
-                    if st.button(f"Entfernen #{index + 1}", key=f"remove_draft_{index}"):
+                    if st.form_submit_button(
+                        f"Entfernen #{index + 1}", key=f"remove_draft_{index}"
+                    ):
                         draft_milestones.pop(index)
                         st.session_state[NEW_TODO_DRAFT_MILESTONES_KEY] = draft_milestones
                         st.rerun()
