@@ -41,23 +41,48 @@ class Motivation(BaseModel):
     )
 
 
-class MilestoneSuggestionItem(BaseModel):
-    title: str = Field(description="Kurzbeschreibung des Meilensteins / Short milestone label")
-    complexity: Literal["small", "medium", "large"] = Field(
-        description="Aufwandsklasse des Meilensteins / Complexity tier for the milestone"
+class JournalAlignmentAction(BaseModel):
+    target_id: str | None = Field(
+        default=None,
+        description="ID des Ziels oder der Aufgabe / ID of the goal or task if available",
     )
-    rationale: str = Field(description="Knapp begründen / Brief rationale for the suggestion")
+    target_title: str = Field(
+        description="Name des Ziels oder der Aufgabe / Name of the goal or task",
+    )
+    target_type: Literal["task", "goal"] = Field(
+        description="Typ der Referenz / Target type (task or goal)",
+    )
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Sicherheit der Zuordnung / Confidence of the match",
+    )
+    suggested_points: int = Field(
+        ge=0,
+        le=50,
+        description="Punktebonus für Fortschritt / Suggested bonus points",
+    )
+    follow_up: str = Field(
+        default="",
+        description="Kurze Folgeaktion (DE/EN) / Follow-up action (DE/EN)",
+    )
+    rationale: str = Field(
+        description="Begründung für das Update / Rationale for the suggested update",
+    )
 
 
-class MilestoneSuggestionList(BaseModel):
-    milestones: list[MilestoneSuggestionItem] = Field(
+class JournalAlignmentResponse(BaseModel):
+    summary: str = Field(description="Kurzfassung der erkannten Fortschritte / Summary of detected progress")
+    actions: list[JournalAlignmentAction] = Field(
         default_factory=list,
-        description="Liste empfohlener Meilensteine / Suggested milestones list",
+        description="Konkrete Updates mit Punkten / Concrete updates with point suggestions",
     )
 
 
 __all__ = [
     "GoalSuggestion",
+    "JournalAlignmentAction",
+    "JournalAlignmentResponse",
     "Motivation",
     "MilestoneSuggestionItem",
     "MilestoneSuggestionList",

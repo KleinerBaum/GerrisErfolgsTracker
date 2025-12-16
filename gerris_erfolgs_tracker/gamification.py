@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Dict
 
 import streamlit as st
@@ -83,6 +83,37 @@ def _assign_badges(state: GamificationState, stats: KpiStats) -> None:
         _award_badge(state, BADGE_CONSISTENCY_3)
     if stats.done_total >= 10:
         _award_badge(state, BADGE_DOUBLE_DIGITS)
+
+
+def _journal_event_token(entry_date: date, target_title: str) -> str:
+    normalized_title = target_title.strip().lower().replace(" ", "-")
+    return f"journal:{entry_date.isoformat()}:{normalized_title}"
+
+
+def award_journal_points(
+    *,
+    entry_date: date,
+    target_title: str,
+    points: int,
+    rationale: str,
+) -> GamificationState:
+    """Add gamification points for journal-aligned actions with deduplication."""
+
+    sanitized_points = max(0, points)
+    state = _coerce_state(st.session_state.get(SS_GAMIFICATION))
+    token = _journal_event_token(entry_date, target_title)
+    if token in state.processed_journal_events or sanitized_points == 0:
+        return state
+
+    state.processed_journal_events.append(token)
+    state.points += sanitized_points
+    state.level = max(1, 1 + state.points // 100)
+    state.history.append(
+        (f"{entry_date.isoformat()} · Journal: +{sanitized_points} Punkte / points für {target_title} · {rationale}")
+    )
+    st.session_state[SS_GAMIFICATION] = state.model_dump()
+    persist_state()
+    return state
 
 
 def update_gamification_on_completion(todo: TodoItem, stats: KpiStats) -> GamificationState:
