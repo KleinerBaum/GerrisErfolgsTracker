@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Neues Einstellungs-Panel im Abschnitt **Ziele im Überblick / Goals at a glance**, um gezielt Aufgaben auszuwählen, die in KPI-Dashboard und Kategorien einfließen (z. B. Fokus-Tasks) / New **Settings** expander inside **Goals at a glance** lets you pick which tasks feed the KPI dashboard and category charts (e.g., focus tasks).
 - Erweitertes **Ziel-Canvas** mit Titel, Fokus-Kategorien, Zeitfenster, Start-/Zieldatum, Check-ins, messbarem Zielwert + Einheit, Erfolgskriterien, Motivation, Risiken/Absicherung, nächstem Schritt und Feier/Belohnung – alles zweisprachig im Ziel-Setup pflegbar.
 - Behebt Streamlit-Fehler im ToDo-Formular, indem alle Meilenstein-Buttons innerhalb des Formulars als Submit-Buttons laufen / Fixes Streamlit errors in the ToDo form by using submit buttons for all milestone actions inside the form.
 - Neue Aufgabenvorlagen im Erfassungsformular mit inspirierten Feldern aus dem Screenshot (Fälligkeit, Priorität, Reminder, Zeitziel), die per Dropdown übernehmbar sind / New task templates in the create form inspired by the screenshot (due date, priority, reminder, time goal) and selectable via dropdown.
