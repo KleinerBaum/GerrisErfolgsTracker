@@ -17,6 +17,10 @@ from gerris_erfolgs_tracker.ai_features import (
     suggest_milestones,
     suggest_quadrant,
 )
+from gerris_erfolgs_tracker.llm_schemas import (
+    MilestoneSuggestionItem,
+    MilestoneSuggestionList,
+)
 from gerris_erfolgs_tracker.charts import (
     PRIMARY_COLOR,
     build_category_weekly_completion_figure,
@@ -31,6 +35,9 @@ from gerris_erfolgs_tracker.constants import (
     FILTER_SELECTED_CATEGORIES_KEY,
     FILTER_SHOW_DONE_KEY,
     FILTER_SORT_OVERRIDE_KEY,
+    GOAL_CREATION_VISIBLE_KEY,
+    GOAL_OVERVIEW_SHOW_CATEGORY_KEY,
+    GOAL_OVERVIEW_SHOW_KPI_KEY,
     GOAL_SUGGESTED_VALUE_KEY,
     NEW_TODO_CATEGORY_KEY,
     NEW_TODO_DESCRIPTION_KEY,
