@@ -7,6 +7,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Literal, Mapping, Optional, Sequence, TypedDict, cast
+
 import plotly.graph_objects as go
 import streamlit as st
 from openai import OpenAI
@@ -2380,7 +2381,52 @@ def render_todo_section(
         render_calendar_view()
 
 
-def render_kpi_dashboard(stats: KpiStats) -> None:
+def _render_quadrant_focus_items(todos: list[TodoItem]) -> None:
+    focus_quadrants = (
+        EisenhowerQuadrant.URGENT_IMPORTANT,
+        EisenhowerQuadrant.NOT_URGENT_IMPORTANT,
+    )
+    st.markdown("#### Fokusaufgaben / Focus tasks")
+    st.caption(
+        "Prüfe die wichtigsten Aufgaben aus den Aufgabenansichten und ihre Unterziele / "
+        "Review the most relevant tasks from the task views including their sub-goals."
+    )
+
+    focus_columns = st.columns(2)
+    for quadrant, column in zip(focus_quadrants, focus_columns):
+        with column:
+            st.markdown(f"**{quadrant.label}**")
+            open_items = [
+                todo for todo in sort_todos(todos, by="due_date") if todo.quadrant == quadrant and not todo.completed
+            ]
+
+            if not open_items:
+                st.caption(
+                    "Keine offenen Aufgaben / No open tasks",
+                )
+                continue
+
+            for todo in open_items:
+                with st.container(border=True):
+                    st.markdown(f"**{todo.title}**")
+                    st.caption(f"{translate_text(('Kategorie', 'Category'))}: {todo.category.label}")
+                    due_label = translate_text(("Fällig", "Due"))
+                    st.caption(
+                        f"{due_label}: {todo.due_date.date().isoformat() if todo.due_date else translate_text(('Kein Datum', 'No date'))}"
+                    )
+
+                    if todo.milestones:
+                        st.caption("Unterziele / Milestones")
+                        for milestone in todo.milestones:
+                            milestone_note = f" — {milestone.note}" if milestone.note.strip() else ""
+                            points_label = translate_text(("Punkte", "points"))
+                            st.markdown(
+                                f"- {milestone.title} ({milestone.status.label}, {points_label}: {milestone.points})"
+                                f"{milestone_note}"
+                            )
+
+
+def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
     st.subheader("KPI-Dashboard")
     col_total, col_today, col_streak, col_goal = st.columns(4)
 
@@ -2399,6 +2445,8 @@ def render_kpi_dashboard(stats: KpiStats) -> None:
         f"{stats.done_today}/{stats.goal_daily}",
         delta=goal_delta,
     )
+
+    _render_quadrant_focus_items(todos)
 
     st.caption("Wochenübersicht der Abschlüsse / Week view of completions")
     weekly_data = get_weekly_completion_counts(stats)
@@ -3020,7 +3068,7 @@ def main() -> None:
         )
 
         if show_kpi_dashboard:
-            render_kpi_dashboard(stats)
+            render_kpi_dashboard(stats, todos=todos)
 
         if show_category_trends:
             render_category_dashboard(
