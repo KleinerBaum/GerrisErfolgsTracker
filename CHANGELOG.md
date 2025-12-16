@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Alle verbleibenden englischen UI-Texte entfernt; Labels, Hinweise und Gamification-Meldungen sind jetzt ausschließlich auf Deutsch.
 - Oberfläche durchgehend auf Deutsch: Sprachumschalter entfernt und sichtbare Titel/Labels ohne englische Zusätze.
 - Neues Einstellungs-Panel im Abschnitt **Ziele im Überblick / Goals at a glance**, um gezielt Aufgaben auszuwählen, die in KPI-Dashboard und Kategorien einfließen (z. B. Fokus-Tasks) / New **Settings** expander inside **Goals at a glance** lets you pick which tasks feed the KPI dashboard and category charts (e.g., focus tasks).
 

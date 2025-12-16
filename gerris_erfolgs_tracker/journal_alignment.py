@@ -77,15 +77,12 @@ def _fallback_alignment(entry_text: str, todos: Iterable[TodoItem]) -> JournalAl
                 target_title=todo.title,
                 suggested_points=10,
                 follow_up=(
-                    "Bestätige den Fortschritt und plane den nächsten Schritt. / Confirm the progress and plan the next step."
+                    "Bestätige den Fortschritt und plane den nächsten Schritt."
                 ),
-                rationale="Titel im Tagebucheintrag erkannt / Title detected in journal entry.",
+                rationale="Titel im Tagebucheintrag erkannt.",
             )
         )
-    summary = (
-        "Automatische Heuristik: Treffer basierend auf Titeln; bitte manuell prüfen. / "
-        "Heuristic match via titles; please verify manually."
-    )
+    summary = "Automatische Heuristik: Treffer basierend auf Titeln; bitte manuell prüfen."
     return JournalAlignmentSuggestion(actions=actions, summary=summary)
 
 
@@ -116,7 +113,7 @@ def suggest_journal_alignment(
 
     content = _entry_text(entry)
     if not content:
-        summary = "Keine Inhalte für den Abgleich vorhanden / No journal content to check."
+        summary = "Keine Inhalte für den Abgleich vorhanden."
         return AISuggestion(JournalAlignmentSuggestion(actions=[], summary=summary), from_ai=False)
 
     client_to_use = client or get_openai_client()
@@ -147,7 +144,7 @@ def suggest_journal_alignment(
                     },
                     {
                         "role": "user",
-                        "content": "Verfügbare Aufgaben / goals: " + "\n".join(_describe_todos(todos)),
+                        "content": "Verfügbare Aufgaben: " + "\n".join(_describe_todos(todos)),
                     },
                 ],
                 response_model=JournalAlignmentResponse,

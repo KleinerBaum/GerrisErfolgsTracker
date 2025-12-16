@@ -67,16 +67,16 @@ def build_weekly_completion_figure(
                 textposition="auto",
                 textfont_color=FONT_COLOR,
                 marker_color=PRIMARY_COLOR,
-                hovertemplate=("<b>%{x}</b><br>Abschlüsse / Completions: %{y}<extra></extra>"),
+            hovertemplate=("<b>%{x}</b><br>Abschlüsse: %{y}<extra></extra>"),
             )
         ]
     )
 
     figure.update_layout(
         bargap=0.35,
-        title_text="Abschlüsse der letzten 7 Tage / Completions last 7 days",
-        xaxis_title="Datum / Date",
-        yaxis_title="Abschlüsse / Completions",
+        title_text="Abschlüsse der letzten 7 Tage",
+        xaxis_title="Datum",
+        yaxis_title="Abschlüsse",
         margin=dict(t=60, r=10, b=40, l=10),
     )
 
@@ -119,10 +119,10 @@ def build_category_weekly_completion_figure(
     figure.update_layout(
         barmode="stack",
         bargap=0.35,
-        legend_title_text="Kategorien / Categories",
-        title_text="Abschlüsse nach Kategorie (7 Tage) / Completions by category (7 days)",
-        xaxis_title="Datum / Date",
-        yaxis_title="Abschlüsse / Completions",
+        legend_title_text="Kategorien",
+        title_text="Abschlüsse nach Kategorie (7 Tage)",
+        xaxis_title="Datum",
+        yaxis_title="Abschlüsse",
         margin=dict(t=60, r=10, b=40, l=10),
         showlegend=True,
     )

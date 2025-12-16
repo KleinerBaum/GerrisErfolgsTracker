@@ -15,86 +15,86 @@ class QuadrantName(StrEnum):
 
 class TodoCategorization(BaseModel):
     quadrant: QuadrantName = Field(
-        description="Eisenhower-Quadrant fuer die Aufgabe / Target quadrant for the task",
+        description="Eisenhower-Quadrant fuer die Aufgabe",
     )
     rationale: str = Field(
-        description="Kurze Begruendung / Brief rationale for the classification",
+        description="Kurze Begruendung",
     )
 
 
 class GoalSuggestion(BaseModel):
     daily_goal: int = Field(
         ge=1,
-        description="Tagesziel fuer erledigte Aufgaben / Daily completion target",
+        description="Tagesziel fuer erledigte Aufgaben",
     )
-    focus: str = Field(description="Fokus fuer den Tag / Suggested focus for today")
+    focus: str = Field(description="Fokus fuer den Tag")
     tips: list[str] = Field(
         default_factory=list,
-        description="Konkrete Tipps / Concrete tips to achieve the goal",
+        description="Konkrete Tipps",
     )
 
 
 class Motivation(BaseModel):
-    message: str = Field(description="Motivierender Text / Motivational message")
+    message: str = Field(description="Motivierender Text")
     tone: Literal["encouraging", "calm", "celebratory"] = Field(
-        description="Tonlage der Nachricht / Tone of the message",
+        description="Tonlage der Nachricht",
     )
 
 
 class MilestoneSuggestionItem(BaseModel):
     title: str = Field(
-        description="Kurzer, zweisprachiger Titel des Meilensteins / Short bilingual milestone title",
+        description="Kurzer Titel des Meilensteins",
     )
     complexity: Literal["small", "medium", "large"] = Field(
-        description="Einschaetzung des Aufwands (klein/mittel/groß) / Effort sizing (small/medium/large)",
+        description="Einschaetzung des Aufwands (klein/mittel/groß)",
     )
     rationale: str = Field(
-        description="Begruendung oder Kontext / Rationale or context",
+        description="Begruendung oder Kontext",
     )
 
 
 class MilestoneSuggestionList(BaseModel):
     milestones: list[MilestoneSuggestionItem] = Field(
         default_factory=list,
-        description="Vorgeschlagene Meilensteine / Suggested milestones",
+        description="Vorgeschlagene Meilensteine",
     )
 
 
 class JournalAlignmentAction(BaseModel):
     target_id: str | None = Field(
         default=None,
-        description="ID des Ziels oder der Aufgabe / ID of the goal or task if available",
+        description="ID des Ziels oder der Aufgabe",
     )
     target_title: str = Field(
-        description="Name des Ziels oder der Aufgabe / Name of the goal or task",
+        description="Name des Ziels oder der Aufgabe",
     )
     target_type: Literal["task", "goal"] = Field(
-        description="Typ der Referenz / Target type (task or goal)",
+        description="Typ der Referenz",
     )
     confidence: float = Field(
         ge=0.0,
         le=1.0,
-        description="Sicherheit der Zuordnung / Confidence of the match",
+        description="Sicherheit der Zuordnung",
     )
     suggested_points: int = Field(
         ge=0,
         le=50,
-        description="Punktebonus für Fortschritt / Suggested bonus points",
+        description="Punktebonus für Fortschritt",
     )
     follow_up: str = Field(
         default="",
-        description="Kurze Folgeaktion (DE/EN) / Follow-up action (DE/EN)",
+        description="Kurze Folgeaktion",
     )
     rationale: str = Field(
-        description="Begründung für das Update / Rationale for the suggested update",
+        description="Begründung für das Update",
     )
 
 
 class JournalAlignmentResponse(BaseModel):
-    summary: str = Field(description="Kurzfassung der erkannten Fortschritte / Summary of detected progress")
+    summary: str = Field(description="Kurzfassung der erkannten Fortschritte")
     actions: list[JournalAlignmentAction] = Field(
         default_factory=list,
-        description="Konkrete Updates mit Punkten / Concrete updates with point suggestions",
+        description="Konkrete Updates mit Punkten",
     )
 
 

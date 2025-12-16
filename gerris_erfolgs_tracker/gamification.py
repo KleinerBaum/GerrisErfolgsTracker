@@ -22,24 +22,17 @@ POINTS_PER_QUADRANT: Dict[EisenhowerQuadrant, int] = {
     EisenhowerQuadrant.NOT_URGENT_NOT_IMPORTANT: 5,
 }
 
-BADGE_FIRST_STEP = "First Step / Erster Schritt"
-BADGE_CONSISTENCY_3 = "Consistency 3 / 3-Tage-Streak"
-BADGE_DOUBLE_DIGITS = "Double Digits / Zweistellig"
+BADGE_FIRST_STEP = "Erster Schritt"
+BADGE_CONSISTENCY_3 = "3-Tage-Streak"
+BADGE_DOUBLE_DIGITS = "Zweistellig"
 
 AVATAR_ROSS_PROMPTS = [
     (
-        "Ich sehe, wie viel Mühe du dir gibst – atme tief durch und mach den nächsten "
-        "kleinen Schritt. / I can see how much effort you are putting in — take a deep "
-        "breath and make the next small step."
+        "Ich sehe, wie viel Mühe du dir gibst – atme tief durch und mach den nächsten kleinen Schritt."
     ),
+    ("Du darfst stolz auf jeden Fortschritt sein – ich glaube an dich."),
     (
-        "Du darfst stolz auf jeden Fortschritt sein – ich glaube an dich. / "
-        "Be proud of every bit of progress — I believe in you."
-    ),
-    (
-        "Stell dir vor, ich sitze neben dir und nicke anerkennend – du bist auf dem "
-        "richtigen Weg. / Imagine me sitting next to you, nodding with appreciation — "
-        "you are on the right path."
+        "Stell dir vor, ich sitze neben dir und nicke anerkennend – du bist auf dem richtigen Weg."
     ),
 ]
 
@@ -66,9 +59,7 @@ def _completion_id(todo: TodoItem) -> str:
 
 def _log_completion_event(state: GamificationState, todo: TodoItem, *, points: int, completion_token: str) -> None:
     timestamp = (todo.completed_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    state.history.append(
-        (f"{timestamp.isoformat()} · {todo.quadrant.label}: +{points} Punkte / points · Token {completion_token}")
-    )
+    state.history.append((f"{timestamp.isoformat()} · {todo.quadrant.label}: +{points} Punkte · Token {completion_token}"))
 
 
 def _award_badge(state: GamificationState, badge: str) -> None:
@@ -109,7 +100,7 @@ def award_journal_points(
     state.points += sanitized_points
     state.level = max(1, 1 + state.points // 100)
     state.history.append(
-        (f"{entry_date.isoformat()} · Journal: +{sanitized_points} Punkte / points für {target_title} · {rationale}")
+        (f"{entry_date.isoformat()} · Journal: +{sanitized_points} Punkte für {target_title} · {rationale}")
     )
     st.session_state[SS_GAMIFICATION] = state.model_dump()
     persist_state()
@@ -153,7 +144,7 @@ def calculate_progress_to_next_level(
 def next_avatar_prompt(index: int) -> str:
     prompt_count = len(AVATAR_ROSS_PROMPTS)
     if prompt_count == 0:
-        return "Wir freuen uns auf deinen nächsten Schritt. / Looking forward to your next step."
+        return "Wir freuen uns auf deinen nächsten Schritt."
     return AVATAR_ROSS_PROMPTS[index % prompt_count]
 
 

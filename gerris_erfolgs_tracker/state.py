@@ -166,7 +166,7 @@ def load_persisted_state() -> None:
     except Exception as exc:  # pragma: no cover - defensive logging
         LOGGER.warning("Failed to load persisted state: %s", exc)
         st.warning(
-            "Persistente Daten konnten nicht geladen werden / Could not load persisted data.",
+            "Persistente Daten konnten nicht geladen werden.",
             icon="⚠️",
         )
         return

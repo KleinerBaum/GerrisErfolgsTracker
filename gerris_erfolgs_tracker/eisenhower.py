@@ -32,7 +32,7 @@ class EisenhowerQuadrant(StrEnum):
     @property
     def label(self) -> str:
         metadata = self.metadata
-        return f"{metadata.label_de} / {metadata.label_en}"
+        return metadata.label_de
 
     @property
     def short_label(self) -> str:
@@ -50,7 +50,7 @@ class EisenhowerQuadrant(StrEnum):
 QUADRANT_METADATA: Mapping[EisenhowerQuadrant, QuadrantMetadata] = {
     EisenhowerQuadrant.URGENT_IMPORTANT: QuadrantMetadata(
         label_de="U+I (Dringend & wichtig)",
-        label_en="U+I (Urgent & important)",
+        label_en="U+I (Dringend & wichtig)",
         short_label="U+I",
         color_hex="#7A001F",
         legacy_labels=(
@@ -62,7 +62,7 @@ QUADRANT_METADATA: Mapping[EisenhowerQuadrant, QuadrantMetadata] = {
     ),
     EisenhowerQuadrant.NOT_URGENT_IMPORTANT: QuadrantMetadata(
         label_de="I+nU (Wichtig & nicht dringend)",
-        label_en="I+nU (Important & not urgent)",
+        label_en="I+nU (Wichtig & nicht dringend)",
         short_label="I+nU",
         color_hex="#F2C94C",
         legacy_labels=(
@@ -74,7 +74,7 @@ QUADRANT_METADATA: Mapping[EisenhowerQuadrant, QuadrantMetadata] = {
     ),
     EisenhowerQuadrant.URGENT_NOT_IMPORTANT: QuadrantMetadata(
         label_de="nI+U (Nicht wichtig & dringend)",
-        label_en="nI+U (Not important & urgent)",
+        label_en="nI+U (Nicht wichtig & dringend)",
         short_label="nI+U",
         color_hex="#27AE60",
         legacy_labels=(
@@ -86,7 +86,7 @@ QUADRANT_METADATA: Mapping[EisenhowerQuadrant, QuadrantMetadata] = {
     ),
     EisenhowerQuadrant.NOT_URGENT_NOT_IMPORTANT: QuadrantMetadata(
         label_de="nI+nU (Nicht wichtig & nicht dringend)",
-        label_en="nI+nU (Not important & not urgent)",
+        label_en="nI+nU (Nicht wichtig & nicht dringend)",
         short_label="nI+nU",
         color_hex="#2D9CDB",
         legacy_labels=(

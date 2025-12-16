@@ -35,13 +35,13 @@ def _fallback_quadrant(todo_title: str) -> TodoCategorization:
     lowered = todo_title.lower()
     if any(keyword in lowered for keyword in ("urgent", "dringend", "heute")):
         quadrant = QuadrantName.URGENT_IMPORTANT
-        rationale = "Dringende Stichworte erkannt / Urgent keywords detected."
+        rationale = "Dringende Stichworte erkannt."
     elif any(keyword in lowered for keyword in ("planung", "strategie", "vision")):
         quadrant = QuadrantName.NOT_URGENT_IMPORTANT
-        rationale = "Strategischer Kontext / Strategic focus."
+        rationale = "Strategischer Kontext."
     else:
         quadrant = QuadrantName.NOT_URGENT_NOT_IMPORTANT
-        rationale = "Standard-Fallback / Default fallback."
+        rationale = "Standard-Fallback."
 
     return TodoCategorization(quadrant=quadrant, rationale=rationale)
 
@@ -85,14 +85,14 @@ def _fallback_goals(stats: KpiStats) -> GoalSuggestion:
     baseline = max(stats.goal_daily, 1)
     if stats.streak >= 5:
         goal = baseline + 1
-        focus = "Momentum halten / Keep momentum."
+        focus = "Momentum halten."
     else:
         goal = baseline
-        focus = "Ruhig starten / Start steady."
+        focus = "Ruhig starten."
 
     tips = [
-        "Blocke 30 Minuten fuer die wichtigste Aufgabe / Block 30 minutes for the top task.",
-        "Nutze die Eisenhower-Quadranten bewusst / Be intentional with the Eisenhower quadrants.",
+        "Blocke 30 Minuten fuer die wichtigste Aufgabe.",
+        "Nutze die Eisenhower-Quadranten bewusst.",
     ]
     return GoalSuggestion(daily_goal=goal, focus=focus, tips=tips)
 
@@ -136,22 +136,22 @@ def suggest_goals(stats: Optional[KpiStats] = None, client: Optional[OpenAI] = N
 
 
 def _fallback_milestones(todo_title: str) -> MilestoneSuggestionList:
-    base = todo_title.strip() or "Aufgabe / Task"
+    base = todo_title.strip() or "Aufgabe"
     items = [
         MilestoneSuggestionItem(
-            title=f"Ersten Schritt planen / Plan first step ({base})",
+            title=f"Ersten Schritt planen ({base})",
             complexity="small",
-            rationale="Fallback-Vorschlag / Default suggestion",
+            rationale="Fallback-Vorschlag",
         ),
         MilestoneSuggestionItem(
-            title=f"Zwischenstand dokumentieren / Capture mid-way result ({base})",
+            title=f"Zwischenstand dokumentieren ({base})",
             complexity="medium",
-            rationale="Fallback-Vorschlag / Default suggestion",
+            rationale="Fallback-Vorschlag",
         ),
         MilestoneSuggestionItem(
-            title=f"Finalisierung und Test / Finalize and test ({base})",
+            title=f"Finalisierung und Test ({base})",
             complexity="large",
-            rationale="Fallback-Vorschlag / Default suggestion",
+            rationale="Fallback-Vorschlag",
         ),
     ]
     return MilestoneSuggestionList(milestones=items)
@@ -238,7 +238,7 @@ def generate_motivation(stats: Optional[KpiStats] = None, client: Optional[OpenA
         except LLMError:
             pass
 
-    fallback = "Weiter so! Jede Aufgabe bringt dich naeher ans Ziel / Keep going, every task moves you closer."
+    fallback = "Weiter so! Jede Aufgabe bringt dich näher ans Ziel."
     return AISuggestion(fallback, from_ai=False)
 
 
