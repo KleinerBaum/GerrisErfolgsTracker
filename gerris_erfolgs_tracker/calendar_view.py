@@ -138,10 +138,8 @@ def _render_day_cell(
         status = "⏳" if not task.completed else "✅"
         task_lines.append(f'<div class="calendar-day__task">{status} {html.escape(task.title)}</div>')
 
-    content = (
-        "\n".join(task_lines) if task_lines else '<div class="calendar-day__empty">Keine Aufgaben / No tasks</div>'
-    )
-    badge = '<span class="calendar-day__badge">Heute / Today</span>' if is_today else ""
+    content = "\n".join(task_lines) if task_lines else '<div class="calendar-day__empty">Keine Aufgaben</div>'
+    badge = '<span class="calendar-day__badge">Heute</span>' if is_today else ""
     st.markdown(
         """
         <div class="{classes}">
@@ -162,10 +160,10 @@ def _render_day_cell(
 
 
 def render_calendar_view() -> None:
-    st.subheader("Kalenderansicht / Calendar view")
+    st.subheader("Kalenderansicht")
     _ensure_calendar_styles()
     selected_date = st.date_input(
-        "Monat auswählen / Select month",
+        "Monat auswählen",
         value=date.today().replace(day=1),
         format="YYYY-MM-DD",
     )
@@ -176,7 +174,7 @@ def render_calendar_view() -> None:
     month = selected_date.month
     year = selected_date.year
 
-    show_only_open = st.checkbox("Nur offene Aufgaben / Only open tasks", value=False)
+    show_only_open = st.checkbox("Nur offene Aufgaben", value=False)
 
     todos = get_todos()
     tasks_by_day = _group_tasks_by_day(

@@ -21,6 +21,6 @@ def test_build_weekly_completion_figure_sets_expected_styling() -> None:
     assert list(bar_trace.x) == ["2024-10-01", "2024-10-02", "2024-10-03"]
     assert list(bar_trace.y) == [3, 0, 5]
     assert bar_trace.marker.color == PRIMARY_COLOR
-    assert "Abschlüsse / Completions" in bar_trace.hovertemplate
+    assert "Abschlüsse:" in bar_trace.hovertemplate
     assert "Abschlüsse der letzten 7 Tage" in str(figure.layout.title.text)
     assert figure.layout.yaxis.rangemode == "tozero"

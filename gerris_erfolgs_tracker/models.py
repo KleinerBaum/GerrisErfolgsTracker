@@ -86,14 +86,14 @@ class Category(str, Enum):
     @property
     def label(self) -> str:
         if self is Category.JOB_SEARCH:
-            return "Stellensuche / Job search"
+            return "Stellensuche"
         if self is Category.ADMIN:
-            return "Administratives / Admin"
+            return "Administratives"
         if self is Category.FRIENDS_FAMILY:
-            return "Familie & Freunde / Family & friends"
+            return "Familie & Freunde"
         if self is Category.DRUGS:
-            return "Drogen / Substance use"
-        return "Tagesstruktur / Daily structure"
+            return "Drogen"
+        return "Tagesstruktur"
 
 
 class RecurrencePattern(str, Enum):
@@ -109,16 +109,16 @@ class RecurrencePattern(str, Enum):
     @property
     def label(self) -> str:
         if self is RecurrencePattern.ONCE:
-            return "Einmalig / One-time"
+            return "Einmalig"
         if self is RecurrencePattern.DAILY:
-            return "Täglich / Daily"
+            return "Täglich"
         if self is RecurrencePattern.WEEKDAYS:
-            return "Werktags / Weekdays"
+            return "Werktags"
         if self is RecurrencePattern.WEEKLY:
-            return "Wöchentlich / Weekly"
+            return "Wöchentlich"
         if self is RecurrencePattern.MONTHLY:
-            return "Monatlich / Monthly"
-        return "Jährlich / Yearly"
+            return "Monatlich"
+        return "Jährlich"
 
 
 class EmailReminderOffset(str, Enum):
@@ -131,10 +131,10 @@ class EmailReminderOffset(str, Enum):
     @property
     def label(self) -> str:
         if self is EmailReminderOffset.ONE_HOUR:
-            return "E-Mail 1 Stunde vorher / Email 1 hour before"
+            return "E-Mail 1 Stunde vorher"
         if self is EmailReminderOffset.ONE_DAY:
-            return "E-Mail 1 Tag vorher / Email 1 day before"
-        return "Keine Erinnerung / No reminder"
+            return "E-Mail 1 Tag vorher"
+        return "Keine Erinnerung"
 
 
 class MilestoneComplexity(str, Enum):
@@ -147,10 +147,10 @@ class MilestoneComplexity(str, Enum):
     @property
     def label(self) -> str:
         if self is MilestoneComplexity.SMALL:
-            return "Klein / Small"
+            return "Klein"
         if self is MilestoneComplexity.MEDIUM:
-            return "Mittel / Medium"
-        return "Groß / Large"
+            return "Mittel"
+        return "Groß"
 
 
 class MilestoneStatus(str, Enum):
@@ -167,12 +167,12 @@ class MilestoneStatus(str, Enum):
         if self is MilestoneStatus.BACKLOG:
             return "Backlog"
         if self is MilestoneStatus.READY:
-            return "Bereit / Ready"
+            return "Bereit"
         if self is MilestoneStatus.IN_PROGRESS:
-            return "In Arbeit / In progress"
+            return "In Arbeit"
         if self is MilestoneStatus.REVIEW:
             return "Review"
-        return "Erledigt / Done"
+        return "Erledigt"
 
 
 class Milestone(BaseModel):
@@ -286,7 +286,7 @@ class GamificationMode(str, Enum):
     @property
     def label(self) -> str:
         if self is GamificationMode.POINTS:
-            return "Punkte & Level / Points & levels"
+            return "Punkte & Level"
         if self is GamificationMode.BADGES:
-            return "Abzeichen / Badges"
-        return "Dipl.-Psych. Roß (Avatar) / Dipl.-Psych. Roß (avatar)"
+            return "Abzeichen"
+        return "Dipl.-Psych. Roß (Avatar)"
