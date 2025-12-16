@@ -1863,7 +1863,14 @@ def render_goal_completion_logger(todos: list[TodoItem]) -> None:
 
 def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[TodoItem]) -> list[str]:
     with st.expander("Einstellungen", expanded=False):
-        st.caption("Wähle die Aufgaben aus, die im Dashboard gezählt werden.")
+        st.caption(
+            translate_text(
+                (
+                    "Passe die Tachometer nach Wunsch an: Anzahl KPIs, Auswahl und Einrichtung einzelner Kennzahlen sowie Farbe oder Darstellungsart.",
+                    "Customize the gauges to your liking: number of KPIs, selection and setup of individual metrics, plus color or visualization style.",
+                )
+            )
+        )
         if not todos:
             st.info("Keine Aufgaben vorhanden.")
             return []
@@ -1881,7 +1888,12 @@ def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[
             options=list(option_lookup),
             default=default_selection,
             format_func=lambda value: option_lookup.get(value, value),
-            help=("Setze ein Häkchen bei den Aufgaben, die in KPI-Zielen und Kategorien berücksichtigt werden sollen."),
+            help=translate_text(
+                (
+                    "Setze ein Häkchen bei den Aufgaben, die in KPI-Zielen und Kategorien berücksichtigt werden sollen.",
+                    "Check the tasks that should count toward KPI goals and category gauges.",
+                )
+            ),
         )
         sanitized_selection = _sanitize_goal_overview_tasks(selection, todos)
         if sanitized_selection != previous_selection:
