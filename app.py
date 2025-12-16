@@ -47,6 +47,7 @@ from gerris_erfolgs_tracker.constants import (
     NEW_TODO_TITLE_KEY,
     NEW_TODO_RECURRENCE_KEY,
     NEW_TODO_REMINDER_KEY,
+    PENDING_DELETE_TODO_KEY,
     SETTINGS_GOAL_DAILY_KEY,
     SHOW_STORAGE_NOTICE_KEY,
     SS_SETTINGS,
@@ -88,7 +89,7 @@ from gerris_erfolgs_tracker.i18n import (
     set_language,
     translate_text,
 )
-from gerris_erfolgs_tracker.llm import get_default_model, get_openai_client
+from gerris_erfolgs_tracker.llm import get_openai_client
 from gerris_erfolgs_tracker.models import (
     Category,
     EmailReminderOffset,
@@ -231,6 +232,42 @@ def _inject_dark_theme_styles() -> None:
     """,
         unsafe_allow_html=True,
     )
+
+
+def _render_delete_confirmation(todo: TodoItem, *, key_prefix: str) -> None:
+    pending_key = f"{PENDING_DELETE_TODO_KEY}_{todo.id}"
+    delete_label = "Löschen / Delete"
+    confirm_label = "Ja, endgültig löschen / Yes, delete permanently"
+    cancel_label = "Abbrechen / Cancel"
+    prompt = translate_text(
+        (
+            "Bist du sicher? Diese Aufgabe wird dauerhaft entfernt.",
+            "Are you sure? This task will be removed permanently.",
+        )
+    )
+
+    if st.session_state.get(pending_key):
+        st.warning(prompt)
+        confirm_cols = st.columns(2)
+        if confirm_cols[0].button(confirm_label, key=f"{key_prefix}_confirm_{todo.id}"):
+            st.session_state.pop(pending_key, None)
+            delete_todo(todo.id)
+            st.success("Aufgabe gelöscht / Task deleted.")
+            st.rerun()
+
+        if confirm_cols[1].button(cancel_label, key=f"{key_prefix}_cancel_{todo.id}"):
+            st.session_state.pop(pending_key, None)
+            st.info("Löschen abgebrochen / Delete cancelled.")
+            st.rerun()
+        return
+
+    if st.button(
+        delete_label,
+        key=f"{key_prefix}_delete_{todo.id}",
+        help="Aufgabe entfernen / Delete task",
+    ):
+        st.session_state[pending_key] = True
+        st.rerun()
 
 
 def _sanitize_category_goals(settings: Mapping[str, object]) -> dict[str, int]:
@@ -739,13 +776,8 @@ def render_task_row(todo: TodoItem, *, parent: Any | None = None) -> None:
                     st.rerun()
 
             action_cols = st.columns(2)
-            if action_cols[0].button(
-                "Löschen / Delete",
-                key=f"list_delete_{todo.id}",
-                help="Aufgabe entfernen / Delete task",
-            ):
-                delete_todo(todo.id)
-                st.rerun()
+            with action_cols[0]:
+                _render_delete_confirmation(todo, key_prefix=f"list_delete_{todo.id}")
 
             if action_cols[1].button(
                 "Duplizieren / Duplicate",
@@ -1687,13 +1719,7 @@ def render_todo_card(todo: TodoItem) -> None:
                 st.rerun()
 
         with action_cols[2]:
-            if st.button(
-                "Löschen / Delete",
-                key=f"delete_{todo.id}",
-                help="Aufgabe entfernen / Delete task",
-            ):
-                delete_todo(todo.id)
-                st.rerun()
+            _render_delete_confirmation(todo, key_prefix=f"card_delete_{todo.id}")
 
         with st.expander("Bearbeiten / Edit"):
             with st.form(f"edit_form_{todo.id}"):
