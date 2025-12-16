@@ -1,5 +1,5 @@
 # README.md
-# Gerris ErfolgsTracker
+# InnerBalance Companion / Selbsttherapie-Begleiter
 
 Streamlit-App mit Eisenhower-ToDo-Board, Gamification und optionaler OpenAI-Integration für KI-gestützte Vorschläge (Auto-Kategorisierung, Motivation). Ohne API-Key greifen Fallback-Texte und die App bleibt voll funktionsfähig.
 
@@ -90,7 +90,7 @@ OPENAI_API_KEY = "sk-..."
 - Die Oberfläche ist vollständig auf Deutsch festgelegt; der frühere Sprachumschalter in der Sidebar entfällt, damit keine englischen Begriffe erscheinen.
 - Der Schalter **AI aktiv / AI enabled** sitzt oberhalb des Sprachumschalters in der Sidebar und steuert alle KI-Funktionen zentral.
 - Der Bereich **Ziel-Canvas / Goal canvas** fragt jetzt Titel, Fokus-Kategorien, Zeitfenster (1 Woche/30/90 Tage oder Custom), Start- und Zieltermin, Check-in-Rhythmus, messbaren Zielwert + Einheit, Erfolgskriterien, Motivation, Risiken/Absicherung, nächsten Schritt sowie Feier/Belohnung zweisprachig ab – alles direkt im Ziel-Setup speicherbar.
-- Auf der Seite **Ziele / Goals** startet jetzt ein fünffach gespaltener Tachometer-Überblick zu Stellensuche, Administratives, Familie & Freunde, Drogen sowie Tagesstruktur; rechts daneben wählst du per Checkbox, ob das KPI-Dashboard bzw. die Kategoriendiagramme eingeblendet werden.
+- Auf der Seite **Ziele / Goals** startet jetzt ein sechsfeldriger Tachometer-Überblick zu Stellensuche, Administratives, Familie & Freunde, Issues/Probleme, Drogen sowie Tagesstruktur; rechts daneben wählst du per Checkbox, ob das KPI-Dashboard bzw. die Kategoriendiagramme eingeblendet werden.
 - Im Block **Ziele im Überblick** steuerst du im Expander **Einstellungen**, welche Aufgaben in den KPIs und Kategorien berücksichtigt werden (z. B. nur Fokus-Tasks).
 - Die Zielbearbeitung wird erst nach Klick auf **Ziel erstellen / Create goal** sichtbar; dort findest du das zweispaltige **Ziel-Canvas / Goal canvas** sowie Kategorienziele (0–20 pro Tag) kompakt angeordnet.
 - Der Button **Session zurücksetzen / Reset session** sitzt jetzt im Sidebar-Panel **Sicherheit & Daten / Safety & data** und löscht ToDos, KPIs, Gamification und Einstellungen und stellt die Defaults wieder her / The **Session zurücksetzen / Reset session** button now lives in the sidebar **Sicherheit & Daten / Safety & data** panel and resets todos, KPIs, gamification, and settings.
@@ -128,7 +128,7 @@ OPENAI_API_KEY = "sk-..."
 
 - Sofort sichtbare KPIs: **Erledigt gesamt / Done total**, **Heute erledigt / Done today**, **Kontinuität / Streak**, sowie **Zielerreichung / Goal progress** mit Tagesziel (Standard: 3 Abschlüsse pro Tag).
 - KPI-Dashboard liegt direkt unter dem Seitentitel und ist ohne Tabs sichtbar, um Fortschritt sofort zu erkennen / KPI dashboard sits right below the page title (outside tabs) for instant visibility.
-- Neues Top-Dashboard direkt unter dem Titel mit fünf Karten (eine pro Kategorie) inklusive Tagesfortschritt, Streak und offen vs. erledigt / New top-of-page dashboard with five category cards showing daily progress, streak, open vs. done.
+- Neues Top-Dashboard direkt unter dem Titel mit sechs Karten (eine pro Kategorie, inkl. Issues/Probleme) inklusive Tagesfortschritt, Streak und offen vs. erledigt / New top-of-page dashboard with six category cards (including Issues/Probleme) showing daily progress, streak, open vs. done.
 - Tachometer für neu erfasste Aufgaben mit Wochenziel 7 (je 10 Punkte pro Aufgabe) direkt im KPI-Block / Tachometer inside the KPI block tracks newly added tasks with a weekly target of 7 and awards 10 points per task.
 - Tageslogik: `done_today` wird automatisch auf den aktuellen Kalendertag bezogen; bei Datumswechsel werden die Tageswerte zurückgesetzt.
 - Kontinuität (Streak): zählt zusammenhängende Tage mit mindestens einem Abschluss.

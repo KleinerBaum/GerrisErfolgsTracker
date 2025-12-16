@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- App-Titel auf **InnerBalance Companion / Selbsttherapie-Begleiter** umbenannt, damit die Streamlit-Oberfläche klar als Selbstmanagement-Psychotherapie-Tool erkennbar bleibt / Renamed the app title to **InnerBalance Companion / Selbsttherapie-Begleiter** to highlight its self-management therapy focus.
+- Neue Kategorie **Issues / Probleme** ergänzt, die in KPIs, Tagebuch und Aufgabenfilterung als eigener Lebensbereich erscheint / Added a new **Issues / Probleme** category that shows up across KPIs, journaling, and task filters.
 - Standard-Startseite auf **Ziele / Goals** gesetzt, sodass die App direkt die Zielübersicht lädt / Default landing page switched to **Ziele / Goals** so the app opens on the goals overview.
 - Tagesziel-Sektion aus der Seite **Ziele** entfernt und das Ziel-Canvas konsequent zweispaltig angeordnet / Removed the daily target section from the **Ziele** page and organized the goal canvas in a consistent two-column layout.
 - Alle verbleibenden englischen UI-Texte entfernt; Labels, Hinweise und Gamification-Meldungen sind jetzt ausschließlich auf Deutsch.

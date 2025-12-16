@@ -80,6 +80,7 @@ class Category(str, Enum):
     JOB_SEARCH = "job_search"
     ADMIN = "admin"
     FRIENDS_FAMILY = "friends_family"
+    ISSUES = "issues"
     DRUGS = "drugs"
     DAILY_STRUCTURE = "daily_structure"
 
@@ -91,6 +92,8 @@ class Category(str, Enum):
             return "Administratives"
         if self is Category.FRIENDS_FAMILY:
             return "Familie & Freunde"
+        if self is Category.ISSUES:
+            return "Issues / Probleme"
         if self is Category.DRUGS:
             return "Drogen"
         return "Tagesstruktur"

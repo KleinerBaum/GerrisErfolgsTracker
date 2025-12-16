@@ -31,6 +31,7 @@ from gerris_erfolgs_tracker.constants import (
     AI_ENABLED_KEY,
     AI_MOTIVATION_KEY,
     AI_QUADRANT_RATIONALE_KEY,
+    AI_GOAL_SUGGESTION_KEY,
     AVATAR_PROMPT_INDEX_KEY,
     FILTER_SELECTED_CATEGORIES_KEY,
     FILTER_SHOW_DONE_KEY,
@@ -39,6 +40,7 @@ from gerris_erfolgs_tracker.constants import (
     GOAL_OVERVIEW_SHOW_CATEGORY_KEY,
     GOAL_OVERVIEW_SHOW_KPI_KEY,
     GOAL_OVERVIEW_SELECTED_TASKS_KEY,
+    GOAL_SUGGESTED_VALUE_KEY,
     NEW_TODO_CATEGORY_KEY,
     NEW_TODO_DESCRIPTION_KEY,
     NEW_TODO_DUE_KEY,
@@ -1428,6 +1430,16 @@ def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> d
     return settings
 
 
+def _resolve_goal_input_value(*, settings: Mapping[str, Any], stats: KpiStats) -> int:
+    """Return a safe daily goal value derived from settings or current stats."""
+
+    try:
+        goal_value = int(settings.get("goal_daily", stats.goal_daily))
+    except (TypeError, ValueError):
+        goal_value = stats.goal_daily
+    return max(1, goal_value)
+
+
 def _panel_section(panel: Any, label: str) -> Any:
     expander = getattr(panel, "expander", None)
     if callable(expander):
@@ -1655,6 +1667,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
             st.session_state[GOAL_SUGGESTED_VALUE_KEY] = suggestion.payload.daily_goal
             st.rerun()
     settings["goal_daily"] = int(goal_value)
+    st.session_state.pop(SETTINGS_GOAL_DAILY_KEY, None)
 
     goal_suggestion: AISuggestion[Any] | None = st.session_state.get(AI_GOAL_SUGGESTION_KEY)
     if goal_suggestion:
@@ -3088,7 +3101,7 @@ def render_journal_section(*, ai_enabled: bool, client: Optional[OpenAI], todos:
 
 def main() -> None:
     st.set_page_config(
-        page_title="Gerris ErfolgsTracker",
+        page_title="InnerBalance Companion / Selbsttherapie-Begleiter",
         page_icon="✅",
         layout="wide",
         initial_sidebar_state="expanded",
@@ -3112,7 +3125,7 @@ def main() -> None:
         settings=settings,
     )
 
-    st.title("Gerris ErfolgsTracker")
+    st.title("InnerBalance Companion / Selbsttherapie-Begleiter")
     if show_storage_notice:
         _render_storage_notice(storage_backend, is_cloud=is_cloud)
     todos = get_todos()
