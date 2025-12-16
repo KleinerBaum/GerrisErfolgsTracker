@@ -4,6 +4,7 @@
 - Alle verbleibenden englischen UI-Texte entfernt; Labels, Hinweise und Gamification-Meldungen sind jetzt ausschließlich auf Deutsch.
 - Oberfläche durchgehend auf Deutsch: Sprachumschalter entfernt und sichtbare Titel/Labels ohne englische Zusätze.
 - Neues Einstellungs-Panel im Abschnitt **Ziele im Überblick / Goals at a glance**, um gezielt Aufgaben auszuwählen, die in KPI-Dashboard und Kategorien einfließen (z. B. Fokus-Tasks) / New **Settings** expander inside **Goals at a glance** lets you pick which tasks feed the KPI dashboard and category charts (e.g., focus tasks).
+- Formular **ToDo hinzufügen / Add task** in drei Spalten umgebaut: Titel mit integriertem Aufgabenvorschlag/Dropdown (inkl. "Freie Eingabe"), Unterziele separat und Meta-/Quadranten-/Prioritätsfelder plus Fortschritt rechts / **Add task** form now uses three columns with the title plus suggestion dropdown (including "Free input"), milestones in the middle, and category/quadrant/priority plus progress on the right.
 
 - KPI-Tachometer für neu angelegte Aufgaben mit Wochenziel 7 und 10 Punkten pro Aufgabe zur schnellen Erfassung im Dashboard / KPI tachometer for newly added tasks with a weekly target of 7 and 10 points per task to keep the dashboard aligned.
 
