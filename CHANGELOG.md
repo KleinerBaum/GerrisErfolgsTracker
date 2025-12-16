@@ -1,7 +1,7 @@
 # Changelog
 
 ## Unreleased
-- Ziele-Seite: Log-Area mit drei Buttons nebeneinander (Abschluss, ToDo-Popup, Tagebuch-Popup), Dropdown zur Aufgabenauswahl erscheint erst nach Klick auf **Gelöst / Completed** / Goals page log area now offers three side-by-side buttons (completion, ToDo popup, journal popup) and only shows the open-task dropdown after clicking **Gelöst / Completed**.
+- Sidebar-Gamification: Entfernt den Button **AI: Motivation**, damit die Seitenleiste schlanker bleibt / Sidebar gamification: removed the **AI: Motivation** button to keep the sidebar streamlined.
 - Neues Abschluss-Widget **Gelöst / Completed** auf der Seite **Ziele**: offene Aufgaben auswählen, abschließen und sofort KPIs,
   Tachometer sowie Gamification-Popups (Level-Ups, Abzeichen) aktualisieren / New **Gelöst / Completed** widget on the **Goals**
   page lets you pick open tasks, mark them done, and immediately refresh KPIs, gauges, and cheerful gamification popups (level-ups,
