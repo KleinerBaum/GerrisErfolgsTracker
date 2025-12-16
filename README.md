@@ -152,6 +152,7 @@ OPENAI_API_KEY = "sk-..."
 - Toggle **AI aktiv / AI enabled** steuert, ob KI-Vorschläge verwendet werden; ohne Key greifen automatisch Fallback-Texte.
 - **AI: Quadrant vorschlagen** schlägt einen Eisenhower-Quadranten vor (übersteuerbar).
 - **AI: Ziel vorschlagen** erzeugt ein strukturiertes Tagesziel mit Fokus und Tipps, das in die Zahleneingabe übernommen werden kann.
+- **AI: Meilensteine vorschlagen** liefert 3–5 DE/EN-Unterziele mit Komplexität (small/medium/large) und kurzer Begründung; ohne API-Key greift ein kurzes Offline-Set.
 - **AI: Motivation** liefert eine kurze, zweisprachige Motivationsnachricht basierend auf den KPIs.
 
 ## Session-State-Management

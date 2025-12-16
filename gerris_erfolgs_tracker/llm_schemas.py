@@ -41,6 +41,25 @@ class Motivation(BaseModel):
     )
 
 
+class MilestoneSuggestionItem(BaseModel):
+    title: str = Field(
+        description="Unterziel mit DE/EN Titel / Milestone title (DE/EN)",
+    )
+    complexity: Literal["small", "medium", "large"] = Field(
+        description="Komplexitaet des Unterziels / Milestone complexity",
+    )
+    rationale: str = Field(
+        description="Kurzbegruendung / Brief rationale for the suggestion",
+    )
+
+
+class MilestoneSuggestionList(BaseModel):
+    milestones: list[MilestoneSuggestionItem] = Field(
+        default_factory=list,
+        description="Vorschlagsliste / Suggested milestones",
+    )
+
+
 class JournalAlignmentAction(BaseModel):
     target_id: str | None = Field(
         default=None,

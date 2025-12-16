@@ -31,6 +31,9 @@ from gerris_erfolgs_tracker.constants import (
     FILTER_SELECTED_CATEGORIES_KEY,
     FILTER_SHOW_DONE_KEY,
     FILTER_SORT_OVERRIDE_KEY,
+    GOAL_CREATION_VISIBLE_KEY,
+    GOAL_OVERVIEW_SHOW_CATEGORY_KEY,
+    GOAL_OVERVIEW_SHOW_KPI_KEY,
     GOAL_SUGGESTED_VALUE_KEY,
     NEW_TODO_CATEGORY_KEY,
     NEW_TODO_DESCRIPTION_KEY,
@@ -77,6 +80,10 @@ from gerris_erfolgs_tracker.kpis import (
     get_weekly_completion_counts,
     update_goal_daily,
     update_kpis_on_completion,
+)
+from gerris_erfolgs_tracker.llm_schemas import (
+    MilestoneSuggestionItem,
+    MilestoneSuggestionList,
 )
 from gerris_erfolgs_tracker.kpi import (
     CategoryKpi,

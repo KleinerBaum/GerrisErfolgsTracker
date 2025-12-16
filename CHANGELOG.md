@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Added missing structured schemas for AI milestone suggestions to keep Streamlit imports working offline/online.
 - KI-gestützter Abgleich neuer Tagebucheinträge mit vorhandenen Zielen/Aufgaben inklusive manueller Freigabe der vorgeschlagenen Punkte-Updates / AI-assisted matching of new journal entries against existing goals/tasks with manual approval for the proposed point updates.
 - Wiederholbare Aufgaben mit Auswahl für einmalig, werktags, wöchentlich, monatlich oder jährlich sowie optionale E-Mail-Erinnerungen 1 Stunde oder 1 Tag vor Fälligkeit im Erfassungs- und Quick-Edit-Formular / Repeatable tasks with one-time, weekday, weekly, monthly, or yearly cadence plus optional email reminders 1 hour or 1 day before due dates in the create and quick-edit forms.
 - Standard-Startseite auf **Aufgaben / Tasks** gesetzt, damit die App direkt in der ToDo-Ansicht öffnet / Default start page set to **Aufgaben / Tasks** so the app opens straight into the task view.
