@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Sidebar-Gamification: Entfernt den Button **AI: Motivation**, damit die Seitenleiste schlanker bleibt / Sidebar gamification: removed the **AI: Motivation** button to keep the sidebar streamlined.
 - Neues Abschluss-Widget **Gelöst / Completed** auf der Seite **Ziele**: offene Aufgaben auswählen, abschließen und sofort KPIs,
   Tachometer sowie Gamification-Popups (Level-Ups, Abzeichen) aktualisieren / New **Gelöst / Completed** widget on the **Goals**
   page lets you pick open tasks, mark them done, and immediately refresh KPIs, gauges, and cheerful gamification popups (level-ups,

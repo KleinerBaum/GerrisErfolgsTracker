@@ -14,7 +14,6 @@ from openai import OpenAI
 
 from gerris_erfolgs_tracker.ai_features import (
     AISuggestion,
-    generate_motivation,
     suggest_milestones,
     suggest_quadrant,
 )
@@ -2608,7 +2607,6 @@ def render_sidebar_sections(
             ai_enabled=ai_enabled,
             client=client,
             panel=gamification_panel,
-            motivation_key_suffix="sidebar",
             allow_mode_selection=True,
         )
 
@@ -2628,7 +2626,6 @@ def render_gamification_panel(
     ai_enabled: bool,
     client: Optional[OpenAI],
     panel: Any | None = None,
-    motivation_key_suffix: str = "panel",
     allow_mode_selection: bool = False,
 ) -> None:
     panel = panel or st
@@ -2713,20 +2710,6 @@ def render_gamification_panel(
             st.rerun()
 
         panel.caption("Klicke erneut für weitere motivierende Botschaften im Therapiezimmer-Stil")
-
-    if panel.button(
-        "AI: Motivation",
-        key=f"ai_motivation_btn_{motivation_key_suffix}",
-        disabled=not ai_enabled,
-        help=("Lässt OpenAI eine kurze Motivation erstellen; ohne Key wird ein Fallback genutzt"),
-    ):
-        st.session_state[AI_MOTIVATION_KEY] = generate_motivation(stats, client=client if ai_enabled else None)
-        st.rerun()
-
-    motivation: AISuggestion[Any] | None = st.session_state.get(AI_MOTIVATION_KEY)
-    if motivation:
-        badge = "🤖" if motivation.from_ai else "💡"
-        panel.success(f"{badge} {motivation.payload}")
 
 
 def render_safety_panel(panel: Any) -> bool:
