@@ -50,7 +50,9 @@ class _ColumnStub:
     def __exit__(self, *_: Any) -> None:  # noqa: ANN401
         return None
 
-    def form_submit_button(self, *_: Any, **__: Any) -> bool:  # noqa: ANN401
+    def form_submit_button(self, *_: Any, key: str | None = None, **__: Any) -> bool:  # noqa: ANN401
+        if key:
+            return False
         return self._plan.pop_submit()
 
     def button(self, *_: Any, **__: Any) -> bool:  # noqa: ANN401
@@ -109,7 +111,9 @@ class _StreamlitTodoStub:
     def container(self, *_: Any, **__: Any) -> _FormStub:  # noqa: ANN401
         return _FormStub()
 
-    def form_submit_button(self, *_: Any, **__: Any) -> bool:  # noqa: ANN401
+    def form_submit_button(self, *_: Any, key: str | None = None, **__: Any) -> bool:  # noqa: ANN401
+        if key:
+            return False
         return self._plan.pop_submit()
 
     def text_input(

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Erweitertes **Ziel-Canvas** mit Titel, Fokus-Kategorien, Zeitfenster, Start-/Zieldatum, Check-ins, messbarem Zielwert + Einheit, Erfolgskriterien, Motivation, Risiken/Absicherung, nächstem Schritt und Feier/Belohnung – alles zweisprachig im Ziel-Setup pflegbar.
 - Behebt Streamlit-Fehler im ToDo-Formular, indem alle Meilenstein-Buttons innerhalb des Formulars als Submit-Buttons laufen / Fixes Streamlit errors in the ToDo form by using submit buttons for all milestone actions inside the form.
 - Neue Aufgabenvorlagen im Erfassungsformular mit inspirierten Feldern aus dem Screenshot (Fälligkeit, Priorität, Reminder, Zeitziel), die per Dropdown übernehmbar sind / New task templates in the create form inspired by the screenshot (due date, priority, reminder, time goal) and selectable via dropdown.
 - KI-gestützter Abgleich neuer Tagebucheinträge mit vorhandenen Zielen/Aufgaben inklusive manueller Freigabe der vorgeschlagenen Punkte-Updates / AI-assisted matching of new journal entries against existing goals/tasks with manual approval for the proposed point updates.

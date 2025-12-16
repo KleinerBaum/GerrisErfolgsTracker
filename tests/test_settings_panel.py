@@ -52,8 +52,8 @@ class _PanelStub:
     def __init__(self, session_state: Dict[str, object], plan: _ButtonPlan) -> None:
         self.session_state = session_state
         self._plan = plan
-        self.number_input_value: Optional[int] = None
-        self.number_inputs: Dict[str, int] = {}
+        self.number_input_value: Optional[float | int] = None
+        self.number_inputs: Dict[str, float | int] = {}
 
     def __enter__(self) -> "_PanelStub":
         return self
@@ -70,13 +70,39 @@ class _PanelStub:
     def markdown(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
         """No-op markdown stub."""
 
+    def text_input(
+        self,
+        *_: Any,
+        value: str = "",
+        key: Optional[str] = None,
+        **__: Any,
+    ) -> str:
+        if key:
+            self.session_state[key] = value
+        return value
+
+    def multiselect(
+        self,
+        *_: Any,
+        default: Optional[List[Any]] = None,
+        **__: Any,
+    ) -> List[Any]:
+        return default or []
+
+    def tabs(self, labels: List[str]) -> List["_TabStub"]:
+        return [_TabStub() for _ in labels]
+
+    def date_input(self, *_: Any, value: Any = None, **__: Any) -> Any:  # noqa: ANN401
+        return value
+
     def toggle(self, *_: Any, **__: Any) -> bool:  # noqa: ANN401
         return True
 
-    def number_input(self, *_: Any, value: int, key: str, **__: Any) -> int:  # noqa: ANN401
+    def number_input(self, *_: Any, value: int | float, key: Optional[str] = None, **__: Any) -> int | float:  # noqa: ANN401
         self.number_input_value = value
-        self.number_inputs[key] = value
-        self.session_state[key] = value
+        if key:
+            self.number_inputs[key] = value
+            self.session_state[key] = value
         return value
 
     def columns(self, count: int) -> List[_ColumnStub]:
@@ -130,6 +156,26 @@ class _StreamlitStub:
     ) -> int:
         self.session_state[key] = value
         return value
+
+    def text_area(self, *_: Any, value: str = "", **__: Any) -> str:  # noqa: ANN401
+        return value
+
+    def markdown(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
+        """No-op markdown stub."""
+
+    def caption(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
+        """No-op caption stub."""
+
+    def tabs(self, labels: List[str]) -> List["_TabStub"]:
+        return [_TabStub() for _ in labels]
+
+
+class _TabStub:
+    def __enter__(self) -> "_TabStub":
+        return self
+
+    def __exit__(self, *_: Any) -> None:  # noqa: ANN401
+        return None
 
 
 def test_goal_suggestion_sets_widget_value(session_state: Dict[str, object], monkeypatch: pytest.MonkeyPatch) -> None:

@@ -3,10 +3,10 @@ from __future__ import annotations
 import os
 import json
 from contextlib import nullcontext
+
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Literal, Mapping, Optional
-
 import plotly.graph_objects as go
 import streamlit as st
 from openai import OpenAI
@@ -145,6 +145,47 @@ from gerris_erfolgs_tracker.todos import (
     update_todo,
     update_milestone,
 )
+
+
+GoalHorizon = Literal["1_week", "30_days", "90_days", "custom"]
+GoalCheckInCadence = Literal["weekly", "biweekly", "monthly"]
+
+
+class GoalProfile(TypedDict, total=False):
+    title: str
+    focus_categories: list[str]
+    horizon: GoalHorizon
+    start_date: date | None
+    target_date: date | None
+    metric_target: float | None
+    metric_unit: str
+    check_in_cadence: GoalCheckInCadence
+    success_criteria_md: str
+    motivation_md: str
+    risk_mitigation_md: str
+    next_step_md: str
+    celebration_md: str
+
+
+GOAL_HORIZON_OPTIONS: tuple[tuple[GoalHorizon, tuple[str, str]], ...] = (
+    ("1_week", ("1 Woche Fokus", "1-week focus")),
+    ("30_days", ("30 Tage Sprint", "30-day sprint")),
+    ("90_days", ("90 Tage Zielhorizont", "90-day horizon")),
+    ("custom", ("Individuell / Custom", "Custom timeframe")),
+)
+
+GOAL_CHECKIN_OPTIONS: tuple[tuple[GoalCheckInCadence, tuple[str, str]], ...] = (
+    ("weekly", ("Wöchentlich", "Weekly")),
+    ("biweekly", ("14-tägig", "Every 2 weeks")),
+    ("monthly", ("Monatlich", "Monthly")),
+)
+
+
+def _goal_option_label(value: str, options: tuple[tuple[str, tuple[str, str]], ...]) -> str:
+    for option_value, label in options:
+        if option_value == value:
+            return translate_text(label)
+    return str(value)
 
 
 localize_streamlit()
@@ -396,6 +437,75 @@ def _render_delete_confirmation(todo: TodoItem, *, key_prefix: str) -> None:
     ):
         st.session_state[pending_key] = True
         st.rerun()
+
+
+def _default_goal_profile() -> GoalProfile:
+    return GoalProfile(
+        title="",
+        focus_categories=[Category.DAILY_STRUCTURE.value],
+        horizon="30_days",
+        start_date=None,
+        target_date=None,
+        metric_target=None,
+        metric_unit="",
+        check_in_cadence="weekly",
+        success_criteria_md="",
+        motivation_md="",
+        risk_mitigation_md="",
+        next_step_md="",
+        celebration_md="",
+    )
+
+
+def _sanitize_goal_profile(settings: Mapping[str, object]) -> GoalProfile:
+    raw_profile = settings.get("goal_profile", {}) if isinstance(settings, Mapping) else {}
+    default_profile = _default_goal_profile()
+
+    def _coerce_date(value: object) -> date | None:
+        if isinstance(value, date):
+            return value
+        return None
+
+    sanitized: GoalProfile = default_profile.copy()
+    if isinstance(raw_profile, Mapping):
+        sanitized["title"] = str(raw_profile.get("title", default_profile["title"]))[:140]
+        raw_categories = raw_profile.get("focus_categories", default_profile["focus_categories"])
+        valid_category_values = {item.value for item in Category}
+        if isinstance(raw_categories, list):
+            normalized_categories: list[str] = []
+            for category in raw_categories:
+                if isinstance(category, Category):
+                    normalized_categories.append(category.value)
+                elif isinstance(category, str) and category in valid_category_values:
+                    normalized_categories.append(category)
+            sanitized["focus_categories"] = normalized_categories or default_profile["focus_categories"]
+        allowed_horizons: set[GoalHorizon] = {option for option, _ in GOAL_HORIZON_OPTIONS}
+        horizon_candidate = str(raw_profile.get("horizon", default_profile["horizon"]))
+        sanitized["horizon"] = cast(
+            GoalHorizon,
+            horizon_candidate if horizon_candidate in allowed_horizons else default_profile["horizon"],
+        )
+        sanitized["start_date"] = _coerce_date(raw_profile.get("start_date"))
+        sanitized["target_date"] = _coerce_date(raw_profile.get("target_date"))
+        try:
+            metric_target_raw = raw_profile.get("metric_target", None)
+            metric_target = float(metric_target_raw) if metric_target_raw not in {None, ""} else None
+            sanitized["metric_target"] = metric_target if metric_target is None or metric_target >= 0 else None
+        except (TypeError, ValueError):
+            sanitized["metric_target"] = None
+        sanitized["metric_unit"] = str(raw_profile.get("metric_unit", ""))[:40]
+        allowed_cadences: set[GoalCheckInCadence] = {option for option, _ in GOAL_CHECKIN_OPTIONS}
+        cadence_candidate = str(raw_profile.get("check_in_cadence", default_profile["check_in_cadence"]))
+        sanitized["check_in_cadence"] = cast(
+            GoalCheckInCadence,
+            cadence_candidate if cadence_candidate in allowed_cadences else default_profile["check_in_cadence"],
+        )
+        sanitized["success_criteria_md"] = str(raw_profile.get("success_criteria_md", ""))
+        sanitized["motivation_md"] = str(raw_profile.get("motivation_md", ""))
+        sanitized["risk_mitigation_md"] = str(raw_profile.get("risk_mitigation_md", ""))
+        sanitized["next_step_md"] = str(raw_profile.get("next_step_md", ""))
+        sanitized["celebration_md"] = str(raw_profile.get("celebration_md", ""))
+    return sanitized
 
 
 def _sanitize_category_goals(settings: Mapping[str, object]) -> dict[str, int]:
@@ -1319,6 +1429,7 @@ def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> d
     settings.setdefault("goal_daily", stats.goal_daily)
     settings.setdefault("gamification_mode", GamificationMode.POINTS.value)
     settings["category_goals"] = _sanitize_category_goals(settings)
+    settings["goal_profile"] = _sanitize_goal_profile(settings)
 
     st.session_state[SS_SETTINGS] = settings
     return settings
@@ -1353,17 +1464,200 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
 
     settings = _ensure_settings_defaults(client=client, stats=stats)
     ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
+    goal_profile: GoalProfile = settings.get("goal_profile", _default_goal_profile())
     panel.info(
         "Steuere den KI-Schalter jetzt in der Sidebar über dem Sprachen-Toggle. / "
         "Control the AI toggle from the sidebar above the language switch.",
     )
 
     if not st.session_state.get(GOAL_CREATION_VISIBLE_KEY, False):
+        profile_title = goal_profile.get("title") or translate_text(("Neues Ziel", "New goal"))
+        horizon_label = _goal_option_label(goal_profile.get("horizon", "30_days"), GOAL_HORIZON_OPTIONS)
+        cadence_label = _goal_option_label(goal_profile.get("check_in_cadence", "weekly"), GOAL_CHECKIN_OPTIONS)
         panel.caption("Starte die Zielkonfiguration über den Button. / Begin configuring goals via the button.")
+        panel.info(f"{profile_title} · {horizon_label} · {translate_text(('Check-in: ', 'Check-in: '))}{cadence_label}")
         if panel.button("Ziel erstellen / Create goal", type="primary"):
             st.session_state[GOAL_CREATION_VISIBLE_KEY] = True
             st.rerun()
         return ai_enabled
+
+    panel.markdown("### Ziel-Canvas / Goal canvas")
+    profile_cols = panel.columns(2)
+    horizon_options = [option for option, _ in GOAL_HORIZON_OPTIONS]
+    cadence_options = [option for option, _ in GOAL_CHECKIN_OPTIONS]
+    try:
+        horizon_index = horizon_options.index(goal_profile.get("horizon", "30_days"))
+    except ValueError:
+        horizon_index = 0
+    try:
+        cadence_index = cadence_options.index(goal_profile.get("check_in_cadence", "weekly"))
+    except ValueError:
+        cadence_index = 0
+    with profile_cols[0]:
+        profile_title = panel.text_input(
+            "Zielname / Goal name",
+            value=goal_profile.get("title", ""),
+            placeholder="z. B. 3 Bewerbungen pro Woche / e.g., 3 applications per week",
+            help="Kurzer, messbarer Titel für dein Ziel / Short, measurable headline for your goal.",
+        )
+        focus_categories = panel.multiselect(
+            "Fokus-Kategorien / Focus categories",
+            options=list(Category),
+            default=[category for category in Category if category.value in goal_profile.get("focus_categories", [])],
+            format_func=lambda option: option.label,
+            help="Welche Lebensbereiche zahlt das Ziel ein? / Which life domains does the goal support?",
+        )
+        horizon = panel.selectbox(
+            "Zeithorizont / Time horizon",
+            options=horizon_options,
+            index=max(0, horizon_index),
+            format_func=lambda value: _goal_option_label(value, GOAL_HORIZON_OPTIONS),
+            help="Wähle deinen Planungszeitraum / Choose your planning window.",
+        )
+        start_date = panel.date_input(
+            "Startdatum / Start date",
+            value=goal_profile.get("start_date"),
+            format="YYYY-MM-DD",
+            help="Optional: Ab wann zählst du Fortschritt? / Optional: when do you start tracking progress?",
+        )
+        enable_metric = panel.toggle(
+            "Messbar machen / Track as metric",
+            value=bool(goal_profile.get("metric_target") is not None or goal_profile.get("metric_unit")),
+            help="Zielwert + Einheit pflegen, um Fortschritt klar messbar zu halten. / Add target + unit for clear measurement.",
+        )
+        metric_target = panel.number_input(
+            "Zielwert / Target value",
+            min_value=0.0,
+            value=float(goal_profile.get("metric_target") or 0.0),
+            step=0.5,
+            disabled=not enable_metric,
+            help="Numerischer Zielwert, z. B. 3.0 oder 10.0 / Numeric target, e.g., 3.0 or 10.0.",
+        )
+        metric_unit = panel.text_input(
+            "Einheit / Unit",
+            value=goal_profile.get("metric_unit", ""),
+            max_chars=40,
+            disabled=not enable_metric,
+            help="Einheit für den Zielwert, z. B. Bewerbungen, Minuten. / Unit for your target value, e.g., applications, minutes.",
+        )
+    with profile_cols[1]:
+        target_date = panel.date_input(
+            "Zieltermin / Target date",
+            value=goal_profile.get("target_date"),
+            format="YYYY-MM-DD",
+            help="Wann soll das Ziel erreicht sein? / When should the goal be achieved?",
+        )
+        check_in_cadence = panel.selectbox(
+            "Check-in-Rhythmus / Check-in cadence",
+            options=cadence_options,
+            index=max(0, cadence_index),
+            format_func=lambda value: _goal_option_label(value, GOAL_CHECKIN_OPTIONS),
+            help="Wie oft reflektierst du Fortschritt? / How often do you reflect on progress?",
+        )
+        next_step_tabs = panel.tabs(["Nächster Schritt / Next step", "Vorschau / Preview"])
+        with next_step_tabs[0]:
+            next_step_md = st.text_area(
+                "Konkreter erster Schritt / Concrete first step",
+                value=goal_profile.get("next_step_md", ""),
+                placeholder="Nächster kalendarischer Schritt oder Termin / Next calendar step or appointment",
+            )
+        with next_step_tabs[1]:
+            next_step_preview = goal_profile.get("next_step_md", "")
+            if next_step_preview.strip():
+                st.markdown(next_step_preview)
+            else:
+                st.caption("Noch kein nächster Schritt hinterlegt / No next step captured yet.")
+        celebration_tabs = panel.tabs(["Erfolg feiern / Celebrate", "Vorschau / Preview"])
+        with celebration_tabs[0]:
+            celebration_md = st.text_area(
+                "Belohnung planen / Plan your reward",
+                value=goal_profile.get("celebration_md", ""),
+                placeholder="Wie feierst du den Abschluss? / How will you celebrate success?",
+            )
+        with celebration_tabs[1]:
+            celebration_preview = goal_profile.get("celebration_md", "")
+            if celebration_preview.strip():
+                st.markdown(celebration_preview)
+            else:
+                st.caption("Noch keine Belohnung definiert / No celebration defined yet.")
+
+    panel.markdown("#### Erfolg & Motivation / Success & motivation")
+    success_tabs = panel.tabs(
+        [
+            "Erfolgskriterien / Success criteria",
+            "Motivation / Motivation",
+            "Risiken & Absicherung / Risks & mitigation",
+        ]
+    )
+    with success_tabs[0]:
+        criteria_tabs = st.tabs(["Schreiben / Write", "Vorschau / Preview"])
+        with criteria_tabs[0]:
+            success_criteria_md = st.text_area(
+                "Wie erkennst du Erfolg? / How do you know it's working?",
+                value=goal_profile.get("success_criteria_md", ""),
+                placeholder="z. B. 2 Bewerbungen pro Woche mit Feedback / e.g., 2 applications per week with feedback",
+            )
+        with criteria_tabs[1]:
+            criteria_preview = goal_profile.get("success_criteria_md", "")
+            if criteria_preview.strip():
+                st.markdown(criteria_preview)
+            else:
+                st.caption("Noch keine Kriterien definiert / No criteria defined yet.")
+    with success_tabs[1]:
+        motivation_tabs = st.tabs(["Schreiben / Write", "Vorschau / Preview"])
+        with motivation_tabs[0]:
+            motivation_md = st.text_area(
+                "Warum ist das Ziel wichtig? / Why does this goal matter?",
+                value=goal_profile.get("motivation_md", ""),
+                placeholder="Persönlicher Nutzen, Chancen, Unterstützung / Personal value, opportunities, support",
+            )
+        with motivation_tabs[1]:
+            motivation_preview = goal_profile.get("motivation_md", "")
+            if motivation_preview.strip():
+                st.markdown(motivation_preview)
+            else:
+                st.caption("Motivation noch leer / Motivation not captured yet.")
+    with success_tabs[2]:
+        risk_tabs = st.tabs(["Schreiben / Write", "Vorschau / Preview"])
+        with risk_tabs[0]:
+            risk_mitigation_md = st.text_area(
+                "Risiken & Sicherungen / Risks & safeguards",
+                value=goal_profile.get("risk_mitigation_md", ""),
+                placeholder="Hindernisse, Plan B, Accountability / Obstacles, plan B, accountability",
+            )
+        with risk_tabs[1]:
+            risk_preview = goal_profile.get("risk_mitigation_md", "")
+            if risk_preview.strip():
+                st.markdown(risk_preview)
+            else:
+                st.caption("Noch keine Risiken notiert / No risks documented yet.")
+
+    goal_profile["title"] = profile_title.strip()
+    goal_profile["focus_categories"] = [category.value for category in focus_categories]
+    goal_profile["horizon"] = horizon
+    goal_profile["start_date"] = start_date
+    goal_profile["target_date"] = target_date
+    goal_profile["check_in_cadence"] = check_in_cadence
+    goal_profile["next_step_md"] = next_step_md
+    goal_profile["celebration_md"] = celebration_md
+    goal_profile["success_criteria_md"] = success_criteria_md
+    goal_profile["motivation_md"] = motivation_md
+    goal_profile["risk_mitigation_md"] = risk_mitigation_md
+    if enable_metric:
+        goal_profile["metric_target"] = float(metric_target)
+        goal_profile["metric_unit"] = metric_unit.strip()
+    else:
+        goal_profile["metric_target"] = None
+        goal_profile["metric_unit"] = ""
+    settings["goal_profile"] = _sanitize_goal_profile({"goal_profile": goal_profile})
+
+    profile_saved = panel.button(
+        "Zielprofil speichern / Save goal profile",
+        key="settings_save_goal_profile",
+        help="Sichert Titel, Kriterien, Motivation und Check-ins. / Stores title, criteria, motivation, and check-ins.",
+    )
+    if profile_saved:
+        panel.success("Zielprofil aktualisiert / Goal profile updated.")
 
     panel.markdown("### Tagesziel / Daily goal")
     goal_input_value = _resolve_goal_input_value(settings=settings, stats=stats)
@@ -1906,9 +2200,7 @@ def render_todo_section(
                     st.caption(f"{entry.get('title')} · {complexity_label} · {entry.get('points', 0)} Punkte")
                     if entry.get("note"):
                         st.caption(entry["note"])
-                    if st.form_submit_button(
-                        f"Entfernen #{index + 1}", key=f"remove_draft_{index}"
-                    ):
+                    if st.form_submit_button(f"Entfernen #{index + 1}", key=f"remove_draft_{index}"):
                         draft_milestones.pop(index)
                         st.session_state[NEW_TODO_DRAFT_MILESTONES_KEY] = draft_milestones
                         st.rerun()
