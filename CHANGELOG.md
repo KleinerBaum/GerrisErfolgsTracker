@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Standard-Startseite auf **Ziele / Goals** gesetzt, sodass die App direkt die Zielübersicht lädt / Default landing page switched to **Ziele / Goals** so the app opens on the goals overview.
+- Tagesziel-Sektion aus der Seite **Ziele** entfernt und das Ziel-Canvas konsequent zweispaltig angeordnet / Removed the daily target section from the **Ziele** page and organized the goal canvas in a consistent two-column layout.
 - Alle verbleibenden englischen UI-Texte entfernt; Labels, Hinweise und Gamification-Meldungen sind jetzt ausschließlich auf Deutsch.
 - Oberfläche durchgehend auf Deutsch: Sprachumschalter entfernt und sichtbare Titel/Labels ohne englische Zusätze.
 - Neues Einstellungs-Panel im Abschnitt **Ziele im Überblick / Goals at a glance**, um gezielt Aufgaben auszuwählen, die in KPI-Dashboard und Kategorien einfließen (z. B. Fokus-Tasks) / New **Settings** expander inside **Goals at a glance** lets you pick which tasks feed the KPI dashboard and category charts (e.g., focus tasks).
@@ -13,7 +15,6 @@
 - KI-gestützter Abgleich neuer Tagebucheinträge mit vorhandenen Zielen/Aufgaben inklusive manueller Freigabe der vorgeschlagenen Punkte-Updates / AI-assisted matching of new journal entries against existing goals/tasks with manual approval for the proposed point updates.
 - Behebt einen fehlenden Import für Milestone-Vorschlags-Schemas, sodass die Streamlit-App ohne `ImportError` startet / Fixed missing milestone suggestion schema export so the Streamlit app starts without `ImportError`.
 - Wiederholbare Aufgaben mit Auswahl für einmalig, werktags, wöchentlich, monatlich oder jährlich sowie optionale E-Mail-Erinnerungen 1 Stunde oder 1 Tag vor Fälligkeit im Erfassungs- und Quick-Edit-Formular / Repeatable tasks with one-time, weekday, weekly, monthly, or yearly cadence plus optional email reminders 1 hour or 1 day before due dates in the create and quick-edit forms.
-- Standard-Startseite auf **Aufgaben / Tasks** gesetzt, damit die App direkt in der ToDo-Ansicht öffnet / Default start page set to **Aufgaben / Tasks** so the app opens straight into the task view.
 - Überarbeitete Tagebuch-Seite ohne Kopfzeile und Export-Block: Auslöser & Reaktionen, Gedanken-Challenge, Selbstfürsorge und Dankbarkeit liegen nun in einer vierteiligen Zeile; Dankbarkeitsfelder erscheinen progressiv beim Ausfüllen und werden migriert/gespeichert als Liste / Journal page cleanup removes the header and export block: triggers & reactions, thought challenge, self-care, and gratitude sit in a single four-column row; gratitude inputs reveal progressively as you fill them and persist via a migrated list.
 - Lösch-Aktionen bei Aufgaben verlangen eine explizite Bestätigung, um gespeicherte Daten nicht versehentlich zu entfernen / Task delete actions now require explicit confirmation to avoid accidentally removing stored data.
 - Kompakte Aufgabenlisten-Zeilen mit schmaleren Rändern, farbigen Quadranten-Tags und eingeklappten Details-Expandern für sichtbar mehr Aufgaben pro Bildschirm.

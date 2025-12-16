@@ -15,7 +15,6 @@ from openai import OpenAI
 from gerris_erfolgs_tracker.ai_features import (
     AISuggestion,
     generate_motivation,
-    suggest_goals,
     suggest_milestones,
     suggest_quadrant,
 )
@@ -30,7 +29,6 @@ from gerris_erfolgs_tracker.charts import (
 )
 from gerris_erfolgs_tracker.constants import (
     AI_ENABLED_KEY,
-    AI_GOAL_SUGGESTION_KEY,
     AI_MOTIVATION_KEY,
     AI_QUADRANT_RATIONALE_KEY,
     AVATAR_PROMPT_INDEX_KEY,
@@ -41,7 +39,6 @@ from gerris_erfolgs_tracker.constants import (
     GOAL_OVERVIEW_SHOW_CATEGORY_KEY,
     GOAL_OVERVIEW_SHOW_KPI_KEY,
     GOAL_OVERVIEW_SELECTED_TASKS_KEY,
-    GOAL_SUGGESTED_VALUE_KEY,
     NEW_TODO_CATEGORY_KEY,
     NEW_TODO_DESCRIPTION_KEY,
     NEW_TODO_DUE_KEY,
@@ -86,7 +83,6 @@ from gerris_erfolgs_tracker.gamification import (
 from gerris_erfolgs_tracker.kpis import (
     get_kpi_stats,
     get_weekly_completion_counts,
-    update_goal_daily,
     update_kpis_on_completion,
 )
 from gerris_erfolgs_tracker.kpi import (
@@ -347,9 +343,7 @@ def _todo_templates(*, today: date) -> list[TaskTemplate]:
                 NEW_TODO_PROGRESS_TARGET_KEY: 0.5,
                 NEW_TODO_PROGRESS_UNIT_KEY: "h",
                 NEW_TODO_AUTO_COMPLETE_KEY: True,
-                NEW_TODO_COMPLETION_CRITERIA_KEY: (
-                    "30 Min. fokussiert arbeiten + kurzes Ergebnis notieren."
-                ),
+                NEW_TODO_COMPLETION_CRITERIA_KEY: ("30 Min. fokussiert arbeiten + kurzes Ergebnis notieren."),
                 NEW_TODO_REMINDER_KEY: EmailReminderOffset.ONE_HOUR,
                 NEW_TODO_RECURRENCE_KEY: RecurrencePattern.ONCE,
             },
@@ -381,9 +375,7 @@ def _todo_templates(*, today: date) -> list[TaskTemplate]:
                 NEW_TODO_PROGRESS_TARGET_KEY: 2.0,
                 NEW_TODO_PROGRESS_UNIT_KEY: "h",
                 NEW_TODO_AUTO_COMPLETE_KEY: True,
-                NEW_TODO_COMPLETION_CRITERIA_KEY: (
-                    "2h konzentriert + kurze Review (Lessons Learned)."
-                ),
+                NEW_TODO_COMPLETION_CRITERIA_KEY: ("2h konzentriert + kurze Review (Lessons Learned)."),
                 NEW_TODO_REMINDER_KEY: EmailReminderOffset.ONE_DAY,
                 NEW_TODO_RECURRENCE_KEY: RecurrencePattern.ONCE,
             },
@@ -787,10 +779,7 @@ def _render_gratitude_inputs(gratitude_suggestions: list[str]) -> list[str]:
 
 
 def _render_storage_notice(backend: FileStorageBackend, *, is_cloud: bool) -> None:
-    storage_note = (
-        "Persistenz aktiv: JSON unter "
-        f"{backend.path} (lokal beschreibbar)."
-    )
+    storage_note = f"Persistenz aktiv: JSON unter {backend.path} (lokal beschreibbar)."
     onedrive_hint = (
         "OneDrive-Sync erkannt; mobile Einträge werden abgeglichen."
         if any(part.lower() == "onedrive" for part in backend.path.parts)
@@ -1059,7 +1048,7 @@ def _render_milestone_board(todo: TodoItem, *, gamification_mode: GamificationMo
             value=int(suggested_points),
             step=1,
             key=f"{NEW_MILESTONE_POINTS_KEY}_{todo.id}",
-            help=f"Empfohlene Punkte basierend auf Aufwand",
+            help="Empfohlene Punkte basierend auf Aufwand",
         )
         note = st.text_area(
             "Notiz (optional)",
@@ -1147,15 +1136,11 @@ def render_task_row(todo: TodoItem, *, parent: Any | None = None) -> None:
                     progress_ratio,
                     text=f"{todo.progress_current:.2f} / {todo.progress_target:.2f} {todo.progress_unit}",
                 )
-                st.caption(
-                    f"Automatisch abschließen: {'Ja' if todo.auto_done_when_target_reached else 'Nein'}"
-                )
+                st.caption(f"Automatisch abschließen: {'Ja' if todo.auto_done_when_target_reached else 'Nein'}")
                 if todo.completion_criteria_md.strip():
                     st.markdown(todo.completion_criteria_md)
             else:
-                st.caption(
-                    f"Kein Ziel hinterlegt. Aktueller Stand: {todo.progress_current:.2f} {todo.progress_unit}"
-                )
+                st.caption(f"Kein Ziel hinterlegt. Aktueller Stand: {todo.progress_current:.2f} {todo.progress_unit}")
 
             _render_milestone_board(todo, gamification_mode=gamification_mode)
 
@@ -1443,22 +1428,6 @@ def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> d
     return settings
 
 
-def _resolve_goal_input_value(settings: dict[str, Any], stats: KpiStats) -> int:
-    suggested_goal = st.session_state.get(GOAL_SUGGESTED_VALUE_KEY)
-    existing_goal_value = st.session_state.get(SETTINGS_GOAL_DAILY_KEY)
-    default_goal = int(settings.get("goal_daily", stats.goal_daily))
-
-    if suggested_goal is not None:
-        resolved_goal = int(suggested_goal)
-    elif existing_goal_value is not None:
-        resolved_goal = int(existing_goal_value)
-    else:
-        resolved_goal = default_goal
-
-    st.session_state[SETTINGS_GOAL_DAILY_KEY] = resolved_goal
-    return resolved_goal
-
-
 def _panel_section(panel: Any, label: str) -> Any:
     expander = getattr(panel, "expander", None)
     if callable(expander):
@@ -1487,7 +1456,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
         return ai_enabled
 
     panel.markdown("### Ziel-Canvas")
-    profile_cols = panel.columns(2)
+    canvas_columns = panel.columns(2)
     horizon_options = [option for option, _ in GOAL_HORIZON_OPTIONS]
     cadence_options = [option for option, _ in GOAL_CHECKIN_OPTIONS]
     try:
@@ -1498,7 +1467,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
         cadence_index = cadence_options.index(goal_profile.get("check_in_cadence", "weekly"))
     except ValueError:
         cadence_index = 0
-    with profile_cols[0]:
+    with canvas_columns[0]:
         profile_title = panel.text_input(
             "Zielname",
             value=goal_profile.get("title", ""),
@@ -1525,6 +1494,20 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
             format="YYYY-MM-DD",
             help="Optional: Ab wann zählst du Fortschritt?",
         )
+        target_date = panel.date_input(
+            "Zieltermin",
+            value=goal_profile.get("target_date"),
+            format="YYYY-MM-DD",
+            help="Wann soll das Ziel erreicht sein?",
+        )
+        check_in_cadence = panel.selectbox(
+            "Check-in-Rhythmus",
+            options=cadence_options,
+            index=max(0, cadence_index),
+            format_func=lambda value: _goal_option_label(value, GOAL_CHECKIN_OPTIONS),
+            help="Wie oft reflektierst du Fortschritt?",
+        )
+    with canvas_columns[1]:
         enable_metric = panel.toggle(
             "Messbar machen",
             value=bool(goal_profile.get("metric_target") is not None or goal_profile.get("metric_unit")),
@@ -1544,20 +1527,6 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
             max_chars=40,
             disabled=not enable_metric,
             help="Einheit für den Zielwert, z. B. Bewerbungen, Minuten.",
-        )
-    with profile_cols[1]:
-        target_date = panel.date_input(
-            "Zieltermin",
-            value=goal_profile.get("target_date"),
-            format="YYYY-MM-DD",
-            help="Wann soll das Ziel erreicht sein?",
-        )
-        check_in_cadence = panel.selectbox(
-            "Check-in-Rhythmus",
-            options=cadence_options,
-            index=max(0, cadence_index),
-            format_func=lambda value: _goal_option_label(value, GOAL_CHECKIN_OPTIONS),
-            help="Wie oft reflektierst du Fortschritt?",
         )
         next_step_tabs = panel.tabs(["Nächster Schritt", "Vorschau"])
         with next_step_tabs[0]:
@@ -1587,15 +1556,9 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
                 st.caption("Noch keine Belohnung definiert")
 
     panel.markdown("#### Erfolg & Motivation")
-    success_tabs = panel.tabs(
-        [
-            "Erfolgskriterien",
-            "Motivation",
-            "Risiken & Absicherung",
-        ]
-    )
-    with success_tabs[0]:
-        criteria_tabs = st.tabs(["Schreiben", "Vorschau"])
+    success_columns = panel.columns(2)
+    with success_columns[0]:
+        criteria_tabs = panel.tabs(["Erfolgskriterien", "Vorschau"])
         with criteria_tabs[0]:
             success_criteria_md = st.text_area(
                 "Wie erkennst du Erfolg?",
@@ -1608,22 +1571,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
                 st.markdown(criteria_preview)
             else:
                 st.caption("Noch keine Kriterien definiert")
-    with success_tabs[1]:
-        motivation_tabs = st.tabs(["Schreiben", "Vorschau"])
-        with motivation_tabs[0]:
-            motivation_md = st.text_area(
-                "Warum ist das Ziel wichtig?",
-                value=goal_profile.get("motivation_md", ""),
-                placeholder="Persönlicher Nutzen, Chancen, Unterstützung",
-            )
-        with motivation_tabs[1]:
-            motivation_preview = goal_profile.get("motivation_md", "")
-            if motivation_preview.strip():
-                st.markdown(motivation_preview)
-            else:
-                st.caption("Motivation noch leer")
-    with success_tabs[2]:
-        risk_tabs = st.tabs(["Schreiben", "Vorschau"])
+        risk_tabs = panel.tabs(["Risiken & Sicherungen", "Vorschau"])
         with risk_tabs[0]:
             risk_mitigation_md = st.text_area(
                 "Risiken & Sicherungen",
@@ -1636,6 +1584,20 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
                 st.markdown(risk_preview)
             else:
                 st.caption("Noch keine Risiken notiert")
+    with success_columns[1]:
+        motivation_tabs = panel.tabs(["Motivation", "Vorschau"])
+        with motivation_tabs[0]:
+            motivation_md = st.text_area(
+                "Warum ist das Ziel wichtig?",
+                value=goal_profile.get("motivation_md", ""),
+                placeholder="Persönlicher Nutzen, Chancen, Unterstützung",
+            )
+        with motivation_tabs[1]:
+            motivation_preview = goal_profile.get("motivation_md", "")
+            if motivation_preview.strip():
+                st.markdown(motivation_preview)
+            else:
+                st.caption("Motivation noch leer")
 
     goal_profile["title"] = profile_title.strip()
     goal_profile["focus_categories"] = [category.value for category in focus_categories]
@@ -1663,47 +1625,6 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
     )
     if profile_saved:
         panel.success("Zielprofil aktualisiert")
-
-    panel.markdown("### Tagesziel")
-    goal_input_value = _resolve_goal_input_value(settings=settings, stats=stats)
-    goal_row = panel.columns(3)
-    with goal_row[0]:
-        goal_value = panel.number_input(
-            "Ziel pro Tag",
-            min_value=1,
-            step=1,
-            value=goal_input_value,
-            key=SETTINGS_GOAL_DAILY_KEY,
-            help=("Lege ein realistisches Tagesziel fest"),
-        )
-    with goal_row[1]:
-        if panel.button("Ziel speichern", key="settings_save_goal"):
-            update_goal_daily(int(goal_value))
-            panel.success("Tagesziel aktualisiert")
-            st.rerun()
-    with goal_row[2]:
-        if panel.button(
-            "AI: Ziel vorschlagen",
-            key="settings_ai_goal",
-            disabled=not ai_enabled,
-            help=(
-                "Lässt OpenAI einen Vorschlag machen; ohne Schlüssel wird ein Fallback genutzt"
-            ),
-        ):
-            suggestion = suggest_goals(stats, client=client if ai_enabled else None)
-            st.session_state[AI_GOAL_SUGGESTION_KEY] = suggestion
-            st.session_state[GOAL_SUGGESTED_VALUE_KEY] = suggestion.payload.daily_goal
-            st.rerun()
-    settings["goal_daily"] = int(goal_value)
-
-    goal_suggestion: AISuggestion[Any] | None = st.session_state.get(AI_GOAL_SUGGESTION_KEY)
-    if goal_suggestion:
-        badge = "🤖" if goal_suggestion.from_ai else "🧭"
-        tips = " · ".join(goal_suggestion.payload.tips)
-        panel.info(
-            f"{badge} {goal_suggestion.payload.focus} — {goal_suggestion.payload.daily_goal} Ziele"
-        )
-
     with _panel_section(panel, "Kategorienziele"):
         category_goals = settings.get("category_goals", {})
         goal_columns = panel.columns(2)
@@ -1738,11 +1659,7 @@ def _build_category_progress(snapshot: CategoryKpi) -> go.Figure:
         textfont_color="#E6F2EC",
         text=[f"{snapshot.done_today}/{snapshot.daily_goal}"],
         textposition="outside",
-        hovertemplate=(
-            f"{snapshot.category.label}<br>"
-            "Heute erledigt"
-            "Tagesziel"
-        ),
+        hovertemplate=(f"{snapshot.category.label}<br>Heute erledigtTagesziel"),
     )
     figure = go.Figure(bar)
     figure.update_layout(
@@ -1937,8 +1854,8 @@ def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, categor
                 st.caption(
                     " | ".join(
                         [
-                            f"Offen",
-                            f"Gesamt",
+                            "Offen",
+                            "Gesamt",
                             f"Streak: {snapshot.streak} Tage",
                         ]
                     )
@@ -2027,9 +1944,7 @@ def render_todo_section(
             options=[template.key for template in templates],
             key=NEW_TODO_TEMPLATE_KEY,
             format_func=lambda option: template_lookup[option].label,
-            help=(
-                "Übernimmt Fälligkeit, Priorität, Erinnerung und optionale Zeitziele automatisch"
-            ),
+            help=("Übernimmt Fälligkeit, Priorität, Erinnerung und optionale Zeitziele automatisch"),
         )
 
         selected_template = template_lookup[template_key]
@@ -2102,9 +2017,7 @@ def render_todo_section(
                 description_md = st.text_area(
                     "Beschreibung (Markdown)",
                     key=NEW_TODO_DESCRIPTION_KEY,
-                    placeholder=(
-                        "Optional: Details, Checkliste oder Kontext"
-                    ),
+                    placeholder=("Optional: Details, Checkliste oder Kontext"),
                 )
             with description_tabs[1]:
                 preview_text = st.session_state.get(NEW_TODO_DESCRIPTION_KEY, "")
@@ -2371,7 +2284,7 @@ def render_todo_section(
 
     rationale = st.session_state.get(AI_QUADRANT_RATIONALE_KEY)
     if rationale:
-        st.caption(f"Begründung (übersteuerbar)")
+        st.caption("Begründung (übersteuerbar)")
 
     st.markdown("### Aufgabenansichten")
     list_tab, board_tab, calendar_tab = st.tabs(
@@ -2505,7 +2418,14 @@ def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
         config={"displaylogo": False, "responsive": True},
     )
 
-    st.info("Passe Tagesziel, Kategorien und KI-Optionen im Bereich 'Ziele' an.")
+    st.info(
+        translate_text(
+            (
+                "Passe Kategorien und KI-Optionen im Bereich 'Ziele' an.",
+                "Adjust categories and AI options in the 'Goals' area.",
+            )
+        )
+    )
 
 
 GOALS_PAGE_LABEL = "Ziele"
@@ -2545,9 +2465,7 @@ def render_ai_toggle_sidebar(settings: dict[str, Any], *, client: Optional[OpenA
         "AI aktiv",
         key=AI_ENABLED_KEY,
         value=bool(settings.get(AI_ENABLED_KEY, bool(client))),
-        help=(
-            "Aktiviere KI-gestützte Vorschläge. Ohne Schlüssel werden Fallback-Texte genutzt"
-        ),
+        help=("Aktiviere KI-gestützte Vorschläge. Ohne Schlüssel werden Fallback-Texte genutzt"),
     )
     settings[AI_ENABLED_KEY] = ai_enabled
     st.session_state[SS_SETTINGS] = settings
@@ -2561,7 +2479,7 @@ def render_navigation() -> str:
     selection = st.sidebar.radio(
         "Bereich wählen",
         navigation_options,
-        index=navigation_options.index(TASKS_PAGE_LABEL),
+        index=navigation_options.index(GOALS_PAGE_LABEL),
         label_visibility="collapsed",
     )
     st.sidebar.divider()
@@ -2620,9 +2538,7 @@ def render_gamification_panel(
             options=gamification_mode_options,
             format_func=lambda option: option.label,
             index=mode_index,
-            help=(
-                "Wähle Punkte, Abzeichen oder die motivierende Avatar-Option"
-            ),
+            help=("Wähle Punkte, Abzeichen oder die motivierende Avatar-Option"),
         )
 
         if selected_mode is not gamification_mode:
@@ -2677,9 +2593,7 @@ def render_gamification_panel(
             )
         else:
             panel.caption("Noch keine Badges gesammelt")
-        panel.info(
-            "Sammle Abzeichen für Meilensteine wie erste Aufgabe, 3-Tage-Streak und 10 Abschlüsse"
-        )
+        panel.info("Sammle Abzeichen für Meilensteine wie erste Aufgabe, 3-Tage-Streak und 10 Abschlüsse")
 
     else:
         message_index = int(st.session_state.get(AVATAR_PROMPT_INDEX_KEY, 0))
@@ -2690,17 +2604,13 @@ def render_gamification_panel(
             st.session_state[AVATAR_PROMPT_INDEX_KEY] = message_index + 1
             st.rerun()
 
-        panel.caption(
-            "Klicke erneut für weitere motivierende Botschaften im Therapiezimmer-Stil"
-        )
+        panel.caption("Klicke erneut für weitere motivierende Botschaften im Therapiezimmer-Stil")
 
     if panel.button(
         "AI: Motivation",
         key=f"ai_motivation_btn_{motivation_key_suffix}",
         disabled=not ai_enabled,
-        help=(
-            "Lässt OpenAI eine kurze Motivation erstellen; ohne Key wird ein Fallback genutzt"
-        ),
+        help=("Lässt OpenAI eine kurze Motivation erstellen; ohne Key wird ein Fallback genutzt"),
     ):
         st.session_state[AI_MOTIVATION_KEY] = generate_motivation(stats, client=client if ai_enabled else None)
         st.rerun()
@@ -2723,29 +2633,23 @@ def render_safety_panel(panel: Any) -> bool:
     show_storage_notice = panel.toggle(
         "Speicherhinweis anzeigen",
         value=bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False)),
-        help=(
-            "Blendet den Hinweis zum aktuellen Speicherpfad oberhalb des Titels ein oder aus"
-        ),
+        help=("Blendet den Hinweis zum aktuellen Speicherpfad oberhalb des Titels ein oder aus"),
     )
     settings[SHOW_STORAGE_NOTICE_KEY] = show_storage_notice
 
     if panel.button(
         "Session zurücksetzen",
         key="reset_session_btn",
-        help=(
-            "Löscht ToDos, KPIs, Gamification und Einstellungen aus dieser Sitzung"
-        ),
+        help=("Löscht ToDos, KPIs, Gamification und Einstellungen aus dieser Sitzung"),
     ):
         for cleanup_key in (
             AI_ENABLED_KEY,
-            AI_GOAL_SUGGESTION_KEY,
             AI_QUADRANT_RATIONALE_KEY,
             AI_MOTIVATION_KEY,
             NEW_TODO_TITLE_KEY,
             NEW_TODO_DUE_KEY,
             NEW_TODO_QUADRANT_KEY,
             SETTINGS_GOAL_DAILY_KEY,
-            GOAL_SUGGESTED_VALUE_KEY,
         ):
             st.session_state.pop(cleanup_key, None)
         reset_state()
@@ -3049,9 +2953,7 @@ def render_journal_section(*, ai_enabled: bool, client: Optional[OpenAI], todos:
                 st.write(" · ".join(history_entry.moods) if history_entry.moods else "—")
                 st.caption(history_entry.triggers_and_reactions or "Keine Auslöser notiert")
                 if history_entry.categories:
-                    st.caption(
-                        "Kategorien" + ", ".join(category.label for category in history_entry.categories)
-                    )
+                    st.caption("Kategorien" + ", ".join(category.label for category in history_entry.categories))
 
 
 def main() -> None:

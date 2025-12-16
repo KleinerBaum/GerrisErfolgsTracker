@@ -67,7 +67,7 @@ def build_weekly_completion_figure(
                 textposition="auto",
                 textfont_color=FONT_COLOR,
                 marker_color=PRIMARY_COLOR,
-            hovertemplate=("<b>%{x}</b><br>Abschlüsse: %{y}<extra></extra>"),
+                hovertemplate=("<b>%{x}</b><br>Abschlüsse: %{y}<extra></extra>"),
             )
         ]
     )

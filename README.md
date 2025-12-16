@@ -1,11 +1,11 @@
 # README.md
 # Gerris ErfolgsTracker
 
-Streamlit-App mit Eisenhower-ToDo-Board, Gamification und optionaler OpenAI-Integration für KI-gestützte Vorschläge (Auto-Kategorisierung, Tagesziel-Empfehlungen, Motivation). Ohne API-Key greifen Fallback-Texte und die App bleibt voll funktionsfähig.
+Streamlit-App mit Eisenhower-ToDo-Board, Gamification und optionaler OpenAI-Integration für KI-gestützte Vorschläge (Auto-Kategorisierung, Motivation). Ohne API-Key greifen Fallback-Texte und die App bleibt voll funktionsfähig.
 
 Die UI folgt einem klaren, fokussierten Dark-Theme mit dunkelgrünem Primärton (#1C9C82) auf einem dezenten, bildfreien Gradient-Hintergrund, um einen ruhigen, professionellen Eindruck zu vermitteln. Statusinformationen werden textlich und über Typografie/Abstände vermittelt, um Icon-Lärm zu vermeiden. Alle sichtbaren Texte sind ausschließlich auf Deutsch gehalten, damit keine englischen Begriffe mehr auftauchen.
 
-Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI aktiv / AI enabled** gesetzt ist, nutzt die App GPT-Modelle (Standard: `gpt-4o-mini`, per Einstellung überschreibbar), um z. B. automatisch den Eisenhower-Quadranten zu empfehlen, ein strukturiertes Tagesziel zu liefern oder kurze Motivationsnachrichten basierend auf den jüngsten KPIs zu erstellen. Ist kein API-Key hinterlegt oder die AI-Option deaktiviert, werden statische, vorgefertigte Texte verwendet, sodass die Anwendung weiterhin vollständig nutzbar bleibt.
+Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI aktiv / AI enabled** gesetzt ist, nutzt die App GPT-Modelle (Standard: `gpt-4o-mini`, per Einstellung überschreibbar), um z. B. automatisch den Eisenhower-Quadranten zu empfehlen oder kurze Motivationsnachrichten basierend auf den jüngsten KPIs zu erstellen. Ist kein API-Key hinterlegt oder die AI-Option deaktiviert, werden statische, vorgefertigte Texte verwendet, sodass die Anwendung weiterhin vollständig nutzbar bleibt.
 
 ## Voraussetzungen
 
@@ -86,14 +86,13 @@ OPENAI_API_KEY = "sk-..."
 
 ## Einstellungen & Sicherheit
 
-- Die Seitenleiste bündelt die Navigation zwischen **Ziele / Goals**, **Aufgaben / Tasks** und **Tagebuch / Journal** und zeigt direkt darunter das Gamification-Panel mit kompaktem Modus-Drop-down (Punkte, Abzeichen oder Avatar-Option) ohne zusätzliche Überschrift; die App startet mit geöffneter Sidebar und lädt standardmäßig die Seite **Aufgaben / Tasks** / The sidebar hosts navigation plus the gamification section with a compact mode drop-down (points, badges, or the avatar option) without an extra header and starts expanded, defaulting to the **Aufgaben / Tasks** page on load.
+- Die Seitenleiste bündelt die Navigation zwischen **Ziele / Goals**, **Aufgaben / Tasks** und **Tagebuch / Journal** und zeigt direkt darunter das Gamification-Panel mit kompaktem Modus-Drop-down (Punkte, Abzeichen oder Avatar-Option) ohne zusätzliche Überschrift; die App startet mit geöffneter Sidebar und lädt standardmäßig die Seite **Ziele / Goals** / The sidebar hosts navigation plus the gamification section with a compact mode drop-down (points, badges, or the avatar option) without an extra header and starts expanded, defaulting to the **Ziele / Goals** page on load.
 - Die Oberfläche ist vollständig auf Deutsch festgelegt; der frühere Sprachumschalter in der Sidebar entfällt, damit keine englischen Begriffe erscheinen.
 - Der Schalter **AI aktiv / AI enabled** sitzt oberhalb des Sprachumschalters in der Sidebar und steuert alle KI-Funktionen zentral.
 - Der Bereich **Ziel-Canvas / Goal canvas** fragt jetzt Titel, Fokus-Kategorien, Zeitfenster (1 Woche/30/90 Tage oder Custom), Start- und Zieltermin, Check-in-Rhythmus, messbaren Zielwert + Einheit, Erfolgskriterien, Motivation, Risiken/Absicherung, nächsten Schritt sowie Feier/Belohnung zweisprachig ab – alles direkt im Ziel-Setup speicherbar.
 - Auf der Seite **Ziele / Goals** startet jetzt ein fünffach gespaltener Tachometer-Überblick zu Stellensuche, Administratives, Familie & Freunde, Drogen sowie Tagesstruktur; rechts daneben wählst du per Checkbox, ob das KPI-Dashboard bzw. die Kategoriendiagramme eingeblendet werden.
 - Im Block **Ziele im Überblick** steuerst du im Expander **Einstellungen**, welche Aufgaben in den KPIs und Kategorien berücksichtigt werden (z. B. nur Fokus-Tasks).
-- Die Zielbearbeitung wird erst nach Klick auf **Ziel erstellen / Create goal** sichtbar; dort findest du **Tagesziel / Daily goal** (inkl. KI-Vorschlag) und Kategorienziele (0–20 pro Tag) kompakt angeordnet.
-- AI-Zielvorschläge übernehmen den empfohlenen Wert automatisch in das Zahlenfeld (kein manuelles Nachtragen nötig) / AI goal suggestions now auto-fill the number input for convenience.
+- Die Zielbearbeitung wird erst nach Klick auf **Ziel erstellen / Create goal** sichtbar; dort findest du das zweispaltige **Ziel-Canvas / Goal canvas** sowie Kategorienziele (0–20 pro Tag) kompakt angeordnet.
 - Der Button **Session zurücksetzen / Reset session** sitzt jetzt im Sidebar-Panel **Sicherheit & Daten / Safety & data** und löscht ToDos, KPIs, Gamification und Einstellungen und stellt die Defaults wieder her / The **Session zurücksetzen / Reset session** button now lives in the sidebar **Sicherheit & Daten / Safety & data** panel and resets todos, KPIs, gamification, and settings.
 - Hinweisboxen informieren zentral im Sidebar-Panel **Sicherheit & Daten / Safety & data** über den aktuell genutzten Speicherort (OneDrive, lokale Datei oder flüchtiger Cloud-Speicher); das Tool ist nicht als Krisen- oder Diagnoseinstrument gedacht. Über den Toggle **Speicherhinweis anzeigen / Show storage notice** steuerst du, ob der Hinweis unter dem Titel erscheint (Standard: aus) / The **Sicherheit & Daten / Safety & data** sidebar panel bundles the storage notice and crisis disclaimer; use the **Speicherhinweis anzeigen / Show storage notice** toggle to show the notice below the title (default: off).
 
@@ -158,7 +157,6 @@ OPENAI_API_KEY = "sk-..."
 
 - Toggle **AI aktiv / AI enabled** steuert, ob KI-Vorschläge verwendet werden; ohne Key greifen automatisch Fallback-Texte.
 - **AI: Quadrant vorschlagen** schlägt einen Eisenhower-Quadranten vor (übersteuerbar).
-- **AI: Ziel vorschlagen** erzeugt ein strukturiertes Tagesziel mit Fokus und Tipps, das in die Zahleneingabe übernommen werden kann.
 - **AI: Motivation** liefert eine kurze, zweisprachige Motivationsnachricht basierend auf den KPIs.
 
 ## Session-State-Management
