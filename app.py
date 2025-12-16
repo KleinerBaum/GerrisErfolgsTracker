@@ -347,9 +347,7 @@ def _todo_templates(*, today: date) -> list[TaskTemplate]:
                 NEW_TODO_PROGRESS_TARGET_KEY: 0.5,
                 NEW_TODO_PROGRESS_UNIT_KEY: "h",
                 NEW_TODO_AUTO_COMPLETE_KEY: True,
-                NEW_TODO_COMPLETION_CRITERIA_KEY: (
-                    "30 Min. fokussiert arbeiten + kurzes Ergebnis notieren."
-                ),
+                NEW_TODO_COMPLETION_CRITERIA_KEY: ("30 Min. fokussiert arbeiten + kurzes Ergebnis notieren."),
                 NEW_TODO_REMINDER_KEY: EmailReminderOffset.ONE_HOUR,
                 NEW_TODO_RECURRENCE_KEY: RecurrencePattern.ONCE,
             },
@@ -381,9 +379,7 @@ def _todo_templates(*, today: date) -> list[TaskTemplate]:
                 NEW_TODO_PROGRESS_TARGET_KEY: 2.0,
                 NEW_TODO_PROGRESS_UNIT_KEY: "h",
                 NEW_TODO_AUTO_COMPLETE_KEY: True,
-                NEW_TODO_COMPLETION_CRITERIA_KEY: (
-                    "2h konzentriert + kurze Review (Lessons Learned)."
-                ),
+                NEW_TODO_COMPLETION_CRITERIA_KEY: ("2h konzentriert + kurze Review (Lessons Learned)."),
                 NEW_TODO_REMINDER_KEY: EmailReminderOffset.ONE_DAY,
                 NEW_TODO_RECURRENCE_KEY: RecurrencePattern.ONCE,
             },
@@ -787,10 +783,7 @@ def _render_gratitude_inputs(gratitude_suggestions: list[str]) -> list[str]:
 
 
 def _render_storage_notice(backend: FileStorageBackend, *, is_cloud: bool) -> None:
-    storage_note = (
-        "Persistenz aktiv: JSON unter "
-        f"{backend.path} (lokal beschreibbar)."
-    )
+    storage_note = f"Persistenz aktiv: JSON unter {backend.path} (lokal beschreibbar)."
     onedrive_hint = (
         "OneDrive-Sync erkannt; mobile Einträge werden abgeglichen."
         if any(part.lower() == "onedrive" for part in backend.path.parts)
@@ -1059,7 +1052,7 @@ def _render_milestone_board(todo: TodoItem, *, gamification_mode: GamificationMo
             value=int(suggested_points),
             step=1,
             key=f"{NEW_MILESTONE_POINTS_KEY}_{todo.id}",
-            help=f"Empfohlene Punkte basierend auf Aufwand",
+            help="Empfohlene Punkte basierend auf Aufwand",
         )
         note = st.text_area(
             "Notiz (optional)",
@@ -1147,15 +1140,11 @@ def render_task_row(todo: TodoItem, *, parent: Any | None = None) -> None:
                     progress_ratio,
                     text=f"{todo.progress_current:.2f} / {todo.progress_target:.2f} {todo.progress_unit}",
                 )
-                st.caption(
-                    f"Automatisch abschließen: {'Ja' if todo.auto_done_when_target_reached else 'Nein'}"
-                )
+                st.caption(f"Automatisch abschließen: {'Ja' if todo.auto_done_when_target_reached else 'Nein'}")
                 if todo.completion_criteria_md.strip():
                     st.markdown(todo.completion_criteria_md)
             else:
-                st.caption(
-                    f"Kein Ziel hinterlegt. Aktueller Stand: {todo.progress_current:.2f} {todo.progress_unit}"
-                )
+                st.caption(f"Kein Ziel hinterlegt. Aktueller Stand: {todo.progress_current:.2f} {todo.progress_unit}")
 
             _render_milestone_board(todo, gamification_mode=gamification_mode)
 
@@ -1686,9 +1675,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
             "AI: Ziel vorschlagen",
             key="settings_ai_goal",
             disabled=not ai_enabled,
-            help=(
-                "Lässt OpenAI einen Vorschlag machen; ohne Schlüssel wird ein Fallback genutzt"
-            ),
+            help=("Lässt OpenAI einen Vorschlag machen; ohne Schlüssel wird ein Fallback genutzt"),
         ):
             suggestion = suggest_goals(stats, client=client if ai_enabled else None)
             st.session_state[AI_GOAL_SUGGESTION_KEY] = suggestion
@@ -1699,10 +1686,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
     goal_suggestion: AISuggestion[Any] | None = st.session_state.get(AI_GOAL_SUGGESTION_KEY)
     if goal_suggestion:
         badge = "🤖" if goal_suggestion.from_ai else "🧭"
-        tips = " · ".join(goal_suggestion.payload.tips)
-        panel.info(
-            f"{badge} {goal_suggestion.payload.focus} — {goal_suggestion.payload.daily_goal} Ziele"
-        )
+        panel.info(f"{badge} {goal_suggestion.payload.focus} — {goal_suggestion.payload.daily_goal} Ziele")
 
     with _panel_section(panel, "Kategorienziele"):
         category_goals = settings.get("category_goals", {})
@@ -1738,11 +1722,7 @@ def _build_category_progress(snapshot: CategoryKpi) -> go.Figure:
         textfont_color="#E6F2EC",
         text=[f"{snapshot.done_today}/{snapshot.daily_goal}"],
         textposition="outside",
-        hovertemplate=(
-            f"{snapshot.category.label}<br>"
-            "Heute erledigt"
-            "Tagesziel"
-        ),
+        hovertemplate=(f"{snapshot.category.label}<br>Heute erledigtTagesziel"),
     )
     figure = go.Figure(bar)
     figure.update_layout(
@@ -1937,8 +1917,8 @@ def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, categor
                 st.caption(
                     " | ".join(
                         [
-                            f"Offen",
-                            f"Gesamt",
+                            "Offen",
+                            "Gesamt",
                             f"Streak: {snapshot.streak} Tage",
                         ]
                     )
@@ -2022,179 +2002,72 @@ def render_todo_section(
         today = date.today()
         templates = _todo_templates(today=today)
         template_lookup = {template.key: template for template in templates}
-        template_key = st.selectbox(
-            "Aufgabenvorschlag",
-            options=[template.key for template in templates],
-            key=NEW_TODO_TEMPLATE_KEY,
-            format_func=lambda option: template_lookup[option].label,
-            help=(
-                "Übernimmt Fälligkeit, Priorität, Erinnerung und optionale Zeitziele automatisch"
-            ),
-        )
 
-        selected_template = template_lookup[template_key]
-        if template_key != st.session_state.get(template_state_key):
-            _apply_task_template(selected_template)
+        title_column, milestone_column, meta_column = st.columns(3)
 
-        if selected_template.description:
-            st.caption(f"📌 {selected_template.description}")
-
-        title_col, _ = st.columns([1, 1])
-        with title_col:
-            title = st.text_input(
-                "Titel",
-                key=NEW_TODO_TITLE_KEY,
-                placeholder="Nächstes ToDo eingeben",
+        with title_column:
+            template_key = st.selectbox(
+                "Titel-Vorschlag / Task suggestion",
+                options=[template.key for template in templates],
+                key=NEW_TODO_TEMPLATE_KEY,
+                format_func=lambda option: template_lookup[option].label,
+                help=("Übernimmt Fälligkeit, Priorität, Erinnerung und optionale Zeitziele automatisch"),
             )
-        col_left, col_right = st.columns(2)
-        with col_left:
+
+            selected_template = template_lookup[template_key]
+            if template_key != st.session_state.get(template_state_key):
+                _apply_task_template(selected_template)
+
+            if selected_template.description:
+                st.caption(f"📌 {selected_template.description}")
+
+            title = st.text_input(
+                "Titel / Title",
+                key=NEW_TODO_TITLE_KEY,
+                placeholder="Nächstes ToDo eingeben / Enter next task",
+            )
+
             due_date: Optional[date] = st.date_input(
-                "Fälligkeitsdatum",
+                "Fälligkeitsdatum / Due date",
                 value=st.session_state.get(NEW_TODO_DUE_KEY),
                 key=NEW_TODO_DUE_KEY,
                 format="YYYY-MM-DD",
             )
-        with col_right:
-            quadrant = st.selectbox(
-                "Eisenhower-Quadrant",
-                quadrant_options,
-                key=NEW_TODO_QUADRANT_KEY,
-                format_func=lambda option: option.label,
-            )
 
-        recurrence_left, recurrence_right = st.columns(2)
-        with recurrence_left:
             recurrence = st.selectbox(
-                "Wiederholung",
+                "Wiederholung / Recurrence",
                 options=list(RecurrencePattern),
                 key=NEW_TODO_RECURRENCE_KEY,
                 format_func=lambda option: option.label,
                 help="Einmalig, werktags oder feste Intervalle",
             )
-        with recurrence_right:
+
             reminder = st.selectbox(
-                "E-Mail-Erinnerung",
+                "E-Mail-Erinnerung / Email reminder",
                 options=list(EmailReminderOffset),
                 key=NEW_TODO_REMINDER_KEY,
                 format_func=lambda option: option.label,
                 help="Optionale Mail-Erinnerung vor Fälligkeit",
             )
 
-        meta_left, meta_right = st.columns(2)
-        with meta_left:
-            category = st.selectbox(
-                "Kategorie",
-                options=list(Category),
-                key=NEW_TODO_CATEGORY_KEY,
-                format_func=lambda option: option.label,
-            )
-        with meta_right:
-            priority = st.selectbox(
-                "Priorität (1=hoch)",
-                options=list(range(1, 6)),
-                key=NEW_TODO_PRIORITY_KEY,
-            )
-
-        description_col, _ = st.columns([1, 1])
-        with description_col:
-            description_tabs = st.tabs(["Schreiben", "Vorschau"])
-            with description_tabs[0]:
-                description_md = st.text_area(
-                    "Beschreibung (Markdown)",
-                    key=NEW_TODO_DESCRIPTION_KEY,
-                    placeholder=(
-                        "Optional: Details, Checkliste oder Kontext"
-                    ),
-                )
-            with description_tabs[1]:
-                preview_text = st.session_state.get(NEW_TODO_DESCRIPTION_KEY, "")
-                if preview_text.strip():
-                    st.markdown(preview_text)
-                else:
-                    st.caption("Keine Beschreibung vorhanden")
-
-        with st.expander("Fortschrittsregel (optional)"):
-            enable_target: bool = st.checkbox(
-                "Zielvorgabe nutzen",
-                value=bool(st.session_state.get(NEW_TODO_ENABLE_TARGET_KEY, False)),
-                key=NEW_TODO_ENABLE_TARGET_KEY,
-                help="Optionaler Zielwert mit Einheit",
-            )
-
-            target_cols = st.columns([0.5, 0.5])
-            with target_cols[0]:
-                target_value = st.number_input(
-                    "Zielwert",
-                    min_value=0.0,
-                    value=float(st.session_state.get(NEW_TODO_PROGRESS_TARGET_KEY, 0.0)),
-                    step=1.0,
-                    key=NEW_TODO_PROGRESS_TARGET_KEY,
-                    disabled=not enable_target,
-                    help="Numerisches Ziel, z. B. 10.0",
-                )
-            with target_cols[1]:
-                progress_unit = st.text_input(
-                    "Einheit",
-                    value=st.session_state.get(NEW_TODO_PROGRESS_UNIT_KEY, ""),
-                    key=NEW_TODO_PROGRESS_UNIT_KEY,
-                    disabled=not enable_target,
-                    help="z. B. km, Seiten, Minuten",
-                )
-
-            current_value = st.number_input(
-                "Aktueller Stand",
-                min_value=0.0,
-                value=float(st.session_state.get(NEW_TODO_PROGRESS_CURRENT_KEY, 0.0)),
-                step=0.5,
-                key=NEW_TODO_PROGRESS_CURRENT_KEY,
-                help="Fortschritt in derselben Einheit wie das Ziel",
-            )
-
-            auto_complete = st.toggle(
-                "Automatisch als erledigt markieren, wenn Ziel erreicht",
-                value=bool(
-                    st.session_state.get(
-                        NEW_TODO_AUTO_COMPLETE_KEY,
-                        bool(st.session_state.get(NEW_TODO_ENABLE_TARGET_KEY, False)),
-                    )
-                ),
-                key=NEW_TODO_AUTO_COMPLETE_KEY,
-                disabled=not enable_target,
-            )
-
-            criteria_tabs = st.tabs(["Kriterien", "Vorschau"])
-            with criteria_tabs[0]:
-                completion_criteria_md = st.text_area(
-                    "Erfüllungskriterien (Markdown)",
-                    value=st.session_state.get(NEW_TODO_COMPLETION_CRITERIA_KEY, ""),
-                    key=NEW_TODO_COMPLETION_CRITERIA_KEY,
-                    placeholder="Optional: Wie erkennst du den Abschluss?",
-                    disabled=not enable_target,
-                )
-            with criteria_tabs[1]:
-                criteria_preview = st.session_state.get(NEW_TODO_COMPLETION_CRITERIA_KEY, "")
-                if enable_target and criteria_preview.strip():
-                    st.markdown(criteria_preview)
-                else:
-                    st.caption("Keine Kriterien gepflegt")
-
-            st.markdown("##### Unterziele")
+        with milestone_column:
+            st.markdown("#### Unterziele / Milestones")
             draft_milestones: list[dict[str, object]] = st.session_state.get(NEW_TODO_DRAFT_MILESTONES_KEY, [])
             suggestion_store: dict[str, list[dict[str, str]]] = st.session_state.get(NEW_MILESTONE_SUGGESTIONS_KEY, {})
             milestone_title = st.text_input(
-                "Titel des Meilensteins",
+                "Titel des Meilensteins / Milestone title",
                 key=NEW_MILESTONE_TITLE_KEY,
-                placeholder="z. B. Konzept fertigstellen",
+                placeholder="z. B. Konzept fertigstellen / e.g., finish concept",
             )
             milestone_complexity = st.selectbox(
-                "Aufwand",
+                "Aufwand / Effort",
                 options=list(MilestoneComplexity),
                 key=NEW_MILESTONE_COMPLEXITY_KEY,
                 format_func=lambda option: option.label,
             )
             suggested_points = _points_for_complexity(milestone_complexity)
             milestone_points = st.number_input(
-                "Punkte",
+                "Punkte / Points",
                 min_value=0,
                 value=int(st.session_state.get(NEW_MILESTONE_POINTS_KEY, suggested_points)),
                 step=1,
@@ -2202,17 +2075,17 @@ def render_todo_section(
                 help=f"Empfehlung anhand Aufwand: {suggested_points}",
             )
             milestone_note = st.text_area(
-                "Notiz (optional)",
+                "Notiz (optional) / Note (optional)",
                 key=NEW_MILESTONE_NOTE_KEY,
-                placeholder="Kurze Beschreibung oder DoD",
+                placeholder="Kurze Beschreibung oder DoD / Short description or DoD",
             )
             add_milestone_draft = st.form_submit_button(
-                "Meilenstein vormerken",
+                "Meilenstein vormerken / Queue milestone",
                 help="Unterziel für diese Aufgabe vormerken",
             )
 
             generate_suggestions = st.form_submit_button(
-                "AI: Meilensteine vorschlagen",
+                "AI: Meilensteine vorschlagen / Suggest milestones",
                 disabled=not ai_enabled,
                 help="Erzeuge Vorschläge für Unterziele",
             )
@@ -2249,7 +2122,7 @@ def render_todo_section(
                     st.rerun()
 
             if suggestion_candidates:
-                st.markdown("###### Vorschläge übernehmen")
+                st.markdown("###### Vorschläge übernehmen / Apply suggestions")
                 for idx, candidate in enumerate(suggestion_candidates):
                     complexity = MilestoneComplexity(candidate.complexity)
                     default_points = _points_for_complexity(complexity)
@@ -2271,7 +2144,7 @@ def render_todo_section(
                         st.rerun()
 
             if draft_milestones:
-                st.markdown("###### Vorgemerkte Unterziele")
+                st.markdown("###### Vorgemerkte Unterziele / Queued milestones")
                 for index, entry in enumerate(draft_milestones):
                     complexity_label = MilestoneComplexity(entry.get("complexity", "medium")).label
                     st.caption(f"{entry.get('title')} · {complexity_label} · {entry.get('points', 0)} Punkte")
@@ -2281,6 +2154,108 @@ def render_todo_section(
                         draft_milestones.pop(index)
                         st.session_state[NEW_TODO_DRAFT_MILESTONES_KEY] = draft_milestones
                         st.rerun()
+
+        with meta_column:
+            category = st.selectbox(
+                "Kategorie / Category",
+                options=list(Category),
+                key=NEW_TODO_CATEGORY_KEY,
+                format_func=lambda option: option.label,
+            )
+
+            quadrant = st.selectbox(
+                "Eisenhower-Quadrant / Quadrant",
+                quadrant_options,
+                key=NEW_TODO_QUADRANT_KEY,
+                format_func=lambda option: option.label,
+            )
+
+            priority = st.selectbox(
+                "Priorität (1=hoch) / Priority (1=high)",
+                options=list(range(1, 6)),
+                key=NEW_TODO_PRIORITY_KEY,
+            )
+
+            st.markdown("#### Fortschritt / Progress")
+            enable_target: bool = st.checkbox(
+                "Zielvorgabe nutzen / Enable target",
+                value=bool(st.session_state.get(NEW_TODO_ENABLE_TARGET_KEY, False)),
+                key=NEW_TODO_ENABLE_TARGET_KEY,
+                help="Optionaler Zielwert mit Einheit",
+            )
+
+            target_cols = st.columns([0.5, 0.5])
+            with target_cols[0]:
+                target_value = st.number_input(
+                    "Zielwert / Target value",
+                    min_value=0.0,
+                    value=float(st.session_state.get(NEW_TODO_PROGRESS_TARGET_KEY, 0.0)),
+                    step=1.0,
+                    key=NEW_TODO_PROGRESS_TARGET_KEY,
+                    disabled=not enable_target,
+                    help="Numerisches Ziel, z. B. 10.0",
+                )
+            with target_cols[1]:
+                progress_unit = st.text_input(
+                    "Einheit / Unit",
+                    value=st.session_state.get(NEW_TODO_PROGRESS_UNIT_KEY, ""),
+                    key=NEW_TODO_PROGRESS_UNIT_KEY,
+                    disabled=not enable_target,
+                    help="z. B. km, Seiten, Minuten",
+                )
+
+            current_value = st.number_input(
+                "Aktueller Stand / Current progress",
+                min_value=0.0,
+                value=float(st.session_state.get(NEW_TODO_PROGRESS_CURRENT_KEY, 0.0)),
+                step=0.5,
+                key=NEW_TODO_PROGRESS_CURRENT_KEY,
+                help="Fortschritt in derselben Einheit wie das Ziel",
+            )
+
+            auto_complete = st.toggle(
+                "Automatisch als erledigt markieren, wenn Ziel erreicht / Auto-complete when target reached",
+                value=bool(
+                    st.session_state.get(
+                        NEW_TODO_AUTO_COMPLETE_KEY,
+                        bool(st.session_state.get(NEW_TODO_ENABLE_TARGET_KEY, False)),
+                    )
+                ),
+                key=NEW_TODO_AUTO_COMPLETE_KEY,
+                disabled=not enable_target,
+            )
+
+            criteria_tabs = st.tabs(["Kriterien / Criteria", "Vorschau / Preview"])
+            with criteria_tabs[0]:
+                completion_criteria_md = st.text_area(
+                    "Erfüllungskriterien (Markdown) / Completion criteria (Markdown)",
+                    value=st.session_state.get(NEW_TODO_COMPLETION_CRITERIA_KEY, ""),
+                    key=NEW_TODO_COMPLETION_CRITERIA_KEY,
+                    placeholder="Optional: Wie erkennst du den Abschluss? / Optional: how will you mark completion?",
+                    disabled=not enable_target,
+                )
+            with criteria_tabs[1]:
+                criteria_preview = st.session_state.get(NEW_TODO_COMPLETION_CRITERIA_KEY, "")
+                if enable_target and criteria_preview.strip():
+                    st.markdown(criteria_preview)
+                else:
+                    st.caption("Keine Kriterien gepflegt")
+
+        description_col, _ = st.columns([1, 1])
+        with description_col:
+            description_tabs = st.tabs(["Schreiben", "Vorschau"])
+            with description_tabs[0]:
+                description_md = st.text_area(
+                    "Beschreibung (Markdown) / Description (Markdown)",
+                    key=NEW_TODO_DESCRIPTION_KEY,
+                    placeholder=("Optional: Details, Checkliste oder Kontext"),
+                )
+            with description_tabs[1]:
+                preview_text = st.session_state.get(NEW_TODO_DESCRIPTION_KEY, "")
+                if preview_text.strip():
+                    st.markdown(preview_text)
+                else:
+                    st.caption("Keine Beschreibung vorhanden")
 
         action_cols = st.columns(2)
         with action_cols[0]:
@@ -2371,7 +2346,7 @@ def render_todo_section(
 
     rationale = st.session_state.get(AI_QUADRANT_RATIONALE_KEY)
     if rationale:
-        st.caption(f"Begründung (übersteuerbar)")
+        st.caption("Begründung (übersteuerbar)")
 
     st.markdown("### Aufgabenansichten")
     list_tab, board_tab, calendar_tab = st.tabs(
@@ -2545,9 +2520,7 @@ def render_ai_toggle_sidebar(settings: dict[str, Any], *, client: Optional[OpenA
         "AI aktiv",
         key=AI_ENABLED_KEY,
         value=bool(settings.get(AI_ENABLED_KEY, bool(client))),
-        help=(
-            "Aktiviere KI-gestützte Vorschläge. Ohne Schlüssel werden Fallback-Texte genutzt"
-        ),
+        help=("Aktiviere KI-gestützte Vorschläge. Ohne Schlüssel werden Fallback-Texte genutzt"),
     )
     settings[AI_ENABLED_KEY] = ai_enabled
     st.session_state[SS_SETTINGS] = settings
@@ -2620,9 +2593,7 @@ def render_gamification_panel(
             options=gamification_mode_options,
             format_func=lambda option: option.label,
             index=mode_index,
-            help=(
-                "Wähle Punkte, Abzeichen oder die motivierende Avatar-Option"
-            ),
+            help=("Wähle Punkte, Abzeichen oder die motivierende Avatar-Option"),
         )
 
         if selected_mode is not gamification_mode:
@@ -2677,9 +2648,7 @@ def render_gamification_panel(
             )
         else:
             panel.caption("Noch keine Badges gesammelt")
-        panel.info(
-            "Sammle Abzeichen für Meilensteine wie erste Aufgabe, 3-Tage-Streak und 10 Abschlüsse"
-        )
+        panel.info("Sammle Abzeichen für Meilensteine wie erste Aufgabe, 3-Tage-Streak und 10 Abschlüsse")
 
     else:
         message_index = int(st.session_state.get(AVATAR_PROMPT_INDEX_KEY, 0))
@@ -2690,17 +2659,13 @@ def render_gamification_panel(
             st.session_state[AVATAR_PROMPT_INDEX_KEY] = message_index + 1
             st.rerun()
 
-        panel.caption(
-            "Klicke erneut für weitere motivierende Botschaften im Therapiezimmer-Stil"
-        )
+        panel.caption("Klicke erneut für weitere motivierende Botschaften im Therapiezimmer-Stil")
 
     if panel.button(
         "AI: Motivation",
         key=f"ai_motivation_btn_{motivation_key_suffix}",
         disabled=not ai_enabled,
-        help=(
-            "Lässt OpenAI eine kurze Motivation erstellen; ohne Key wird ein Fallback genutzt"
-        ),
+        help=("Lässt OpenAI eine kurze Motivation erstellen; ohne Key wird ein Fallback genutzt"),
     ):
         st.session_state[AI_MOTIVATION_KEY] = generate_motivation(stats, client=client if ai_enabled else None)
         st.rerun()
@@ -2723,18 +2688,14 @@ def render_safety_panel(panel: Any) -> bool:
     show_storage_notice = panel.toggle(
         "Speicherhinweis anzeigen",
         value=bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False)),
-        help=(
-            "Blendet den Hinweis zum aktuellen Speicherpfad oberhalb des Titels ein oder aus"
-        ),
+        help=("Blendet den Hinweis zum aktuellen Speicherpfad oberhalb des Titels ein oder aus"),
     )
     settings[SHOW_STORAGE_NOTICE_KEY] = show_storage_notice
 
     if panel.button(
         "Session zurücksetzen",
         key="reset_session_btn",
-        help=(
-            "Löscht ToDos, KPIs, Gamification und Einstellungen aus dieser Sitzung"
-        ),
+        help=("Löscht ToDos, KPIs, Gamification und Einstellungen aus dieser Sitzung"),
     ):
         for cleanup_key in (
             AI_ENABLED_KEY,
@@ -3049,9 +3010,7 @@ def render_journal_section(*, ai_enabled: bool, client: Optional[OpenAI], todos:
                 st.write(" · ".join(history_entry.moods) if history_entry.moods else "—")
                 st.caption(history_entry.triggers_and_reactions or "Keine Auslöser notiert")
                 if history_entry.categories:
-                    st.caption(
-                        "Kategorien" + ", ".join(category.label for category in history_entry.categories)
-                    )
+                    st.caption("Kategorien" + ", ".join(category.label for category in history_entry.categories))
 
 
 def main() -> None:
