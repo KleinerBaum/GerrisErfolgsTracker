@@ -317,6 +317,9 @@ SortOverride = Literal["priority", "due_date", "created_at"]
 JOURNAL_ACTIVE_DATE_KEY = "journal_active_date"
 JOURNAL_FORM_SEED_KEY = "journal_form_seed"
 JOURNAL_FIELD_PREFIX = "journal_field_"
+GOAL_CREATION_VISIBLE_KEY = "goal_creation_visible"
+GOAL_OVERVIEW_SHOW_KPI_KEY = "goal_overview_show_kpi"
+GOAL_OVERVIEW_SHOW_CATEGORY_KEY = "goal_overview_show_category"
 MOOD_PRESETS: tuple[str, ...] = (
     "ruhig / calm",
     "dankbar / grateful",
@@ -1156,18 +1159,18 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
     panel.header("Ziele & Einstellungen / Goals & settings")
 
     settings = _ensure_settings_defaults(client=client, stats=stats)
-    ai_row = panel.columns(2)
-    with ai_row[0]:
-        ai_enabled = panel.toggle(
-            "AI aktiv / AI enabled",
-            key=AI_ENABLED_KEY,
-            value=bool(settings.get(AI_ENABLED_KEY, bool(client))),
-            help=(
-                "Aktiviere KI-gestützte Vorschläge. Ohne Schlüssel werden Fallback-Texte genutzt / "
-                "Enable AI suggestions. Without a key, fallback texts are used."
-            ),
-        )
-    settings[AI_ENABLED_KEY] = ai_enabled
+    ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
+    panel.info(
+        "Steuere den KI-Schalter jetzt in der Sidebar über dem Sprachen-Toggle. / "
+        "Control the AI toggle from the sidebar above the language switch.",
+    )
+
+    if not st.session_state.get(GOAL_CREATION_VISIBLE_KEY, False):
+        panel.caption("Starte die Zielkonfiguration über den Button. / Begin configuring goals via the button.")
+        if panel.button("Ziel erstellen / Create goal", type="primary"):
+            st.session_state[GOAL_CREATION_VISIBLE_KEY] = True
+            st.rerun()
+        return ai_enabled
 
     panel.markdown("### Tagesziel / Daily goal")
     goal_input_value = _resolve_goal_input_value(settings=settings, stats=stats)
@@ -1256,12 +1259,83 @@ def _build_category_progress(snapshot: CategoryKpi) -> go.Figure:
         margin=dict(t=10, r=10, b=10, l=10),
         xaxis=dict(range=[0, x_max], visible=False),
         yaxis=dict(visible=False),
-        template="plotly_dark",
         font=dict(color="#E6F2EC"),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
     )
     return figure
+
+
+def _build_category_gauge(snapshot: CategoryKpi) -> go.Figure:
+    axis_max = max(snapshot.daily_goal, snapshot.done_today, 1)
+    figure = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=snapshot.done_today,
+            number={
+                "suffix": f"/{snapshot.daily_goal}",
+                "font": {"color": "#E6F2EC", "size": 26},
+            },
+            title={"text": snapshot.category.label, "font": {"color": "#E6F2EC", "size": 14}},
+            gauge={
+                "axis": {"range": [0, axis_max], "tickcolor": "#c5d5d1"},
+                "bar": {"color": PRIMARY_COLOR, "thickness": 0.4},
+                "bgcolor": "rgba(255,255,255,0.03)",
+                "borderwidth": 1,
+                "bordercolor": "#1f4a42",
+                "steps": [
+                    {"range": [0, axis_max * 0.5], "color": "rgba(28,156,130,0.08)"},
+                    {"range": [axis_max * 0.5, axis_max * 0.85], "color": "rgba(28,156,130,0.14)"},
+                    {"range": [axis_max * 0.85, axis_max], "color": "rgba(28,156,130,0.22)"},
+                ],
+            },
+        )
+    )
+    figure.update_layout(
+        height=240,
+        margin=dict(t=10, r=10, b=0, l=10),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    return figure
+
+
+def render_goal_overview(
+    todos: list[TodoItem], *, stats: KpiStats, category_goals: Mapping[str, int]
+) -> tuple[bool, bool]:
+    st.subheader("Ziele im Überblick / Goals at a glance")
+    snapshots = aggregate_category_kpis(
+        todos,
+        category_goals=category_goals,
+        fallback_streak=stats.streak,
+    )
+
+    overview_columns = st.columns([1, 1, 1, 1, 1, 0.8])
+    for category_index, category in enumerate(Category):
+        snapshot = snapshots[category]
+        with overview_columns[category_index]:
+            st.plotly_chart(
+                _build_category_gauge(snapshot),
+                width="stretch",
+                config={"displaylogo": False, "responsive": True},
+            )
+
+    with overview_columns[-1]:
+        st.markdown("**Visualisierungen / Visualisations**")
+        show_kpi_dashboard = st.checkbox(
+            "KPI-Dashboard anzeigen / Show KPI dashboard",
+            value=st.session_state.get(GOAL_OVERVIEW_SHOW_KPI_KEY, True),
+            key=GOAL_OVERVIEW_SHOW_KPI_KEY,
+            help="Steuerung für die Kennzahlen-Übersicht / Toggle the KPI overview.",
+        )
+        show_category_trends = st.checkbox(
+            "Kategorie-Trends anzeigen / Show category trends",
+            value=st.session_state.get(GOAL_OVERVIEW_SHOW_CATEGORY_KEY, True),
+            key=GOAL_OVERVIEW_SHOW_CATEGORY_KEY,
+            help="Blendet die Detailvisualisierungen zu den Kategorien ein / Show detailed category charts.",
+        )
+
+    return show_kpi_dashboard, show_category_trends
 
 
 def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, category_goals: Mapping[str, int]) -> None:
@@ -1787,6 +1861,22 @@ def render_language_toggle() -> LanguageCode:
     return chosen_language
 
 
+def render_ai_toggle_sidebar(settings: dict[str, Any], *, client: Optional[OpenAI]) -> bool:
+    ai_enabled = st.sidebar.toggle(
+        "AI aktiv / AI enabled",
+        key=AI_ENABLED_KEY,
+        value=bool(settings.get(AI_ENABLED_KEY, bool(client))),
+        help=(
+            "Aktiviere KI-gestützte Vorschläge. Ohne Schlüssel werden Fallback-Texte genutzt / "
+            "Enable AI suggestions. Without a key, fallback texts are used."
+        ),
+    )
+    settings[AI_ENABLED_KEY] = ai_enabled
+    st.session_state[SS_SETTINGS] = settings
+    persist_state()
+    return ai_enabled
+
+
 def render_navigation() -> str:
     st.sidebar.title("Navigation")
     navigation_options = [GOALS_PAGE_LABEL, TASKS_PAGE_LABEL, JOURNAL_PAGE_LABEL]
@@ -2309,9 +2399,9 @@ def main() -> None:
     client = get_openai_client()
     stats = get_kpi_stats()
     settings = _ensure_settings_defaults(client=client, stats=stats)
+    ai_enabled = render_ai_toggle_sidebar(settings, client=client)
     render_language_toggle()
     selection = render_navigation()
-    ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
 
     show_storage_notice = render_sidebar_sections(
         stats,
@@ -2332,14 +2422,25 @@ def main() -> None:
         )
 
     if selection == translate_text(GOALS_PAGE_LABEL):
-        settings_container = st.container()
-        ai_enabled = render_settings_panel(stats, client, panel=settings_container)
-        render_kpi_dashboard(stats)
-        render_category_dashboard(
+        category_goals = _sanitize_category_goals(st.session_state.get(SS_SETTINGS, {}))
+        show_kpi_dashboard, show_category_trends = render_goal_overview(
             todos,
             stats=stats,
-            category_goals=_sanitize_category_goals(st.session_state.get(SS_SETTINGS, {})),
+            category_goals=category_goals,
         )
+
+        if show_kpi_dashboard:
+            render_kpi_dashboard(stats)
+
+        if show_category_trends:
+            render_category_dashboard(
+                todos,
+                stats=stats,
+                category_goals=category_goals,
+            )
+
+        settings_container = st.container()
+        ai_enabled = render_settings_panel(stats, client, panel=settings_container)
     elif selection == translate_text(TASKS_PAGE_LABEL):
         st.header("Aufgaben / Tasks")
         st.caption("Verwalte und plane deine Aufgaben. Ziele & KI konfigurierst du im Bereich 'Ziele'.")
