@@ -7,11 +7,14 @@ import pytest
 
 from app import (
     AI_GOAL_SUGGESTION_KEY,
+    AI_ENABLED_KEY,
+    GOAL_CREATION_VISIBLE_KEY,
     GOAL_SUGGESTED_VALUE_KEY,
     _resolve_goal_input_value,
     render_settings_panel,
 )
 from gerris_erfolgs_tracker.ai_features import AISuggestion
+from gerris_erfolgs_tracker.constants import SS_SETTINGS
 from gerris_erfolgs_tracker.llm_schemas import GoalSuggestion
 from gerris_erfolgs_tracker.models import KpiStats
 
@@ -147,6 +150,9 @@ def test_goal_suggestion_sets_widget_value(session_state: Dict[str, object], mon
     monkeypatch.setattr("app.st", st_stub)
     monkeypatch.setattr("app.suggest_goals", lambda *_, **__: suggestion)
 
+    session_state[GOAL_CREATION_VISIBLE_KEY] = True
+    session_state[AI_ENABLED_KEY] = True
+    session_state[SS_SETTINGS] = {AI_ENABLED_KEY: True}
     with pytest.raises(RerunSentinel):
         render_settings_panel(stats, client=None, panel=panel_stub)
 

@@ -86,7 +86,9 @@ OPENAI_API_KEY = "sk-..."
 
 - Die Seitenleiste bündelt die Navigation zwischen **Ziele / Goals**, **Aufgaben / Tasks** und **Tagebuch / Journal** und zeigt direkt darunter das Gamification-Panel mit der Überschrift **Gamification-Variante / Gamification variant** inkl. Modus-Wahl (Punkte, Abzeichen oder Avatar-Option); die App startet mit geöffneter Sidebar und lädt standardmäßig die Seite **Aufgaben / Tasks** / The sidebar hosts navigation plus the gamification section with the **Gamification-Variante / Gamification variant** heading and mode selection (points, badges, or the avatar option) and starts expanded, defaulting to the **Aufgaben / Tasks** page on load.
 - Über einen Sprachumschalter **Deutsch / English** in der Sidebar lässt sich die gesamte UI einsprachig darstellen / A sidebar language toggle (**Deutsch / English**) renders the whole UI in the selected language without bilingual labels.
-- Auf der Seite **Ziele / Goals** findest du **AI aktiv / AI enabled**, **Tagesziel / Daily goal** inklusive KI-Vorschlag und die Kategorienziele (0–20 pro Tag) in einem kompakten, mehrspaltigen Panel mit ausgerichteten Buttons.
+- Der Schalter **AI aktiv / AI enabled** sitzt oberhalb des Sprachumschalters in der Sidebar und steuert alle KI-Funktionen zentral.
+- Auf der Seite **Ziele / Goals** startet jetzt ein fünffach gespaltener Tachometer-Überblick zu Stellensuche, Administratives, Familie & Freunde, Drogen sowie Tagesstruktur; rechts daneben wählst du per Checkbox, ob das KPI-Dashboard bzw. die Kategoriendiagramme eingeblendet werden.
+- Die Zielbearbeitung wird erst nach Klick auf **Ziel erstellen / Create goal** sichtbar; dort findest du **Tagesziel / Daily goal** (inkl. KI-Vorschlag) und Kategorienziele (0–20 pro Tag) kompakt angeordnet.
 - AI-Zielvorschläge übernehmen den empfohlenen Wert automatisch in das Zahlenfeld (kein manuelles Nachtragen nötig) / AI goal suggestions now auto-fill the number input for convenience.
 - Der Button **Session zurücksetzen / Reset session** sitzt jetzt im Sidebar-Panel **Sicherheit & Daten / Safety & data** und löscht ToDos, KPIs, Gamification und Einstellungen und stellt die Defaults wieder her / The **Session zurücksetzen / Reset session** button now lives in the sidebar **Sicherheit & Daten / Safety & data** panel and resets todos, KPIs, gamification, and settings.
 - Hinweisboxen informieren zentral im Sidebar-Panel **Sicherheit & Daten / Safety & data** über den aktuell genutzten Speicherort (OneDrive, lokale Datei oder flüchtiger Cloud-Speicher); das Tool ist nicht als Krisen- oder Diagnoseinstrument gedacht. Über den Toggle **Speicherhinweis anzeigen / Show storage notice** steuerst du, ob der Hinweis unter dem Titel erscheint (Standard: aus) / The **Sicherheit & Daten / Safety & data** sidebar panel bundles the storage notice and crisis disclaimer; use the **Speicherhinweis anzeigen / Show storage notice** toggle to show the notice below the title (default: off).
@@ -138,6 +140,12 @@ OPENAI_API_KEY = "sk-..."
 - Anti-Doppelzählung: Abschlüsse werden als Events protokolliert, sodass Punkte und Badges auch nach einem Reload nicht mehrfach vergeben werden.
 - Abschluss-Events werden zusätzlich als Verlaufseinträge mit Token gespeichert, um Wiederholungen durch doppelte Toggles oder Neustarts zu verhindern / Completion events are stored with tokens in the history to avoid repeated rewards after reloads.
 - Drop-down für Gamification-Modus (Punkte, Abzeichen oder ein neuer Avatar-Modus mit motivierenden Sprüchen) auf der Seite **Ziele / Goals**; Fortschritt, Level und Motivation erscheinen im Gamification-Panel der Sidebar.
+
+### Meilensteine & Priority-Board
+
+- Unterteile Aufgaben in Meilensteine mit Aufwand (klein/mittel/groß), Punktevorschlag und optionaler Notiz. Ein Roadmap-Board mit Spalten Backlog → Ready → In Progress → Review → Done ermöglicht die visuelle Planung und Statuswechsel per Button.
+- Punkte- und Komplexitätswerte lassen sich inline anpassen; im Gamification-Modus **Punkte & Level** wird die Punkteausbeute je Schritt sichtbar gehalten.
+- AI-Unterstützung: Button **AI: Meilensteine vorschlagen / Suggest milestones** liefert passende Unterziele, die per Klick übernommen werden können; alternativ kannst du sie manuell erfassen oder entfernen.
 
 ## KI-Features / AI features
 

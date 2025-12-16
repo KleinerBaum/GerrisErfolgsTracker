@@ -84,6 +84,8 @@ __all__ = [
     "JournalAlignmentAction",
     "JournalAlignmentResponse",
     "Motivation",
+    "MilestoneSuggestionItem",
+    "MilestoneSuggestionList",
     "QuadrantName",
     "TodoCategorization",
 ]

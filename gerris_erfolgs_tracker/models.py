@@ -137,6 +137,55 @@ class EmailReminderOffset(str, Enum):
         return "Keine Erinnerung / No reminder"
 
 
+class MilestoneComplexity(str, Enum):
+    """Simple sizing for milestone effort."""
+
+    SMALL = "small"
+    MEDIUM = "medium"
+    LARGE = "large"
+
+    @property
+    def label(self) -> str:
+        if self is MilestoneComplexity.SMALL:
+            return "Klein / Small"
+        if self is MilestoneComplexity.MEDIUM:
+            return "Mittel / Medium"
+        return "Groß / Large"
+
+
+class MilestoneStatus(str, Enum):
+    """Workflow state for milestones in a lightweight roadmap board."""
+
+    BACKLOG = "backlog"
+    READY = "ready"
+    IN_PROGRESS = "in_progress"
+    REVIEW = "review"
+    DONE = "done"
+
+    @property
+    def label(self) -> str:
+        if self is MilestoneStatus.BACKLOG:
+            return "Backlog"
+        if self is MilestoneStatus.READY:
+            return "Bereit / Ready"
+        if self is MilestoneStatus.IN_PROGRESS:
+            return "In Arbeit / In progress"
+        if self is MilestoneStatus.REVIEW:
+            return "Review"
+        return "Erledigt / Done"
+
+
+class Milestone(BaseModel):
+    """Sub-goal within a todo with optional gamification points."""
+
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    title: str
+    points: int = 0
+    complexity: MilestoneComplexity = MilestoneComplexity.MEDIUM
+    status: MilestoneStatus = MilestoneStatus.BACKLOG
+    note: str = ""
+
+
 class TodoItem(BaseModel):
     """Representation of a todo item stored in session state."""
 
@@ -157,6 +206,7 @@ class TodoItem(BaseModel):
     completion_criteria_md: str = ""
     processed_progress_events: list[str] = Field(default_factory=list)
     kanban: TodoKanban = Field(default_factory=TodoKanban)
+    milestones: list[Milestone] = Field(default_factory=list)
     recurrence: RecurrencePattern = RecurrencePattern.ONCE
     email_reminder: EmailReminderOffset = EmailReminderOffset.NONE
 

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timezone
-from typing import Final, Literal, Optional
+from typing import Callable, Final, Literal, Optional
 
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, ensure_quadrant
 from gerris_erfolgs_tracker.models import (
     Category,
     EmailReminderOffset,
     KanbanCard,
+    Milestone,
+    MilestoneComplexity,
+    MilestoneStatus,
     RecurrencePattern,
     TodoItem,
     TodoKanban,
@@ -82,6 +85,7 @@ def add_todo(
     completion_criteria_md: str = "",
     recurrence: RecurrencePattern = RecurrencePattern.ONCE,
     email_reminder: EmailReminderOffset = EmailReminderOffset.NONE,
+    milestones: Optional[list[Milestone]] = None,
 ) -> TodoItem:
     todos: list[TodoItem] = get_todos()
     todo = TodoItem(
@@ -102,6 +106,7 @@ def add_todo(
         completion_criteria_md=completion_criteria_md,
         recurrence=recurrence,
         email_reminder=email_reminder,
+        milestones=milestones or [],
     )
     todos.append(todo)
     index = len(todos) - 1
@@ -156,6 +161,7 @@ def update_todo(
     completion_criteria_md: Optional[str] = None,
     recurrence: Optional[RecurrencePattern] = None,
     email_reminder: Optional[EmailReminderOffset] = None,
+    milestones: Optional[list[Milestone]] = None,
 ) -> Optional[TodoItem]:
     todos: list[TodoItem] = get_todos()
     updated: Optional[TodoItem] = None
@@ -192,6 +198,8 @@ def update_todo(
             updates["recurrence"] = recurrence
         if email_reminder is not None:
             updates["email_reminder"] = email_reminder
+        if milestones is not None:
+            updates["milestones"] = milestones
 
         todos[index] = todo.model_copy(update=updates)
         updated = _apply_auto_completion_if_ready(todos, index, previous_completed=todo.completed)
@@ -215,8 +223,119 @@ def duplicate_todo(todo_id: str) -> Optional[TodoItem]:
             description_md=todo.description_md,
             recurrence=todo.recurrence,
             email_reminder=todo.email_reminder,
+            milestones=todo.milestones,
         )
 
+    return None
+
+
+def _update_milestones_for_todo(
+    todo_id: str,
+    *,
+    updater: Callable[[list[Milestone]], list[Milestone]],
+) -> Optional[list[Milestone]]:
+    todos = get_todos()
+    updated_milestones: Optional[list[Milestone]] = None
+    for index, todo in enumerate(todos):
+        if todo.id != todo_id:
+            continue
+
+        current = list(todo.milestones)
+        new_values = updater(current)
+        todos[index] = todo.model_copy(update={"milestones": new_values})
+        _update_todo_at_index(todos, index, todos[index])
+        updated_milestones = new_values
+        break
+
+    return updated_milestones
+
+
+def add_milestone(
+    todo_id: str,
+    *,
+    title: str,
+    complexity: MilestoneComplexity,
+    points: int,
+    status: MilestoneStatus = MilestoneStatus.BACKLOG,
+    note: str = "",
+) -> Optional[Milestone]:
+    created = Milestone(title=title, complexity=complexity, points=points, status=status, note=note)
+
+    def _append(existing: list[Milestone]) -> list[Milestone]:
+        return [*existing, created]
+
+    updated = _update_milestones_for_todo(todo_id, updater=_append)
+    if updated is None:
+        return None
+    return created
+
+
+def update_milestone(
+    todo_id: str,
+    milestone_id: str,
+    *,
+    title: Optional[str] = None,
+    complexity: Optional[MilestoneComplexity] = None,
+    points: Optional[int] = None,
+    status: Optional[MilestoneStatus] = None,
+    note: Optional[str] = None,
+) -> Optional[Milestone]:
+    def _update(existing: list[Milestone]) -> list[Milestone]:
+        updated_items: list[Milestone] = []
+        for item in existing:
+            if item.id != milestone_id:
+                updated_items.append(item)
+                continue
+
+            updates: dict[str, object] = {}
+            if title is not None:
+                updates["title"] = title
+            if complexity is not None:
+                updates["complexity"] = complexity
+            if points is not None:
+                updates["points"] = points
+            if status is not None:
+                updates["status"] = status
+            if note is not None:
+                updates["note"] = note
+            updated_items.append(item.model_copy(update=updates))
+        return updated_items
+
+    updated_collection = _update_milestones_for_todo(todo_id, updater=_update)
+    if updated_collection is None:
+        return None
+    for item in updated_collection:
+        if item.id == milestone_id:
+            return item
+    return None
+
+
+def move_milestone(todo_id: str, milestone_id: str, direction: Literal["left", "right"]) -> Optional[Milestone]:
+    status_order = list(MilestoneStatus)
+
+    def _move(existing: list[Milestone]) -> list[Milestone]:
+        updated_items: list[Milestone] = []
+        for item in existing:
+            if item.id != milestone_id:
+                updated_items.append(item)
+                continue
+
+            current_index = status_order.index(item.status)
+            new_index = current_index + (-1 if direction == "left" else 1)
+            if new_index < 0 or new_index >= len(status_order):
+                updated_items.append(item)
+                continue
+
+            new_status = status_order[new_index]
+            updated_items.append(item.model_copy(update={"status": new_status}))
+        return updated_items
+
+    updated_collection = _update_milestones_for_todo(todo_id, updater=_move)
+    if updated_collection is None:
+        return None
+    for item in updated_collection:
+        if item.id == milestone_id:
+            return item
     return None
 
 
@@ -327,4 +446,7 @@ __all__ = [
     "add_kanban_card",
     "move_kanban_card",
     "update_todo_progress",
+    "add_milestone",
+    "update_milestone",
+    "move_milestone",
 ]

@@ -40,6 +40,10 @@
 - Documented the new state management modules and defaults.
 - Implemented ToDo CRUD workflow with Streamlit UI (Form, Filter, Edit/Delete/Complete toggle).
 - Added Eisenhower-Matrix board with quadrant enum, sorting helpers, and per-task quadrant changes.
+- Neu: Meilenstein-Board pro Aufgabe mit Spalten Backlog → Ready → In Progress → Review → Done, inklusive Punkte/Komplexitäts-
+  Feldern, inline-Edit sowie AI-gestützten Vorschlägen und Gamification-Punkteanzeige im Modus „Punkte & Level“ / New per-task
+  milestone board with Backlog → Ready → In Progress → Review → Done columns, point/complexity fields, inline edits, AI-assisted
+  suggestions, and gamification point display when using the “Points & Levels” mode.
 - Introduced KPI-Dashboard with done_total/done_today, streak, daily goal tracking, and a 7-day completion chart.
 - Rebuilt the weekly completion chart as an interactive Plotly bar chart with hover details, zooming, and the dark-green theme color.
 - Introduced Gamification loop with quadrant-based points, badge awards (First Step, Consistency 3, Double Digits), and level
