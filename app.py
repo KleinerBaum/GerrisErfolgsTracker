@@ -702,7 +702,7 @@ def _render_journal_alignment_review() -> None:
                 rationale=rationale,
             )
 
-        st.success("Updates gespeichert / Updates applied.")
+        st.success("Updates gespeichert.")
         st.session_state.pop(JOURNAL_PENDING_UPDATES_KEY, None)
         st.rerun()
 
@@ -726,22 +726,22 @@ def _journal_markdown_export(entries: Mapping[date, JournalEntry]) -> str:
         lines.append(f"## {entry_date.isoformat()}")
         lines.append("")
         moods = ", ".join(entry.moods) if entry.moods else "—"
-        lines.append(f"**Stimmung / Mood:** {moods}")
+        lines.append(f"**Stimmung:** {moods}")
         if entry.mood_notes.strip():
             lines.append(entry.mood_notes.strip())
         lines.append("")
-        lines.append("**Auslöser & Reaktionen / Triggers & reactions**")
+        lines.append("**Auslöser & Reaktionen**")
         lines.append(entry.triggers_and_reactions or "—")
         lines.append("")
-        lines.append("**Gedanken-Challenge / Thought challenge**")
-        lines.append(f"- Automatischer Gedanke / Automatic thought: {entry.negative_thought or '—'}")
-        lines.append(f"- Reframing / Reframe: {entry.rational_response or '—'}")
+        lines.append("**Gedanken-Challenge**")
+        lines.append(f"- Automatischer Gedanke: {entry.negative_thought or '—'}")
+        lines.append(f"- Reframing: {entry.rational_response or '—'}")
         lines.append("")
-        lines.append("**Selbstfürsorge / Self-care**")
-        lines.append(f"- Heute / Today: {entry.self_care_today or '—'}")
-        lines.append(f"- Morgen / Tomorrow: {entry.self_care_tomorrow or '—'}")
+        lines.append("**Selbstfürsorge**")
+        lines.append(f"- Heute: {entry.self_care_today or '—'}")
+        lines.append(f"- Morgen: {entry.self_care_tomorrow or '—'}")
         lines.append("")
-        lines.append("**Lichtblicke / Gratitude**")
+        lines.append("**Lichtblicke**")
         gratitudes = entry.gratitudes or [entry.gratitude_1, entry.gratitude_2, entry.gratitude_3]
         if not gratitudes:
             gratitudes = [""]
@@ -751,7 +751,7 @@ def _journal_markdown_export(entries: Mapping[date, JournalEntry]) -> str:
         if entry.categories:
             labels = ", ".join(category.label for category in entry.categories)
             lines.append("")
-            lines.append(f"**Kategorien / Categories:** {labels}")
+            lines.append(f"**Kategorien:** {labels}")
         lines.append("")
 
     return "\n".join(lines).strip()
@@ -1311,7 +1311,7 @@ def render_task_row(todo: TodoItem, *, parent: Any | None = None) -> None:
                         recurrence=new_recurrence,
                         email_reminder=new_reminder,
                     )
-                    st.success("Aktualisiert / Updated.")
+                    st.success("Aktualisiert.")
                     st.rerun()
 
             action_cols = st.columns(2)
@@ -1319,21 +1319,18 @@ def render_task_row(todo: TodoItem, *, parent: Any | None = None) -> None:
                 _render_delete_confirmation(todo, key_prefix=f"list_delete_{todo.id}")
 
             if action_cols[1].button(
-                "Duplizieren / Duplicate",
+                "Duplizieren",
                 key=f"list_duplicate_{todo.id}",
-                help="Aufgabe kopieren / Duplicate task",
+                help="Aufgabe kopieren",
             ):
                 duplicate_todo(todo.id)
-                st.success("Aufgabe dupliziert / Task duplicated.")
+                st.success("Aufgabe dupliziert.")
                 st.rerun()
 
 
 def render_task_list_view(todos: list[TodoItem]) -> None:
-    st.subheader("Aufgabenliste / Task list")
-    st.caption(
-        "Gruppiert nach Kategorie mit Priorität zuerst, danach Fälligkeit und Erstellungsdatum / "
-        "Grouped by category with priority first, then due date and created timestamp."
-    )
+    st.subheader("Aufgabenliste")
+    st.caption("Gruppiert nach Kategorie mit Priorität, Fälligkeit und Erstellungsdatum.")
 
     st.markdown(
         """
@@ -1813,12 +1810,10 @@ def _build_category_gauge(snapshot: CategoryKpi) -> go.Figure:
 
 
 def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[TodoItem]) -> list[str]:
-    with st.expander("Einstellungen / Settings", expanded=False):
-        st.caption(
-            "Wähle die Aufgaben aus, die im Dashboard gezählt werden. / Select which tasks feed the dashboard.",
-        )
+    with st.expander("Einstellungen", expanded=False):
+        st.caption("Wähle die Aufgaben aus, die im Dashboard gezählt werden.")
         if not todos:
-            st.info("Keine Aufgaben vorhanden / No tasks available.")
+            st.info("Keine Aufgaben vorhanden.")
             return []
 
         option_lookup = {
@@ -1830,14 +1825,11 @@ def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[
         default_selection = previous_selection or list(option_lookup)
 
         selection = st.multiselect(
-            "Aufgaben für das Dashboard / Tasks mirrored on dashboard",
+            "Aufgaben für das Dashboard",
             options=list(option_lookup),
             default=default_selection,
             format_func=lambda value: option_lookup.get(value, value),
-            help=(
-                "Setze ein Häkchen bei den Aufgaben, die in KPI-Zielen und Kategorien berücksichtigt werden sollen / "
-                "Pick the tasks that should count toward KPI goals and categories."
-            ),
+            help=("Setze ein Häkchen bei den Aufgaben, die in KPI-Zielen und Kategorien berücksichtigt werden sollen."),
         )
         sanitized_selection = _sanitize_goal_overview_tasks(selection, todos)
         if sanitized_selection != previous_selection:
@@ -1851,22 +1843,22 @@ def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[
 def render_goal_overview(
     todos: list[TodoItem], *, stats: KpiStats, category_goals: Mapping[str, int], settings: dict[str, Any]
 ) -> tuple[bool, bool]:
-    st.subheader("Ziele im Überblick / Goals at a glance")
+    st.subheader("Ziele im Überblick")
     overview_columns = st.columns([1, 1, 1, 1, 1, 0.8])
 
     with overview_columns[-1]:
-        st.markdown("**Visualisierungen / Visualisations**")
+        st.markdown("**Visualisierungen**")
         show_kpi_dashboard = st.checkbox(
-            "KPI-Dashboard anzeigen / Show KPI dashboard",
+            "KPI-Dashboard anzeigen",
             value=st.session_state.get(GOAL_OVERVIEW_SHOW_KPI_KEY, True),
             key=GOAL_OVERVIEW_SHOW_KPI_KEY,
-            help="Steuerung für die Kennzahlen-Übersicht / Toggle the KPI overview.",
+            help="Steuerung für die Kennzahlen-Übersicht.",
         )
         show_category_trends = st.checkbox(
-            "Kategorie-Trends anzeigen / Show category trends",
+            "Kategorie-Trends anzeigen",
             value=st.session_state.get(GOAL_OVERVIEW_SHOW_CATEGORY_KEY, True),
             key=GOAL_OVERVIEW_SHOW_CATEGORY_KEY,
-            help=("Blendet die Detailvisualisierungen zu den Kategorien ein / Show detailed category charts."),
+            help=("Blendet die Detailvisualisierungen zu den Kategorien ein."),
         )
         selected_task_ids = _render_goal_overview_settings(settings=settings, todos=todos)
 
@@ -2463,18 +2455,19 @@ def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
     )
 
 
-GOALS_PAGE_LABEL = "Ziele / Goals"
-TASKS_PAGE_LABEL = "Aufgaben / Tasks"
-JOURNAL_PAGE_LABEL = "Tagebuch / Journal"
+GOALS_PAGE_LABEL = "Ziele"
+TASKS_PAGE_LABEL = "Aufgaben"
+JOURNAL_PAGE_LABEL = "Tagebuch"
 
 
 def render_language_toggle() -> LanguageCode:
     current_language = get_language()
     language_labels = list(LANGUAGE_OPTIONS.keys())
     selected_label = st.sidebar.radio(
-        translate_text("Sprache / Language"),
+        translate_text(("Sprache", "Sprache")),
         options=language_labels,
         index=list(LANGUAGE_OPTIONS.values()).index(current_language),
+        disabled=True,
     )
     chosen_language = LANGUAGE_OPTIONS[selected_label]
 
@@ -2482,6 +2475,14 @@ def render_language_toggle() -> LanguageCode:
         set_language(chosen_language)
         st.rerun()
 
+    st.sidebar.caption(
+        translate_text(
+            (
+                "Die Nutzeroberfläche steht vollständig auf Deutsch zur Verfügung.",
+                "Die Nutzeroberfläche steht vollständig auf Deutsch zur Verfügung.",
+            ),
+        ),
+    )
     st.sidebar.divider()
     return chosen_language
 
@@ -2889,13 +2890,12 @@ def render_journal_section(*, ai_enabled: bool, client: Optional[OpenAI], todos:
             format="YYYY-MM-DD",
             max_value=date.today(),
             key=JOURNAL_ACTIVE_DATE_KEY,
-            help="Ein Eintrag pro Kalendertag; bestehende Entwürfe werden automatisch geladen. / "
-            "One entry per calendar day; existing drafts load automatically.",
+            help="Ein Eintrag pro Kalendertag; bestehende Entwürfe werden automatisch geladen.",
         )
 
     existing_entry = entries.get(selected_date)
     if existing_entry:
-        st.success("Vorhandener Entwurf geladen / Existing draft loaded.")
+        st.success("Vorhandener Entwurf geladen.")
         entry = existing_entry
     else:
         entry = JournalEntry(date=selected_date, moods=list(MOOD_PRESETS[:2]))
@@ -2904,80 +2904,80 @@ def render_journal_section(*, ai_enabled: bool, client: Optional[OpenAI], todos:
     _prefill_journal_form(entry)
 
     with st.form("journal_form"):
-        st.markdown("### Stimmung / Emotionen")
+        st.markdown("### Stimmung und Emotionen")
         mood_cols = st.columns([0.6, 0.4])
         with mood_cols[0]:
             moods = st.multiselect(
-                "Wie fühlst du dich? / How do you feel?",
+                "Wie fühlst du dich?",
                 options=list(MOOD_PRESETS),
                 default=st.session_state.get(_journal_field_key("moods"), list(MOOD_PRESETS[:2])),
                 key=_journal_field_key("moods"),
-                help="Tags mit Autosuggest; eigene Einträge möglich. / Tag-based, searchable list (custom entries allowed).",
+                help="Tags mit Autosuggest; eigene Einträge möglich.",
             )
         with mood_cols[1]:
             mood_notes = st.text_area(
-                "Kurzbeschreibung / Notes",
+                "Kurzbeschreibung",
                 value=st.session_state.get(_journal_field_key("mood_notes"), ""),
                 key=_journal_field_key("mood_notes"),
-                placeholder="z. B. ruhig nach dem Spaziergang / e.g., calm after a walk",
+                placeholder="z. B. ruhig nach dem Spaziergang",
             )
 
         journal_cols = st.columns(4)
 
         with journal_cols[0]:
-            st.markdown("#### Auslöser & Reaktionen / Triggers & reactions")
+            st.markdown("#### Auslöser & Reaktionen")
             triggers_and_reactions = st.text_area(
-                "Was ist passiert und wie hast du reagiert? / What happened and how did you react?",
+                "Was ist passiert und wie hast du reagiert?",
                 value=st.session_state.get(_journal_field_key("triggers_and_reactions"), ""),
                 key=_journal_field_key("triggers_and_reactions"),
-                placeholder="z. B. stressiges Telefonat, dann 5 Minuten geatmet / stressful call, then 5 minutes of breathing",
+                placeholder="z. B. stressiges Telefonat, dann 5 Minuten geatmet",
             )
 
         with journal_cols[1]:
-            st.markdown("#### Gedanken-Challenge / Thought challenge")
+            st.markdown("#### Gedanken-Challenge")
             negative_thought = st.text_area(
-                "Automatischer Gedanke / Automatic thought",
+                "Automatischer Gedanke",
                 value=st.session_state.get(_journal_field_key("negative_thought"), ""),
                 key=_journal_field_key("negative_thought"),
-                placeholder="z. B. 'Ich schaffe das nie' / e.g., 'I will never manage this'",
+                placeholder="z. B. 'Ich schaffe das nie'",
             )
             rational_response = st.text_area(
-                "Reframe / Rational response",
+                "Reframing",
                 value=st.session_state.get(_journal_field_key("rational_response"), ""),
                 key=_journal_field_key("rational_response"),
-                placeholder="z. B. 'Ein Schritt nach dem anderen' / e.g., 'One step at a time'",
+                placeholder="z. B. 'Ein Schritt nach dem anderen'",
             )
 
         with journal_cols[2]:
-            st.markdown("#### Selbstfürsorge / Self-care")
+            st.markdown("#### Selbstfürsorge")
             self_care_today = st.text_area(
-                "Was habe ich heute für mich getan? / What did I do for myself today?",
+                "Was habe ich heute für mich getan?",
                 value=st.session_state.get(_journal_field_key("self_care_today"), ""),
                 key=_journal_field_key("self_care_today"),
-                placeholder="z. B. kurzer Spaziergang, Tee in Ruhe / e.g., short walk, mindful tea",
+                placeholder="z. B. kurzer Spaziergang, Tee in Ruhe",
             )
             self_care_tomorrow = st.text_area(
-                "Was mache ich morgen besser? / What will I do better tomorrow?",
+                "Was mache ich morgen besser?",
                 value=st.session_state.get(_journal_field_key("self_care_tomorrow"), ""),
                 key=_journal_field_key("self_care_tomorrow"),
-                placeholder="z. B. Pausen blocken, früher ins Bett / e.g., block breaks, go to bed earlier",
+                placeholder="z. B. Pausen blocken, früher ins Bett",
             )
 
         with journal_cols[3]:
-            st.markdown("#### Lichtblicke & Dankbarkeit / Highlights & gratitude")
+            st.markdown("#### Lichtblicke & Dankbarkeit")
             gratitude_inputs = _render_gratitude_inputs(gratitude_suggestions)
 
-        st.markdown("### Kategorien & Ziele / Categories & goals")
+        st.markdown("### Kategorien & Ziele")
         selected_categories = st.multiselect(
-            "Welche Bereiche waren beteiligt? / Which categories apply?",
+            "Welche Bereiche waren beteiligt?",
             options=list(Category),
             format_func=lambda option: option.label,
             default=st.session_state.get(_journal_field_key("categories"), []),
             key=_journal_field_key("categories"),
-            help="Mehrfachauswahl mit Suche; verbindet Eintrag und Ziele. / Multi-select with search to link goals.",
+            help="Mehrfachauswahl mit Suche; verbindet Eintrag und Ziele.",
         )
 
-        save_clicked = st.form_submit_button("Eintrag speichern / Save entry", type="primary")
+        save_clicked = st.form_submit_button("Eintrag speichern", type="primary")
         if save_clicked:
             journal_entry = JournalEntry(
                 date=selected_date,
@@ -2992,14 +2992,14 @@ def render_journal_section(*, ai_enabled: bool, client: Optional[OpenAI], todos:
                 categories=[Category(item) for item in selected_categories],
             )
             upsert_journal_entry(journal_entry)
-            with st.spinner("Prüfe Eintrag gegen Ziele / Matching entry with goals..."):
+            with st.spinner("Prüfe Eintrag gegen Ziele..."):
                 alignment = suggest_journal_alignment(
                     entry=journal_entry,
                     todos=todos,
                     client=client if ai_enabled else None,
                 )
             _store_journal_alignment(journal_entry.date, alignment)
-            st.success("Eintrag gespeichert / Entry saved.")
+            st.success("Eintrag gespeichert.")
             st.session_state[JOURNAL_FORM_SEED_KEY] = journal_entry.date
             st.rerun()
 

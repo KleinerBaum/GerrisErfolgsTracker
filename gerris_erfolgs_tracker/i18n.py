@@ -8,10 +8,10 @@ from typing import Iterable, Literal, Mapping
 import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
 
-LanguageCode = Literal["de", "en"]
+LanguageCode = Literal["de"]
 DEFAULT_LANGUAGE: LanguageCode = "de"
 LANGUAGE_KEY = "language"
-LANGUAGE_OPTIONS: dict[str, LanguageCode] = {"Deutsch": "de", "English": "en"}
+LANGUAGE_OPTIONS: dict[str, LanguageCode] = {"Deutsch": "de"}
 
 
 def get_language() -> LanguageCode:
@@ -21,7 +21,7 @@ def get_language() -> LanguageCode:
     """
 
     language = st.session_state.get(LANGUAGE_KEY)
-    if language in ("de", "en"):
+    if language == "de":
         return language
 
     st.session_state[LANGUAGE_KEY] = DEFAULT_LANGUAGE
@@ -41,17 +41,14 @@ def translate_text(text: str | tuple[str, str]) -> str:
     English fragments. A tuple of two strings may also be provided explicitly.
     """
 
-    language = get_language()
-
     if isinstance(text, tuple) and len(text) == 2:
-        german, english = text
-        return german if language == "de" else english
+        german, _english = text
+        return german
 
     if isinstance(text, str) and " / " in text:
         fragments = text.split(" / ")
         german_text = " ".join(fragments[::2]).strip()
-        english_text = " ".join(fragments[1::2]).strip()
-        return german_text if language == "de" else english_text
+        return german_text
 
     return text if isinstance(text, str) else text
 

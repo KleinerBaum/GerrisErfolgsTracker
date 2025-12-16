@@ -84,14 +84,14 @@ OPENAI_API_KEY = "sk-..."
 
 > **Formulare / Forms:** Platzieren Sie `st.form_submit_button` immer innerhalb eines `st.form`-Blocks und bei Bedarf innerhalb von Spalten mittels `with col:`. So vermeiden Sie `StreamlitAPIException`-Meldungen zur Formularplatzierung.
 
-## Einstellungen & Sicherheit / Settings & Safety
+## Einstellungen & Sicherheit
 
 - Die Seitenleiste bündelt die Navigation zwischen **Ziele / Goals**, **Aufgaben / Tasks** und **Tagebuch / Journal** und zeigt direkt darunter das Gamification-Panel mit der Überschrift **Gamification-Variante / Gamification variant** inkl. Modus-Wahl (Punkte, Abzeichen oder Avatar-Option); die App startet mit geöffneter Sidebar und lädt standardmäßig die Seite **Aufgaben / Tasks** / The sidebar hosts navigation plus the gamification section with the **Gamification-Variante / Gamification variant** heading and mode selection (points, badges, or the avatar option) and starts expanded, defaulting to the **Aufgaben / Tasks** page on load.
-- Über einen Sprachumschalter **Deutsch / English** in der Sidebar lässt sich die gesamte UI einsprachig darstellen / A sidebar language toggle (**Deutsch / English**) renders the whole UI in the selected language without bilingual labels.
+- Die Oberfläche ist vollständig auf Deutsch festgelegt; der frühere Sprachumschalter in der Sidebar entfällt, damit keine englischen Begriffe erscheinen.
 - Der Schalter **AI aktiv / AI enabled** sitzt oberhalb des Sprachumschalters in der Sidebar und steuert alle KI-Funktionen zentral.
 - Der Bereich **Ziel-Canvas / Goal canvas** fragt jetzt Titel, Fokus-Kategorien, Zeitfenster (1 Woche/30/90 Tage oder Custom), Start- und Zieltermin, Check-in-Rhythmus, messbaren Zielwert + Einheit, Erfolgskriterien, Motivation, Risiken/Absicherung, nächsten Schritt sowie Feier/Belohnung zweisprachig ab – alles direkt im Ziel-Setup speicherbar.
 - Auf der Seite **Ziele / Goals** startet jetzt ein fünffach gespaltener Tachometer-Überblick zu Stellensuche, Administratives, Familie & Freunde, Drogen sowie Tagesstruktur; rechts daneben wählst du per Checkbox, ob das KPI-Dashboard bzw. die Kategoriendiagramme eingeblendet werden.
-- Im Block **Ziele im Überblick / Goals at a glance** steuerst du im Expander **Einstellungen / Settings**, welche Aufgaben in den KPIs und Kategorien berücksichtigt werden (z. B. nur Fokus-Tasks) / Use the **Einstellungen / Settings** expander in **Goals at a glance** to pick which tasks contribute to KPIs and category charts (e.g., focus tasks only).
+- Im Block **Ziele im Überblick** steuerst du im Expander **Einstellungen**, welche Aufgaben in den KPIs und Kategorien berücksichtigt werden (z. B. nur Fokus-Tasks).
 - Die Zielbearbeitung wird erst nach Klick auf **Ziel erstellen / Create goal** sichtbar; dort findest du **Tagesziel / Daily goal** (inkl. KI-Vorschlag) und Kategorienziele (0–20 pro Tag) kompakt angeordnet.
 - AI-Zielvorschläge übernehmen den empfohlenen Wert automatisch in das Zahlenfeld (kein manuelles Nachtragen nötig) / AI goal suggestions now auto-fill the number input for convenience.
 - Der Button **Session zurücksetzen / Reset session** sitzt jetzt im Sidebar-Panel **Sicherheit & Daten / Safety & data** und löscht ToDos, KPIs, Gamification und Einstellungen und stellt die Defaults wieder her / The **Session zurücksetzen / Reset session** button now lives in the sidebar **Sicherheit & Daten / Safety & data** panel and resets todos, KPIs, gamification, and settings.
