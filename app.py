@@ -1402,9 +1402,11 @@ def render_language_toggle() -> LanguageCode:
 
 def render_navigation() -> str:
     st.sidebar.title("Navigation")
+    navigation_options = [GOALS_PAGE_LABEL, TASKS_PAGE_LABEL, JOURNAL_PAGE_LABEL]
     selection = st.sidebar.radio(
         "Bereich wählen / Choose a page",
-        [GOALS_PAGE_LABEL, TASKS_PAGE_LABEL, JOURNAL_PAGE_LABEL],
+        navigation_options,
+        index=navigation_options.index(TASKS_PAGE_LABEL),
         label_visibility="collapsed",
     )
     st.sidebar.divider()
