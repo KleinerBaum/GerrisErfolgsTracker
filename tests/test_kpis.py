@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from gerris_erfolgs_tracker.constants import SS_STATS
+from gerris_erfolgs_tracker.kpi import count_new_tasks_last_7_days
 from gerris_erfolgs_tracker.kpis import update_goal_daily, update_kpis_on_completion
-from gerris_erfolgs_tracker.models import KpiStats
+from gerris_erfolgs_tracker.models import Category, EisenhowerQuadrant, KpiStats, TodoItem
 
 
 def test_update_kpis_tracks_streak_and_goal(session_state: dict[str, object]) -> None:
@@ -42,3 +43,29 @@ def test_update_goal_daily_enforces_minimum(session_state: dict[str, object]) ->
 
     stats = update_goal_daily(0)
     assert stats.goal_daily == 1
+
+
+def test_count_new_tasks_last_7_days_filters_by_window() -> None:
+    today = datetime(2024, 2, 8, tzinfo=timezone.utc).date()
+    in_window = TodoItem(
+        title="Recent",
+        quadrant=EisenhowerQuadrant.URGENT_IMPORTANT,
+        category=Category.JOB_SEARCH,
+        created_at=datetime(2024, 2, 6, tzinfo=timezone.utc),
+    )
+    boundary = TodoItem(
+        title="Boundary",
+        quadrant=EisenhowerQuadrant.NOT_URGENT_IMPORTANT,
+        category=Category.DAILY_STRUCTURE,
+        created_at=datetime(2024, 2, 2, tzinfo=timezone.utc),
+    )
+    out_of_window = TodoItem(
+        title="Old",
+        quadrant=EisenhowerQuadrant.NOT_URGENT_NOT_IMPORTANT,
+        category=Category.ADMIN,
+        created_at=datetime(2024, 1, 30, tzinfo=timezone.utc),
+    )
+
+    count = count_new_tasks_last_7_days([in_window, boundary, out_of_window], today=today)
+
+    assert count == 2

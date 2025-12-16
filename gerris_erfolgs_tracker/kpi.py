@@ -123,9 +123,19 @@ def last_7_days_completions_by_category(
     ]
 
 
+def count_new_tasks_last_7_days(todos: Sequence[TodoItem], *, today: date | None = None) -> int:
+    """Count todos created within the last 7 days (including today)."""
+
+    current_day = today or datetime.now(timezone.utc).date()
+    window_start = current_day - timedelta(days=6)
+
+    return sum(1 for todo in todos if window_start <= todo.created_at.astimezone(timezone.utc).date() <= current_day)
+
+
 __all__ = [
     "CategoryKpi",
     "DailyCategoryCount",
     "aggregate_category_kpis",
     "last_7_days_completions_by_category",
+    "count_new_tasks_last_7_days",
 ]
