@@ -5,7 +5,7 @@ import json
 from contextlib import nullcontext
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal, Mapping, Optional, Sequence, TypedDict, cast
 
 import plotly.graph_objects as go
@@ -113,6 +113,7 @@ from gerris_erfolgs_tracker.models import (
     Category,
     EmailReminderOffset,
     GamificationMode,
+    GamificationState,
     JournalEntry,
     KpiStats,
     Milestone,
@@ -791,11 +792,55 @@ def _render_storage_notice(backend: FileStorageBackend, *, is_cloud: bool) -> No
     st.info(f"{storage_note} {onedrive_hint}")
 
 
+def _gamification_snapshot() -> GamificationState:
+    return get_gamification_state().model_copy(deep=True)
+
+
+def _celebrate_gamification_changes(before: GamificationState, after: GamificationState) -> None:
+    new_badges = [badge for badge in after.badges if badge not in before.badges]
+
+    if after.level > before.level:
+        st.toast(
+            translate_text(
+                (
+                    f"🎉 Levelaufstieg! Du bist jetzt Level {after.level}.",
+                    f"🎉 Level up! You reached level {after.level}.",
+                )
+            )
+        )
+
+    for badge in new_badges:
+        st.toast(
+            translate_text(
+                (
+                    f"🏅 Neues Abzeichen: {badge}",
+                    f"🏅 New badge unlocked: {badge}",
+                )
+            )
+        )
+
+
+def _handle_completion_success(todo: TodoItem, *, previous_state: GamificationState | None = None) -> None:
+    completion_time = todo.completed_at or datetime.now(timezone.utc)
+    stats = update_kpis_on_completion(completion_time)
+    before_state = previous_state or _gamification_snapshot()
+    after_state = update_gamification_on_completion(todo, stats)
+    _celebrate_gamification_changes(before_state, after_state)
+    st.success(
+        translate_text(
+            (
+                f"Aktivität '{todo.title}' wurde als erledigt gespeichert.",
+                f"Activity '{todo.title}' marked as done.",
+            )
+        )
+    )
+
+
 def _toggle_todo_completion(todo: TodoItem) -> None:
+    previous_state = _gamification_snapshot()
     updated = toggle_complete(todo.id)
     if updated and updated.completed:
-        stats = update_kpis_on_completion(updated.completed_at)
-        update_gamification_on_completion(updated, stats)
+        _handle_completion_success(updated, previous_state=previous_state)
     st.rerun()
 
 
@@ -1747,6 +1792,73 @@ def _build_new_tasks_gauge(new_task_count: int) -> go.Figure:
         plot_bgcolor="rgba(0,0,0,0)",
     )
     return figure
+
+
+def render_goal_completion_logger(todos: list[TodoItem]) -> None:
+    st.subheader("Aktivität abhaken / Log activity")
+
+    open_todos = [todo for todo in todos if not todo.completed]
+    if not open_todos:
+        st.info(
+            translate_text(
+                (
+                    "Alle Aufgaben sind bereits erledigt – großartig!",
+                    "All tasks are done already — great job!",
+                )
+            )
+        )
+        return
+
+    option_lookup = {todo.id: f"{todo.title} · {todo.category.label} · {todo.quadrant.label}" for todo in open_todos}
+
+    selected_todo_id = st.selectbox(
+        "Welche Aufgabe ist erledigt? / Which task is done?",
+        options=list(option_lookup),
+        format_func=lambda value: option_lookup.get(value, value),
+        help=translate_text(
+            (
+                "Wähle eine offene Aufgabe aus, die du abschließen möchtest.",
+                "Pick one of your open tasks to complete it.",
+            )
+        ),
+    )
+
+    if st.button(
+        "Gelöst / Completed",
+        type="primary",
+        help=translate_text(
+            (
+                "Dokumentiert den Abschluss, aktualisiert KPI-Dashboard, Tachometer und Gamification.",
+                "Logs the completion and refreshes the KPI dashboard, gauges, and gamification.",
+            )
+        ),
+    ):
+        target = next((todo for todo in open_todos if todo.id == selected_todo_id), None)
+        if not target:
+            st.warning(
+                translate_text(
+                    (
+                        "Bitte wähle eine Aufgabe aus der Liste aus.",
+                        "Please select a task from the list.",
+                    )
+                )
+            )
+            return
+
+        previous_state = _gamification_snapshot()
+        updated = toggle_complete(target.id)
+        if updated and updated.completed:
+            _handle_completion_success(updated, previous_state=previous_state)
+            st.rerun()
+        else:
+            st.error(
+                translate_text(
+                    (
+                        "Konnte den Abschluss nicht speichern.",
+                        "Could not persist the completion.",
+                    )
+                )
+            )
 
 
 def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[TodoItem]) -> list[str]:
@@ -2982,6 +3094,7 @@ def main() -> None:
         if not isinstance(settings, dict):
             settings = {}
         category_goals = _sanitize_category_goals(settings)
+        render_goal_completion_logger(todos)
         show_kpi_dashboard, show_category_trends = render_goal_overview(
             todos,
             stats=stats,
