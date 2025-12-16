@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Neu: Popover-Button **Termin erstellen / Create appointment** im Aufgabenbereich mit Start-/Endzeit, Ganztags-Option, Ort, Notizen, Kategorie, Priorität und E-Mail-Erinnerung; legt Termine als ToDo an und bindet sie an Board-, Listen- und Kalenderansichten an.
 - Neue Tachometer-Zielübersicht mit fünf Spalten (Stellensuche, Administratives, Familie & Freunde, Drogen, Tagesstruktur) und rechts ausgerichteten Checkboxen, um KPI-Dashboard und Kategoriendiagramme wahlweise einzublenden / Added a five-column goal tachometer overview for job search, admin, family & friends, substance use, and daily structure plus adjacent checkboxes to toggle the KPI dashboard and category charts.
 - Zielerstellung erst nach Klick auf **Ziel erstellen / Create goal** sichtbar; Tages- und Kategorienziele bleiben kompakt gruppiert, während die KI-Hinweise im Panel verbleiben / Goal configuration now appears only after pressing **Ziel erstellen / Create goal**; daily and category targets stay compact with AI hints inside the panel.
 - Der Schalter **AI aktiv / AI enabled** sitzt nun oberhalb des Sprachumschalters in der Sidebar und speichert den Status im Einstellungs-State / The **AI aktiv / AI enabled** toggle now lives above the language selector in the sidebar and persists to settings state.

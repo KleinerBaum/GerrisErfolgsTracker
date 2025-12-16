@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import json
 from contextlib import nullcontext
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Literal, Mapping, Optional
 
 import plotly.graph_objects as go
@@ -48,6 +48,18 @@ from gerris_erfolgs_tracker.constants import (
     NEW_TODO_TITLE_KEY,
     NEW_TODO_RECURRENCE_KEY,
     NEW_TODO_REMINDER_KEY,
+    NEW_APPOINTMENT_ALL_DAY_KEY,
+    NEW_APPOINTMENT_CATEGORY_KEY,
+    NEW_APPOINTMENT_END_DATE_KEY,
+    NEW_APPOINTMENT_END_TIME_KEY,
+    NEW_APPOINTMENT_LOCATION_KEY,
+    NEW_APPOINTMENT_NOTES_KEY,
+    NEW_APPOINTMENT_QUADRANT_KEY,
+    NEW_APPOINTMENT_PRIORITY_KEY,
+    NEW_APPOINTMENT_REMINDER_KEY,
+    NEW_APPOINTMENT_START_DATE_KEY,
+    NEW_APPOINTMENT_START_TIME_KEY,
+    NEW_APPOINTMENT_TITLE_KEY,
     NEW_MILESTONE_COMPLEXITY_KEY,
     NEW_MILESTONE_NOTE_KEY,
     NEW_MILESTONE_POINTS_KEY,
@@ -1385,6 +1397,258 @@ def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, categor
     )
 
 
+def _format_appointment_description(
+    *,
+    start_at: datetime,
+    end_at: datetime,
+    all_day: bool,
+    location: str,
+    notes: str,
+) -> str:
+    lines = [
+        f"🗓️ Start / Start: {start_at.isoformat()}",
+        f"🏁 Ende / End: {end_at.isoformat()}",
+        f"Ganztägig / All-day: {'Ja / Yes' if all_day else 'Nein / No'}",
+    ]
+
+    if location.strip():
+        lines.append(f"📍 Ort / Location: {location.strip()}")
+
+    if notes.strip():
+        lines.append(notes.strip())
+
+    return "\n\n".join(lines)
+
+
+def _render_appointment_creator(*, stats: Optional[KpiStats]) -> None:
+    st.markdown("### Termin erstellen / Create appointment")
+    popover_factory = getattr(st, "popover", None)
+    if not callable(popover_factory):
+        return
+
+    with popover_factory("Termin erstellen / Create appointment", use_container_width=True):
+        st.caption(
+            "Plane Termine inklusive Start- und Endzeit und verknüpfe sie direkt mit deinen Kategorien und Prioritäten / "
+            "Plan appointments with start/end time and link them to your categories and priorities."
+        )
+
+        default_start = datetime.now(timezone.utc)
+        default_end = default_start + timedelta(hours=1)
+
+        st.session_state.setdefault(NEW_APPOINTMENT_TITLE_KEY, "")
+        st.session_state.setdefault(NEW_APPOINTMENT_START_DATE_KEY, default_start.date())
+        st.session_state.setdefault(NEW_APPOINTMENT_END_DATE_KEY, default_end.date())
+        st.session_state.setdefault(
+            NEW_APPOINTMENT_START_TIME_KEY, default_start.time().replace(second=0, microsecond=0)
+        )
+        st.session_state.setdefault(NEW_APPOINTMENT_END_TIME_KEY, default_end.time().replace(second=0, microsecond=0))
+        st.session_state.setdefault(NEW_APPOINTMENT_ALL_DAY_KEY, False)
+        st.session_state.setdefault(NEW_APPOINTMENT_LOCATION_KEY, "")
+        st.session_state.setdefault(NEW_APPOINTMENT_NOTES_KEY, "")
+        st.session_state.setdefault(NEW_APPOINTMENT_REMINDER_KEY, EmailReminderOffset.ONE_HOUR)
+        st.session_state.setdefault(NEW_APPOINTMENT_CATEGORY_KEY, Category.ADMIN)
+        st.session_state.setdefault(NEW_APPOINTMENT_QUADRANT_KEY, EisenhowerQuadrant.URGENT_IMPORTANT)
+        st.session_state.setdefault(NEW_APPOINTMENT_PRIORITY_KEY, 3)
+
+        with st.form("appointment_form"):
+            title = st.text_input(
+                "Titel / Title",
+                key=NEW_APPOINTMENT_TITLE_KEY,
+                placeholder="z. B. Feedback-Gespräch / e.g., feedback meeting",
+            )
+            all_day = st.checkbox(
+                "Ganztägig / All-day",
+                value=st.session_state.get(NEW_APPOINTMENT_ALL_DAY_KEY, False),
+                key=NEW_APPOINTMENT_ALL_DAY_KEY,
+                help="Blockt den gesamten Tag ohne feste Uhrzeiten / Block the full day without specific times.",
+            )
+
+            time_input_widget = getattr(st, "time_input", None)
+
+            def _time_input(label: str, key: str, default_value: time) -> time:
+                if callable(time_input_widget):
+                    return time_input_widget(
+                        label,
+                        value=st.session_state.get(key, default_value),
+                        key=key,
+                        step=timedelta(minutes=15),
+                        disabled=all_day,
+                    )
+
+                time_string = st.text_input(
+                    label,
+                    key=key,
+                    value=(st.session_state.get(key) or default_value).strftime("%H:%M"),
+                    placeholder="HH:MM",
+                )
+                try:
+                    parsed = datetime.strptime(time_string, "%H:%M").time()
+                except ValueError:
+                    parsed = default_value
+                st.session_state[key] = parsed
+                return parsed
+
+            start_col, end_col = st.columns(2)
+            with start_col:
+                start_date = st.date_input(
+                    "Beginn / Start",
+                    value=st.session_state.get(NEW_APPOINTMENT_START_DATE_KEY, default_start.date()),
+                    key=NEW_APPOINTMENT_START_DATE_KEY,
+                    format="YYYY-MM-DD",
+                )
+                start_time = _time_input(
+                    "Startzeit / Start time",
+                    NEW_APPOINTMENT_START_TIME_KEY,
+                    default_start.time().replace(second=0, microsecond=0),
+                )
+
+            with end_col:
+                end_date = st.date_input(
+                    "Ende / End",
+                    value=st.session_state.get(NEW_APPOINTMENT_END_DATE_KEY, default_end.date()),
+                    key=NEW_APPOINTMENT_END_DATE_KEY,
+                    format="YYYY-MM-DD",
+                )
+                end_time = _time_input(
+                    "Endzeit / End time",
+                    NEW_APPOINTMENT_END_TIME_KEY,
+                    default_end.time().replace(second=0, microsecond=0),
+                )
+
+            meta_left, meta_right = st.columns(2)
+            with meta_left:
+                reminder = st.selectbox(
+                    "Erinnerung / Reminder",
+                    options=list(EmailReminderOffset),
+                    key=NEW_APPOINTMENT_REMINDER_KEY,
+                    format_func=lambda option: option.label,
+                    help="E-Mail-Erinnerung vor dem Termin / Email reminder before the appointment.",
+                )
+                quadrant = st.selectbox(
+                    "Eisenhower-Quadrant / Quadrant",
+                    options=list(EisenhowerQuadrant),
+                    key=NEW_APPOINTMENT_QUADRANT_KEY,
+                    format_func=lambda option: option.label,
+                )
+
+            with meta_right:
+                slider_widget = getattr(st, "slider", None)
+                category = st.selectbox(
+                    "Kategorie / Category",
+                    options=list(Category),
+                    key=NEW_APPOINTMENT_CATEGORY_KEY,
+                    format_func=lambda option: option.label,
+                )
+                priority = (
+                    slider_widget(
+                        "Priorität / Priority",
+                        min_value=1,
+                        max_value=5,
+                        value=st.session_state.get(NEW_APPOINTMENT_PRIORITY_KEY, 3),
+                        help="1 = höchste Priorität, 5 = niedrigste / 1 = highest priority, 5 = lowest priority.",
+                    )
+                    if callable(slider_widget)
+                    else int(
+                        st.number_input(
+                            "Priorität / Priority",
+                            min_value=1,
+                            max_value=5,
+                            value=int(st.session_state.get(NEW_APPOINTMENT_PRIORITY_KEY, 3)),
+                            step=1,
+                        )
+                    )
+                )
+                st.session_state[NEW_APPOINTMENT_PRIORITY_KEY] = priority
+
+            location = st.text_input(
+                "Ort / Location",
+                key=NEW_APPOINTMENT_LOCATION_KEY,
+                placeholder="z. B. Videocall-Link oder Raum / e.g., video link or room",
+            )
+            notes = st.text_area(
+                "Notizen / Notes",
+                key=NEW_APPOINTMENT_NOTES_KEY,
+                placeholder="Agenda, Ziele oder offene Fragen / Agenda, goals, or open questions",
+            )
+
+            submitted = st.form_submit_button("Termin speichern / Save appointment", type="primary")
+
+            if submitted:
+                if not title.strip():
+                    st.warning("Bitte einen Titel für den Termin angeben / Please provide a meeting title.")
+                    return
+
+                if isinstance(start_date, list):
+                    start_date = start_date[0]
+                if isinstance(end_date, list):
+                    end_date = end_date[0]
+
+                start_time_value = time.min if all_day else start_time
+                end_time_value = time.max if all_day else end_time
+
+                start_at = datetime.combine(start_date, start_time_value, tzinfo=timezone.utc)
+                end_at = datetime.combine(end_date, end_time_value, tzinfo=timezone.utc)
+
+                if end_at <= start_at:
+                    st.warning(
+                        "Das Enddatum muss nach dem Beginn liegen / The end time has to be after the start time."
+                    )
+                    return
+
+                description_md = _format_appointment_description(
+                    start_at=start_at,
+                    end_at=end_at,
+                    all_day=all_day,
+                    location=location,
+                    notes=notes,
+                )
+
+                add_todo(
+                    title=title.strip(),
+                    quadrant=quadrant,
+                    due_date=end_at,
+                    category=category,
+                    priority=priority,
+                    description_md=description_md,
+                    progress_current=0.0,
+                    progress_target=None,
+                    progress_unit="",
+                    auto_done_when_target_reached=False,
+                    completion_criteria_md="",
+                    recurrence=RecurrencePattern.ONCE,
+                    email_reminder=reminder,
+                )
+
+                st.session_state.update(
+                    {
+                        NEW_APPOINTMENT_TITLE_KEY: "",
+                        NEW_APPOINTMENT_LOCATION_KEY: "",
+                        NEW_APPOINTMENT_NOTES_KEY: "",
+                        NEW_APPOINTMENT_ALL_DAY_KEY: False,
+                        NEW_APPOINTMENT_START_DATE_KEY: default_start.date(),
+                        NEW_APPOINTMENT_END_DATE_KEY: default_end.date(),
+                        NEW_APPOINTMENT_START_TIME_KEY: default_start.time().replace(second=0, microsecond=0),
+                        NEW_APPOINTMENT_END_TIME_KEY: default_end.time().replace(second=0, microsecond=0),
+                        NEW_APPOINTMENT_REMINDER_KEY: reminder,
+                        NEW_APPOINTMENT_CATEGORY_KEY: category,
+                        NEW_APPOINTMENT_QUADRANT_KEY: quadrant,
+                    }
+                )
+
+                if stats:
+                    st.toast(
+                        "Termin angelegt und im Aufgaben-Board sichtbar / Appointment created and visible in the task board.",
+                        icon="📅",
+                    )
+                else:
+                    st.success(
+                        "Termin angelegt und im Aufgaben-Board sichtbar / Appointment created and visible in the task board."
+                    )
+
+                st.session_state[NEW_TODO_RESET_TRIGGER_KEY] = True
+                st.rerun()
+
+
 def render_todo_section(
     ai_enabled: bool,
     client: Optional[OpenAI],
@@ -1394,6 +1658,8 @@ def render_todo_section(
 ) -> None:
     todos = todos or get_todos()
     quadrant_options = list(EisenhowerQuadrant)
+
+    _render_appointment_creator(stats=stats)
 
     st.subheader("ToDo hinzufügen / Add task")
 

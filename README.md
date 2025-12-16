@@ -7,6 +7,11 @@ Die UI folgt einem klaren, fokussierten Dark-Theme mit dunkelgrünem Primärton 
 
 Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI aktiv / AI enabled** gesetzt ist, nutzt die App GPT-Modelle (Standard: `gpt-4o-mini`, per Einstellung überschreibbar), um z. B. automatisch den Eisenhower-Quadranten zu empfehlen, ein strukturiertes Tagesziel zu liefern oder kurze Motivationsnachrichten basierend auf den jüngsten KPIs zu erstellen. Ist kein API-Key hinterlegt oder die AI-Option deaktiviert, werden statische, vorgefertigte Texte verwendet, sodass die Anwendung weiterhin vollständig nutzbar bleibt.
 
+## Termin erstellen / Create appointment
+
+- Über den Popover-Button **Termin erstellen / Create appointment** im Aufgabenbereich lassen sich Besprechungen mit Titel, Start- und Endzeit (inklusive Ganztags-Option), Ort, Notizen sowie Erinnerungszeit anlegen.
+- Jeder Termin landet als ToDo im Eisenhower-Board, erhält Kategorie, Priorität und optional eine E-Mail-Erinnerung, sodass er in Kalender-, Listen- und Board-Ansichten gleichermaßen sichtbar bleibt.
+
 ## Voraussetzungen
 
 - Python >= 3.11
