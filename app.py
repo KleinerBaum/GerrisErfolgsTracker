@@ -3,7 +3,8 @@ from __future__ import annotations
 import os
 import json
 from contextlib import nullcontext
-from datetime import date, datetime
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from typing import Any, Literal, Mapping, Optional
 
 import plotly.graph_objects as go
@@ -43,6 +44,7 @@ from gerris_erfolgs_tracker.constants import (
     NEW_TODO_DESCRIPTION_KEY,
     NEW_TODO_DUE_KEY,
     NEW_TODO_ENABLE_TARGET_KEY,
+    NEW_TODO_TEMPLATE_KEY,
     NEW_TODO_PRIORITY_KEY,
     NEW_TODO_PROGRESS_CURRENT_KEY,
     NEW_TODO_PROGRESS_TARGET_KEY,
@@ -266,6 +268,90 @@ def _points_for_complexity(complexity: MilestoneComplexity) -> int:
     if complexity is MilestoneComplexity.MEDIUM:
         return 25
     return 50
+
+
+@dataclass
+class TaskTemplate:
+    key: str
+    label: str
+    description: str
+    settings: Mapping[str, Any]
+
+
+def _todo_templates(*, today: date) -> list[TaskTemplate]:
+    next_week = today + timedelta(days=7)
+    deep_dive_due = today + timedelta(days=2)
+
+    return [
+        TaskTemplate(
+            key="free",
+            label="Freie Eingabe / Free input",
+            description="Manuell ausfüllen, ohne Vorgaben.",
+            settings={},
+        ),
+        TaskTemplate(
+            key="today_focus",
+            label="Heute abschließen / Finish today",
+            description=(
+                "Setzt Fälligkeit auf heute, Priorität 2 und eine 30-Minuten-Zielzeit mit Auto-Abschluss"
+                " plus Erinnerung 1 Stunde vorher."
+            ),
+            settings={
+                NEW_TODO_DUE_KEY: today,
+                NEW_TODO_PRIORITY_KEY: 2,
+                NEW_TODO_ENABLE_TARGET_KEY: True,
+                NEW_TODO_PROGRESS_TARGET_KEY: 0.5,
+                NEW_TODO_PROGRESS_UNIT_KEY: "h",
+                NEW_TODO_AUTO_COMPLETE_KEY: True,
+                NEW_TODO_COMPLETION_CRITERIA_KEY: (
+                    "30 Min. fokussiert arbeiten + kurzes Ergebnis notieren / 30 minutes focused work + jot down the outcome."
+                ),
+                NEW_TODO_REMINDER_KEY: EmailReminderOffset.ONE_HOUR,
+                NEW_TODO_RECURRENCE_KEY: RecurrencePattern.ONCE,
+            },
+        ),
+        TaskTemplate(
+            key="weekly_routine",
+            label="Wöchentliche Routine / Weekly routine",
+            description=(
+                "Nächste Woche fällig, wöchentliche Wiederholung, Priorität 3 und Erinnerung einen Tag vorher."
+            ),
+            settings={
+                NEW_TODO_DUE_KEY: next_week,
+                NEW_TODO_PRIORITY_KEY: 3,
+                NEW_TODO_ENABLE_TARGET_KEY: False,
+                NEW_TODO_REMINDER_KEY: EmailReminderOffset.ONE_DAY,
+                NEW_TODO_RECURRENCE_KEY: RecurrencePattern.WEEKLY,
+            },
+        ),
+        TaskTemplate(
+            key="deep_dive",
+            label="Deep Dive / 2-Tage-Sprint",
+            description=(
+                "Fälligkeit in 2 Tagen, Priorität 1, klares 2h-Ziel mit Auto-Abschluss und kurzer Review-Notiz."
+            ),
+            settings={
+                NEW_TODO_DUE_KEY: deep_dive_due,
+                NEW_TODO_PRIORITY_KEY: 1,
+                NEW_TODO_ENABLE_TARGET_KEY: True,
+                NEW_TODO_PROGRESS_TARGET_KEY: 2.0,
+                NEW_TODO_PROGRESS_UNIT_KEY: "h",
+                NEW_TODO_AUTO_COMPLETE_KEY: True,
+                NEW_TODO_COMPLETION_CRITERIA_KEY: (
+                    "2h konzentriert + kurze Review (Lessons Learned) / 2h focus + quick review (lessons learned)."
+                ),
+                NEW_TODO_REMINDER_KEY: EmailReminderOffset.ONE_DAY,
+                NEW_TODO_RECURRENCE_KEY: RecurrencePattern.ONCE,
+            },
+        ),
+    ]
+
+
+def _apply_task_template(template: TaskTemplate) -> None:
+    for key, value in template.settings.items():
+        st.session_state[key] = value
+    st.session_state[NEW_TODO_TEMPLATE_KEY] = template.key
+    st.session_state["_todo_template_last_applied"] = template.key
 
 
 def _current_gamification_mode() -> GamificationMode:
@@ -1499,6 +1585,7 @@ def render_todo_section(
     todos: Optional[list[TodoItem]] = None,
     stats: Optional[KpiStats] = None,
 ) -> None:
+    template_state_key = "_todo_template_last_applied"
     todos = todos or get_todos()
     quadrant_options = list(EisenhowerQuadrant)
 
@@ -1523,6 +1610,8 @@ def render_todo_section(
             NEW_TODO_RECURRENCE_KEY,
             NEW_TODO_REMINDER_KEY,
             NEW_TODO_DRAFT_MILESTONES_KEY,
+            NEW_TODO_TEMPLATE_KEY,
+            template_state_key,
             NEW_MILESTONE_TITLE_KEY,
             NEW_MILESTONE_COMPLEXITY_KEY,
             NEW_MILESTONE_POINTS_KEY,
@@ -1552,8 +1641,31 @@ def render_todo_section(
     st.session_state.setdefault(NEW_TODO_REMINDER_KEY, EmailReminderOffset.NONE)
     st.session_state.setdefault(NEW_TODO_DRAFT_MILESTONES_KEY, [])
     st.session_state.setdefault(NEW_MILESTONE_SUGGESTIONS_KEY, {})
+    st.session_state.setdefault(NEW_TODO_TEMPLATE_KEY, "free")
+    st.session_state.setdefault(template_state_key, "free")
 
     with st.form("add_todo_form", clear_on_submit=False):
+        today = date.today()
+        templates = _todo_templates(today=today)
+        template_lookup = {template.key: template for template in templates}
+        template_key = st.selectbox(
+            "Aufgabenvorschlag / Task suggestion",
+            options=[template.key for template in templates],
+            key=NEW_TODO_TEMPLATE_KEY,
+            format_func=lambda option: template_lookup[option].label,
+            help=(
+                "Übernimmt Fälligkeit, Priorität, Erinnerung und optionale Zeitziele automatisch / "
+                "Auto-fills due date, priority, reminder, and optional time targets."
+            ),
+        )
+
+        selected_template = template_lookup[template_key]
+        if template_key != st.session_state.get(template_state_key):
+            _apply_task_template(selected_template)
+
+        if selected_template.description:
+            st.caption(f"📌 {selected_template.description}")
+
         title_col, _ = st.columns([1, 1])
         with title_col:
             title = st.text_input(
