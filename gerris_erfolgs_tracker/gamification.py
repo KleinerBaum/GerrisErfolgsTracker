@@ -33,10 +33,8 @@ AVATAR_ROSS_PROMPTS = [
         "breath and make the next small step."
     ),
     (
-        "Dipl.-Psych. Roß (brünette Therapeutin, ca. 45, mit Brille) erinnert dich: "
-        "Du darfst stolz auf jeden Fortschritt sein. / Dipl.-Psych. Roß (brunette "
-        "therapist, about 45, with glasses) reminds you: be proud of every bit of "
-        "progress."
+        "Du darfst stolz auf jeden Fortschritt sein – ich glaube an dich. / "
+        "Be proud of every bit of progress — I believe in you."
     ),
     (
         "Stell dir vor, ich sitze neben dir und nicke anerkennend – du bist auf dem "
@@ -124,7 +122,7 @@ def calculate_progress_to_next_level(
 def next_avatar_prompt(index: int) -> str:
     prompt_count = len(AVATAR_ROSS_PROMPTS)
     if prompt_count == 0:
-        return "Dipl.-Psych. Roß freut sich auf deinen nächsten Schritt. / Dipl.-Psych. Roß looks forward to your next step."
+        return "Wir freuen uns auf deinen nächsten Schritt. / Looking forward to your next step."
     return AVATAR_ROSS_PROMPTS[index % prompt_count]
 
 
