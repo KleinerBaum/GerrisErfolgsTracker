@@ -15,7 +15,6 @@ from openai import OpenAI
 from gerris_erfolgs_tracker.ai_features import (
     AISuggestion,
     generate_motivation,
-    suggest_goals,
     suggest_milestones,
     suggest_quadrant,
 )
@@ -30,7 +29,6 @@ from gerris_erfolgs_tracker.charts import (
 )
 from gerris_erfolgs_tracker.constants import (
     AI_ENABLED_KEY,
-    AI_GOAL_SUGGESTION_KEY,
     AI_MOTIVATION_KEY,
     AI_QUADRANT_RATIONALE_KEY,
     AVATAR_PROMPT_INDEX_KEY,
@@ -41,7 +39,6 @@ from gerris_erfolgs_tracker.constants import (
     GOAL_OVERVIEW_SHOW_CATEGORY_KEY,
     GOAL_OVERVIEW_SHOW_KPI_KEY,
     GOAL_OVERVIEW_SELECTED_TASKS_KEY,
-    GOAL_SUGGESTED_VALUE_KEY,
     NEW_TODO_CATEGORY_KEY,
     NEW_TODO_DESCRIPTION_KEY,
     NEW_TODO_DUE_KEY,
@@ -86,7 +83,6 @@ from gerris_erfolgs_tracker.gamification import (
 from gerris_erfolgs_tracker.kpis import (
     get_kpi_stats,
     get_weekly_completion_counts,
-    update_goal_daily,
     update_kpis_on_completion,
 )
 from gerris_erfolgs_tracker.kpi import (
@@ -1432,22 +1428,6 @@ def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> d
     return settings
 
 
-def _resolve_goal_input_value(settings: dict[str, Any], stats: KpiStats) -> int:
-    suggested_goal = st.session_state.get(GOAL_SUGGESTED_VALUE_KEY)
-    existing_goal_value = st.session_state.get(SETTINGS_GOAL_DAILY_KEY)
-    default_goal = int(settings.get("goal_daily", stats.goal_daily))
-
-    if suggested_goal is not None:
-        resolved_goal = int(suggested_goal)
-    elif existing_goal_value is not None:
-        resolved_goal = int(existing_goal_value)
-    else:
-        resolved_goal = default_goal
-
-    st.session_state[SETTINGS_GOAL_DAILY_KEY] = resolved_goal
-    return resolved_goal
-
-
 def _panel_section(panel: Any, label: str) -> Any:
     expander = getattr(panel, "expander", None)
     if callable(expander):
@@ -1476,7 +1456,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
         return ai_enabled
 
     panel.markdown("### Ziel-Canvas")
-    profile_cols = panel.columns(2)
+    canvas_columns = panel.columns(2)
     horizon_options = [option for option, _ in GOAL_HORIZON_OPTIONS]
     cadence_options = [option for option, _ in GOAL_CHECKIN_OPTIONS]
     try:
@@ -1487,7 +1467,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
         cadence_index = cadence_options.index(goal_profile.get("check_in_cadence", "weekly"))
     except ValueError:
         cadence_index = 0
-    with profile_cols[0]:
+    with canvas_columns[0]:
         profile_title = panel.text_input(
             "Zielname",
             value=goal_profile.get("title", ""),
@@ -1514,6 +1494,20 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
             format="YYYY-MM-DD",
             help="Optional: Ab wann zählst du Fortschritt?",
         )
+        target_date = panel.date_input(
+            "Zieltermin",
+            value=goal_profile.get("target_date"),
+            format="YYYY-MM-DD",
+            help="Wann soll das Ziel erreicht sein?",
+        )
+        check_in_cadence = panel.selectbox(
+            "Check-in-Rhythmus",
+            options=cadence_options,
+            index=max(0, cadence_index),
+            format_func=lambda value: _goal_option_label(value, GOAL_CHECKIN_OPTIONS),
+            help="Wie oft reflektierst du Fortschritt?",
+        )
+    with canvas_columns[1]:
         enable_metric = panel.toggle(
             "Messbar machen",
             value=bool(goal_profile.get("metric_target") is not None or goal_profile.get("metric_unit")),
@@ -1533,20 +1527,6 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
             max_chars=40,
             disabled=not enable_metric,
             help="Einheit für den Zielwert, z. B. Bewerbungen, Minuten.",
-        )
-    with profile_cols[1]:
-        target_date = panel.date_input(
-            "Zieltermin",
-            value=goal_profile.get("target_date"),
-            format="YYYY-MM-DD",
-            help="Wann soll das Ziel erreicht sein?",
-        )
-        check_in_cadence = panel.selectbox(
-            "Check-in-Rhythmus",
-            options=cadence_options,
-            index=max(0, cadence_index),
-            format_func=lambda value: _goal_option_label(value, GOAL_CHECKIN_OPTIONS),
-            help="Wie oft reflektierst du Fortschritt?",
         )
         next_step_tabs = panel.tabs(["Nächster Schritt", "Vorschau"])
         with next_step_tabs[0]:
@@ -1576,15 +1556,9 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
                 st.caption("Noch keine Belohnung definiert")
 
     panel.markdown("#### Erfolg & Motivation")
-    success_tabs = panel.tabs(
-        [
-            "Erfolgskriterien",
-            "Motivation",
-            "Risiken & Absicherung",
-        ]
-    )
-    with success_tabs[0]:
-        criteria_tabs = st.tabs(["Schreiben", "Vorschau"])
+    success_columns = panel.columns(2)
+    with success_columns[0]:
+        criteria_tabs = panel.tabs(["Erfolgskriterien", "Vorschau"])
         with criteria_tabs[0]:
             success_criteria_md = st.text_area(
                 "Wie erkennst du Erfolg?",
@@ -1597,22 +1571,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
                 st.markdown(criteria_preview)
             else:
                 st.caption("Noch keine Kriterien definiert")
-    with success_tabs[1]:
-        motivation_tabs = st.tabs(["Schreiben", "Vorschau"])
-        with motivation_tabs[0]:
-            motivation_md = st.text_area(
-                "Warum ist das Ziel wichtig?",
-                value=goal_profile.get("motivation_md", ""),
-                placeholder="Persönlicher Nutzen, Chancen, Unterstützung",
-            )
-        with motivation_tabs[1]:
-            motivation_preview = goal_profile.get("motivation_md", "")
-            if motivation_preview.strip():
-                st.markdown(motivation_preview)
-            else:
-                st.caption("Motivation noch leer")
-    with success_tabs[2]:
-        risk_tabs = st.tabs(["Schreiben", "Vorschau"])
+        risk_tabs = panel.tabs(["Risiken & Sicherungen", "Vorschau"])
         with risk_tabs[0]:
             risk_mitigation_md = st.text_area(
                 "Risiken & Sicherungen",
@@ -1625,6 +1584,20 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
                 st.markdown(risk_preview)
             else:
                 st.caption("Noch keine Risiken notiert")
+    with success_columns[1]:
+        motivation_tabs = panel.tabs(["Motivation", "Vorschau"])
+        with motivation_tabs[0]:
+            motivation_md = st.text_area(
+                "Warum ist das Ziel wichtig?",
+                value=goal_profile.get("motivation_md", ""),
+                placeholder="Persönlicher Nutzen, Chancen, Unterstützung",
+            )
+        with motivation_tabs[1]:
+            motivation_preview = goal_profile.get("motivation_md", "")
+            if motivation_preview.strip():
+                st.markdown(motivation_preview)
+            else:
+                st.caption("Motivation noch leer")
 
     goal_profile["title"] = profile_title.strip()
     goal_profile["focus_categories"] = [category.value for category in focus_categories]
@@ -2050,8 +2023,103 @@ def render_todo_section(
                 help="Optionale Mail-Erinnerung vor Fälligkeit",
             )
 
-        with milestone_column:
-            st.markdown("#### Unterziele / Milestones")
+        meta_left, meta_right = st.columns(2)
+        with meta_left:
+            category = st.selectbox(
+                "Kategorie",
+                options=list(Category),
+                key=NEW_TODO_CATEGORY_KEY,
+                format_func=lambda option: option.label,
+            )
+        with meta_right:
+            priority = st.selectbox(
+                "Priorität (1=hoch)",
+                options=list(range(1, 6)),
+                key=NEW_TODO_PRIORITY_KEY,
+            )
+
+        description_col, _ = st.columns([1, 1])
+        with description_col:
+            description_tabs = st.tabs(["Schreiben", "Vorschau"])
+            with description_tabs[0]:
+                description_md = st.text_area(
+                    "Beschreibung (Markdown)",
+                    key=NEW_TODO_DESCRIPTION_KEY,
+                    placeholder=("Optional: Details, Checkliste oder Kontext"),
+                )
+            with description_tabs[1]:
+                preview_text = st.session_state.get(NEW_TODO_DESCRIPTION_KEY, "")
+                if preview_text.strip():
+                    st.markdown(preview_text)
+                else:
+                    st.caption("Keine Beschreibung vorhanden")
+
+        with st.expander("Fortschrittsregel (optional)"):
+            enable_target: bool = st.checkbox(
+                "Zielvorgabe nutzen",
+                value=bool(st.session_state.get(NEW_TODO_ENABLE_TARGET_KEY, False)),
+                key=NEW_TODO_ENABLE_TARGET_KEY,
+                help="Optionaler Zielwert mit Einheit",
+            )
+
+            target_cols = st.columns([0.5, 0.5])
+            with target_cols[0]:
+                target_value = st.number_input(
+                    "Zielwert",
+                    min_value=0.0,
+                    value=float(st.session_state.get(NEW_TODO_PROGRESS_TARGET_KEY, 0.0)),
+                    step=1.0,
+                    key=NEW_TODO_PROGRESS_TARGET_KEY,
+                    disabled=not enable_target,
+                    help="Numerisches Ziel, z. B. 10.0",
+                )
+            with target_cols[1]:
+                progress_unit = st.text_input(
+                    "Einheit",
+                    value=st.session_state.get(NEW_TODO_PROGRESS_UNIT_KEY, ""),
+                    key=NEW_TODO_PROGRESS_UNIT_KEY,
+                    disabled=not enable_target,
+                    help="z. B. km, Seiten, Minuten",
+                )
+
+            current_value = st.number_input(
+                "Aktueller Stand",
+                min_value=0.0,
+                value=float(st.session_state.get(NEW_TODO_PROGRESS_CURRENT_KEY, 0.0)),
+                step=0.5,
+                key=NEW_TODO_PROGRESS_CURRENT_KEY,
+                help="Fortschritt in derselben Einheit wie das Ziel",
+            )
+
+            auto_complete = st.toggle(
+                "Automatisch als erledigt markieren, wenn Ziel erreicht",
+                value=bool(
+                    st.session_state.get(
+                        NEW_TODO_AUTO_COMPLETE_KEY,
+                        bool(st.session_state.get(NEW_TODO_ENABLE_TARGET_KEY, False)),
+                    )
+                ),
+                key=NEW_TODO_AUTO_COMPLETE_KEY,
+                disabled=not enable_target,
+            )
+
+            criteria_tabs = st.tabs(["Kriterien", "Vorschau"])
+            with criteria_tabs[0]:
+                completion_criteria_md = st.text_area(
+                    "Erfüllungskriterien (Markdown)",
+                    value=st.session_state.get(NEW_TODO_COMPLETION_CRITERIA_KEY, ""),
+                    key=NEW_TODO_COMPLETION_CRITERIA_KEY,
+                    placeholder="Optional: Wie erkennst du den Abschluss?",
+                    disabled=not enable_target,
+                )
+            with criteria_tabs[1]:
+                criteria_preview = st.session_state.get(NEW_TODO_COMPLETION_CRITERIA_KEY, "")
+                if enable_target and criteria_preview.strip():
+                    st.markdown(criteria_preview)
+                else:
+                    st.caption("Keine Kriterien gepflegt")
+
+            st.markdown("##### Unterziele")
             draft_milestones: list[dict[str, object]] = st.session_state.get(NEW_TODO_DRAFT_MILESTONES_KEY, [])
             suggestion_store: dict[str, list[dict[str, str]]] = st.session_state.get(NEW_MILESTONE_SUGGESTIONS_KEY, {})
             milestone_title = st.text_input(
@@ -2480,7 +2548,14 @@ def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
         config={"displaylogo": False, "responsive": True},
     )
 
-    st.info("Passe Tagesziel, Kategorien und KI-Optionen im Bereich 'Ziele' an.")
+    st.info(
+        translate_text(
+            (
+                "Passe Kategorien und KI-Optionen im Bereich 'Ziele' an.",
+                "Adjust categories and AI options in the 'Goals' area.",
+            )
+        )
+    )
 
 
 GOALS_PAGE_LABEL = "Ziele"
@@ -2534,7 +2609,7 @@ def render_navigation() -> str:
     selection = st.sidebar.radio(
         "Bereich wählen",
         navigation_options,
-        index=navigation_options.index(TASKS_PAGE_LABEL),
+        index=navigation_options.index(GOALS_PAGE_LABEL),
         label_visibility="collapsed",
     )
     st.sidebar.divider()
@@ -2699,14 +2774,12 @@ def render_safety_panel(panel: Any) -> bool:
     ):
         for cleanup_key in (
             AI_ENABLED_KEY,
-            AI_GOAL_SUGGESTION_KEY,
             AI_QUADRANT_RATIONALE_KEY,
             AI_MOTIVATION_KEY,
             NEW_TODO_TITLE_KEY,
             NEW_TODO_DUE_KEY,
             NEW_TODO_QUADRANT_KEY,
             SETTINGS_GOAL_DAILY_KEY,
-            GOAL_SUGGESTED_VALUE_KEY,
         ):
             st.session_state.pop(cleanup_key, None)
         reset_state()

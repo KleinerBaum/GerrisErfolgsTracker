@@ -27,13 +27,9 @@ BADGE_CONSISTENCY_3 = "3-Tage-Streak"
 BADGE_DOUBLE_DIGITS = "Zweistellig"
 
 AVATAR_ROSS_PROMPTS = [
-    (
-        "Ich sehe, wie viel Mühe du dir gibst – atme tief durch und mach den nächsten kleinen Schritt."
-    ),
+    ("Ich sehe, wie viel Mühe du dir gibst – atme tief durch und mach den nächsten kleinen Schritt."),
     ("Du darfst stolz auf jeden Fortschritt sein – ich glaube an dich."),
-    (
-        "Stell dir vor, ich sitze neben dir und nicke anerkennend – du bist auf dem richtigen Weg."
-    ),
+    ("Stell dir vor, ich sitze neben dir und nicke anerkennend – du bist auf dem richtigen Weg."),
 ]
 
 
@@ -59,7 +55,9 @@ def _completion_id(todo: TodoItem) -> str:
 
 def _log_completion_event(state: GamificationState, todo: TodoItem, *, points: int, completion_token: str) -> None:
     timestamp = (todo.completed_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    state.history.append((f"{timestamp.isoformat()} · {todo.quadrant.label}: +{points} Punkte · Token {completion_token}"))
+    state.history.append(
+        (f"{timestamp.isoformat()} · {todo.quadrant.label}: +{points} Punkte · Token {completion_token}")
+    )
 
 
 def _award_badge(state: GamificationState, badge: str) -> None:

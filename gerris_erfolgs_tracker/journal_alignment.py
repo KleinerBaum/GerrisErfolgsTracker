@@ -76,9 +76,7 @@ def _fallback_alignment(entry_text: str, todos: Iterable[TodoItem]) -> JournalAl
                 target_id=todo.id,
                 target_title=todo.title,
                 suggested_points=10,
-                follow_up=(
-                    "Bestätige den Fortschritt und plane den nächsten Schritt."
-                ),
+                follow_up=("Bestätige den Fortschritt und plane den nächsten Schritt."),
                 rationale="Titel im Tagebucheintrag erkannt.",
             )
         )

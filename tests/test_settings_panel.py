@@ -5,17 +5,8 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
-from app import (
-    AI_GOAL_SUGGESTION_KEY,
-    AI_ENABLED_KEY,
-    GOAL_CREATION_VISIBLE_KEY,
-    GOAL_SUGGESTED_VALUE_KEY,
-    _resolve_goal_input_value,
-    render_settings_panel,
-)
-from gerris_erfolgs_tracker.ai_features import AISuggestion
+from app import AI_ENABLED_KEY, GOAL_CREATION_VISIBLE_KEY, render_settings_panel
 from gerris_erfolgs_tracker.constants import SS_SETTINGS
-from gerris_erfolgs_tracker.llm_schemas import GoalSuggestion
 from gerris_erfolgs_tracker.models import KpiStats
 
 
@@ -54,6 +45,7 @@ class _PanelStub:
         self._plan = plan
         self.number_input_value: Optional[float | int] = None
         self.number_inputs: Dict[str, float | int] = {}
+        self.columns_calls: List[int] = []
 
     def __enter__(self) -> "_PanelStub":
         return self
@@ -106,6 +98,7 @@ class _PanelStub:
         return value
 
     def columns(self, count: int) -> List[_ColumnStub]:
+        self.columns_calls.append(count)
         return [_ColumnStub(self._plan) for _ in range(count)]
 
     def button(self, label: str, key: Optional[str] = None, **__: Any) -> bool:  # noqa: ANN401
@@ -178,47 +171,42 @@ class _TabStub:
         return None
 
 
-def test_goal_suggestion_sets_widget_value(session_state: Dict[str, object], monkeypatch: pytest.MonkeyPatch) -> None:
+def test_settings_panel_runs_without_daily_goal_controls(
+    session_state: Dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
     stats = KpiStats(goal_daily=3)
-    suggestion = AISuggestion(
-        payload=GoalSuggestion(
-            daily_goal=5,
-            focus="Momentum halten / Keep momentum.",
-            tips=["Test-Tipp DE", "Test tip EN"],
-        ),
-        from_ai=True,
-    )
-
-    plan = _ButtonPlan(responses={"settings_ai_goal": [True, False]})
+    plan = _ButtonPlan(responses={})
     st_stub = _StreamlitStub(session_state, plan)
     panel_stub = _PanelStub(session_state, plan)
 
     monkeypatch.setattr("app.st", st_stub)
-    monkeypatch.setattr("app.suggest_goals", lambda *_, **__: suggestion)
 
     session_state[GOAL_CREATION_VISIBLE_KEY] = True
     session_state[AI_ENABLED_KEY] = True
     session_state[SS_SETTINGS] = {AI_ENABLED_KEY: True}
-    with pytest.raises(RerunSentinel):
-        render_settings_panel(stats, client=None, panel=panel_stub)
 
-    assert session_state[AI_GOAL_SUGGESTION_KEY] is suggestion
-    assert session_state[GOAL_SUGGESTED_VALUE_KEY] == suggestion.payload.daily_goal
-
-    panel_stub.number_input_value = None
     ai_enabled = render_settings_panel(stats, client=None, panel=panel_stub)
 
     assert ai_enabled is True
-    assert session_state["settings_goal_daily"] == suggestion.payload.daily_goal
-    assert panel_stub.number_inputs["settings_goal_daily"] == suggestion.payload.daily_goal
+    assert SS_SETTINGS in session_state
+    assert "settings_goal_daily" not in session_state
+    assert plan.responses == {}
 
 
-def test_resolve_goal_value_prefers_suggestion(session_state: Dict[str, object]) -> None:
+def test_settings_panel_uses_two_column_canvas(
+    session_state: Dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
     stats = KpiStats(goal_daily=2)
-    settings: dict[str, Any] = {"goal_daily": 4}
-    session_state[GOAL_SUGGESTED_VALUE_KEY] = 7
+    plan = _ButtonPlan(responses={})
+    st_stub = _StreamlitStub(session_state, plan)
+    panel_stub = _PanelStub(session_state, plan)
 
-    resolved = _resolve_goal_input_value(settings=settings, stats=stats)
+    monkeypatch.setattr("app.st", st_stub)
 
-    assert resolved == 7
-    assert session_state["settings_goal_daily"] == 7
+    session_state[GOAL_CREATION_VISIBLE_KEY] = True
+    session_state[AI_ENABLED_KEY] = True
+    session_state[SS_SETTINGS] = {AI_ENABLED_KEY: True}
+
+    render_settings_panel(stats, client=None, panel=panel_stub)
+
+    assert 2 in panel_stub.columns_calls
