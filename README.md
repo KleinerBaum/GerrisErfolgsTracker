@@ -138,6 +138,12 @@ OPENAI_API_KEY = "sk-..."
 - Abschluss-Events werden zusätzlich als Verlaufseinträge mit Token gespeichert, um Wiederholungen durch doppelte Toggles oder Neustarts zu verhindern / Completion events are stored with tokens in the history to avoid repeated rewards after reloads.
 - Drop-down für Gamification-Modus (Punkte, Abzeichen oder ein neuer Avatar-Modus mit motivierenden Sprüchen) auf der Seite **Ziele / Goals**; Fortschritt, Level und Motivation erscheinen im Gamification-Panel der Sidebar.
 
+### Meilensteine & Priority-Board
+
+- Unterteile Aufgaben in Meilensteine mit Aufwand (klein/mittel/groß), Punktevorschlag und optionaler Notiz. Ein Roadmap-Board mit Spalten Backlog → Ready → In Progress → Review → Done ermöglicht die visuelle Planung und Statuswechsel per Button.
+- Punkte- und Komplexitätswerte lassen sich inline anpassen; im Gamification-Modus **Punkte & Level** wird die Punkteausbeute je Schritt sichtbar gehalten.
+- AI-Unterstützung: Button **AI: Meilensteine vorschlagen / Suggest milestones** liefert passende Unterziele, die per Klick übernommen werden können; alternativ kannst du sie manuell erfassen oder entfernen.
+
 ## KI-Features / AI features
 
 - Toggle **AI aktiv / AI enabled** steuert, ob KI-Vorschläge verwendet werden; ohne Key greifen automatisch Fallback-Texte.

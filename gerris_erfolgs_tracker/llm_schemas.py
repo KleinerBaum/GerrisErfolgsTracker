@@ -41,9 +41,26 @@ class Motivation(BaseModel):
     )
 
 
+class MilestoneSuggestionItem(BaseModel):
+    title: str = Field(description="Kurzbeschreibung des Meilensteins / Short milestone label")
+    complexity: Literal["small", "medium", "large"] = Field(
+        description="Aufwandsklasse des Meilensteins / Complexity tier for the milestone"
+    )
+    rationale: str = Field(description="Knapp begründen / Brief rationale for the suggestion")
+
+
+class MilestoneSuggestionList(BaseModel):
+    milestones: list[MilestoneSuggestionItem] = Field(
+        default_factory=list,
+        description="Liste empfohlener Meilensteine / Suggested milestones list",
+    )
+
+
 __all__ = [
     "GoalSuggestion",
     "Motivation",
+    "MilestoneSuggestionItem",
+    "MilestoneSuggestionList",
     "QuadrantName",
     "TodoCategorization",
 ]

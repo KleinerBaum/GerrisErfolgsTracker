@@ -13,11 +13,13 @@ from gerris_erfolgs_tracker.llm import (
 )
 from gerris_erfolgs_tracker.llm_schemas import (
     GoalSuggestion,
+    MilestoneSuggestionItem,
+    MilestoneSuggestionList,
     Motivation,
     QuadrantName,
     TodoCategorization,
 )
-from gerris_erfolgs_tracker.models import KpiStats
+from gerris_erfolgs_tracker.models import GamificationMode, KpiStats
 
 
 PayloadT = TypeVar("PayloadT")
@@ -133,6 +135,74 @@ def suggest_goals(stats: Optional[KpiStats] = None, client: Optional[OpenAI] = N
     return AISuggestion(_fallback_goals(active_stats), from_ai=False)
 
 
+def _fallback_milestones(todo_title: str) -> MilestoneSuggestionList:
+    base = todo_title.strip() or "Aufgabe / Task"
+    items = [
+        MilestoneSuggestionItem(
+            title=f"Ersten Schritt planen / Plan first step ({base})",
+            complexity="small",
+            rationale="Fallback-Vorschlag / Default suggestion",
+        ),
+        MilestoneSuggestionItem(
+            title=f"Zwischenstand dokumentieren / Capture mid-way result ({base})",
+            complexity="medium",
+            rationale="Fallback-Vorschlag / Default suggestion",
+        ),
+        MilestoneSuggestionItem(
+            title=f"Finalisierung und Test / Finalize and test ({base})",
+            complexity="large",
+            rationale="Fallback-Vorschlag / Default suggestion",
+        ),
+    ]
+    return MilestoneSuggestionList(milestones=items)
+
+
+def suggest_milestones(
+    todo_title: str,
+    *,
+    gamification_mode: GamificationMode,
+    client: Optional[OpenAI] = None,
+) -> AISuggestion[MilestoneSuggestionList]:
+    if not todo_title.strip():
+        return AISuggestion(_fallback_milestones(todo_title), from_ai=False)
+
+    if client is None:
+        return AISuggestion(_fallback_milestones(todo_title), from_ai=False)
+
+    client_to_use = client or get_openai_client()
+    model = get_default_model(reasoning=True)
+
+    if client_to_use:
+        try:
+            result = request_structured_response(
+                client=client_to_use,
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You generate concise milestones for a task. "
+                            "Return 3-5 items, bilingual DE/EN titles. "
+                            "Adjust complexity (small/medium/large) and keep rationales short."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Task: {todo_title}. Gamification mode: {gamification_mode.label}. "
+                            "Provide realistic, actionable sub-steps."
+                        ),
+                    },
+                ],
+                response_model=MilestoneSuggestionList,
+            )
+            return AISuggestion(result, from_ai=True)
+        except LLMError:
+            pass
+
+    return AISuggestion(_fallback_milestones(todo_title), from_ai=False)
+
+
 def generate_motivation(stats: Optional[KpiStats] = None, client: Optional[OpenAI] = None) -> AISuggestion[str]:
     active_stats = stats or get_kpi_stats()
     client_to_use = client or get_openai_client()
@@ -175,6 +245,7 @@ def generate_motivation(stats: Optional[KpiStats] = None, client: Optional[OpenA
 __all__ = [
     "AISuggestion",
     "generate_motivation",
+    "suggest_milestones",
     "suggest_goals",
     "suggest_quadrant",
 ]

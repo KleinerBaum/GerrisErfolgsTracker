@@ -14,6 +14,7 @@ from gerris_erfolgs_tracker.ai_features import (
     AISuggestion,
     generate_motivation,
     suggest_goals,
+    suggest_milestones,
     suggest_quadrant,
 )
 from gerris_erfolgs_tracker.charts import (
@@ -47,6 +48,12 @@ from gerris_erfolgs_tracker.constants import (
     NEW_TODO_TITLE_KEY,
     NEW_TODO_RECURRENCE_KEY,
     NEW_TODO_REMINDER_KEY,
+    NEW_MILESTONE_COMPLEXITY_KEY,
+    NEW_MILESTONE_NOTE_KEY,
+    NEW_MILESTONE_POINTS_KEY,
+    NEW_MILESTONE_SUGGESTIONS_KEY,
+    NEW_MILESTONE_TITLE_KEY,
+    NEW_TODO_DRAFT_MILESTONES_KEY,
     PENDING_DELETE_TODO_KEY,
     SETTINGS_GOAL_DAILY_KEY,
     SHOW_STORAGE_NOTICE_KEY,
@@ -81,6 +88,7 @@ from gerris_erfolgs_tracker.journal import (
     journal_gratitude_suggestions,
     upsert_journal_entry,
 )
+from gerris_erfolgs_tracker.llm_schemas import MilestoneSuggestionItem, MilestoneSuggestionList
 from gerris_erfolgs_tracker.i18n import (
     LANGUAGE_OPTIONS,
     LanguageCode,
@@ -96,6 +104,9 @@ from gerris_erfolgs_tracker.models import (
     GamificationMode,
     JournalEntry,
     KpiStats,
+    Milestone,
+    MilestoneComplexity,
+    MilestoneStatus,
     RecurrencePattern,
     TodoItem,
 )
@@ -114,8 +125,11 @@ from gerris_erfolgs_tracker.todos import (
     delete_todo,
     duplicate_todo,
     move_kanban_card,
+    add_milestone,
+    move_milestone,
     toggle_complete,
     update_todo,
+    update_milestone,
 )
 
 
@@ -232,6 +246,22 @@ def _inject_dark_theme_styles() -> None:
     """,
         unsafe_allow_html=True,
     )
+
+
+def _points_for_complexity(complexity: MilestoneComplexity) -> int:
+    if complexity is MilestoneComplexity.SMALL:
+        return 10
+    if complexity is MilestoneComplexity.MEDIUM:
+        return 25
+    return 50
+
+
+def _current_gamification_mode() -> GamificationMode:
+    settings: dict[str, Any] = st.session_state.get(SS_SETTINGS, {})
+    try:
+        return GamificationMode(settings.get("gamification_mode", GamificationMode.POINTS.value))
+    except ValueError:
+        return GamificationMode.POINTS
 
 
 def _render_delete_confirmation(todo: TodoItem, *, key_prefix: str) -> None:
@@ -556,8 +586,184 @@ def _render_todo_kanban(todo: TodoItem) -> None:
                         st.rerun()
 
 
+def _render_milestone_suggestions(
+    *,
+    todo: TodoItem,
+    gamification_mode: GamificationMode,
+    ai_enabled: bool,
+) -> None:
+    suggestion_store: dict[str, list[dict[str, str]]] = st.session_state.get(NEW_MILESTONE_SUGGESTIONS_KEY, {})
+    raw_suggestions = suggestion_store.get(todo.id, [])
+    suggestions = [MilestoneSuggestionItem.model_validate(item) for item in raw_suggestions]
+
+    trigger_ai = st.button(
+        "AI: Meilensteine vorschlagen / Suggest milestones",
+        key=f"milestone_ai_{todo.id}",
+        disabled=not ai_enabled,
+        help="Erzeuge Vorschläge für Unterziele / Generate milestone suggestions.",
+    )
+
+    if trigger_ai:
+        suggestion: AISuggestion[MilestoneSuggestionList] = suggest_milestones(
+            todo.title,
+            gamification_mode=gamification_mode,
+            client=get_openai_client() if ai_enabled else None,
+        )
+        st.session_state[NEW_MILESTONE_SUGGESTIONS_KEY] = suggestion_store | {
+            todo.id: [item.model_dump() for item in suggestion.payload.milestones]
+        }
+        label = "KI-Vorschlag / AI suggestion" if suggestion.from_ai else "Fallback"
+        st.info(f"{label}: {len(suggestion.payload.milestones)} Optionen bereit.")
+        suggestions = suggestion.payload.milestones
+
+    if not suggestions:
+        st.caption("Keine Vorschläge aktiv / No active suggestions. Klicke auf den Button für Ideen.")
+        return
+
+    st.markdown("##### Vorschläge übernehmen / Apply suggestions")
+    for index, item in enumerate(suggestions):
+        complexity = MilestoneComplexity(item.complexity)
+        default_points = _points_for_complexity(complexity)
+        with st.container(border=True):
+            st.markdown(f"**{item.title}**")
+            st.caption(f"{complexity.label} · ~{default_points} Punkte | {item.rationale}")
+            add_label = translate_text(("Übernehmen", "Add"))
+            if st.button(
+                f"{add_label}",
+                key=f"apply_milestone_{todo.id}_{index}",
+                help="Vorschlag zur Aufgabe hinzufügen / Add suggestion to the task.",
+            ):
+                add_milestone(
+                    todo.id,
+                    title=item.title,
+                    complexity=complexity,
+                    points=default_points,
+                    note=item.rationale,
+                )
+                st.success("Meilenstein übernommen / Milestone added.")
+                st.rerun()
+
+
+def _render_milestone_board(todo: TodoItem, *, gamification_mode: GamificationMode) -> None:
+    ai_enabled = bool(st.session_state.get(AI_ENABLED_KEY, False))
+    st.markdown("#### Unterziele & Meilensteine / Sub-goals & milestones")
+    st.caption(
+        "Plane Etappenziele, die du auf einem kleinen Priority-Board nachverfolgst / "
+        "Plan milestones and track them on a compact priority board."
+    )
+
+    status_order = list(MilestoneStatus)
+    status_columns = st.columns(len(status_order))
+    for status, column in zip(status_order, status_columns):
+        with column:
+            column.markdown(f"**{status.label}**")
+            items = [item for item in todo.milestones if item.status is status]
+            if not items:
+                column.caption("Keine Einträge / No items")
+                continue
+
+            for milestone in sorted(items, key=lambda item: (-item.points, item.title.lower())):
+                with st.container(border=True):
+                    st.markdown(f"**{milestone.title}**")
+                    st.caption(f"{milestone.complexity.label} · {milestone.points} Punkte / points")
+                    if milestone.note.strip():
+                        st.markdown(milestone.note)
+
+                    move_cols = st.columns(2)
+                    if move_cols[0].button(
+                        "←", key=f"milestone_left_{todo.id}_{milestone.id}", disabled=status is status_order[0]
+                    ):
+                        move_milestone(todo.id, milestone.id, direction="left")
+                        st.rerun()
+                    if move_cols[1].button(
+                        "→",
+                        key=f"milestone_right_{todo.id}_{milestone.id}",
+                        disabled=status is status_order[-1],
+                    ):
+                        move_milestone(todo.id, milestone.id, direction="right")
+                        st.rerun()
+
+                    with st.form(f"milestone_edit_{todo.id}_{milestone.id}"):
+                        edit_complexity = st.selectbox(
+                            "Aufwand / Complexity",
+                            options=list(MilestoneComplexity),
+                            format_func=lambda option: option.label,
+                            index=list(MilestoneComplexity).index(milestone.complexity),
+                            key=f"milestone_complexity_{todo.id}_{milestone.id}",
+                        )
+                        recommended_points = _points_for_complexity(edit_complexity)
+                        edit_points = st.number_input(
+                            "Punkte / Points",
+                            min_value=0,
+                            value=int(milestone.points or recommended_points),
+                            step=1,
+                            key=f"milestone_points_{todo.id}_{milestone.id}",
+                            help=f"Empfohlen: {recommended_points}",
+                        )
+                        edit_note = st.text_area(
+                            "Notiz (optional) / Note (optional)",
+                            value=milestone.note,
+                            key=f"milestone_note_{todo.id}_{milestone.id}",
+                        )
+                        if st.form_submit_button("Speichern / Save"):
+                            update_milestone(
+                                todo.id,
+                                milestone.id,
+                                complexity=edit_complexity,
+                                points=int(edit_points),
+                                note=edit_note,
+                            )
+                            st.success("Aktualisiert / Updated")
+                            st.rerun()
+
+    st.markdown("##### Neues Unterziel / New sub-goal")
+    with st.form(f"milestone_add_{todo.id}"):
+        title = st.text_input(
+            "Titel / Title",
+            key=f"{NEW_MILESTONE_TITLE_KEY}_{todo.id}",
+            placeholder="z. B. Entwurf abstimmen / e.g., align draft",
+        )
+        complexity = st.selectbox(
+            "Aufwand / Complexity",
+            options=list(MilestoneComplexity),
+            format_func=lambda option: option.label,
+            key=f"{NEW_MILESTONE_COMPLEXITY_KEY}_{todo.id}",
+        )
+        suggested_points = _points_for_complexity(complexity)
+        points = st.number_input(
+            "Punkte / Points",
+            min_value=0,
+            value=int(suggested_points),
+            step=1,
+            key=f"{NEW_MILESTONE_POINTS_KEY}_{todo.id}",
+            help=f"Empfohlene Punkte basierend auf Aufwand / Suggested: {suggested_points}",
+        )
+        note = st.text_area(
+            "Notiz (optional) / Note (optional)",
+            key=f"{NEW_MILESTONE_NOTE_KEY}_{todo.id}",
+            placeholder="Warum ist dieser Schritt wichtig? / Why is this step important?",
+        )
+        add_clicked = st.form_submit_button("Hinzufügen / Add")
+        if add_clicked:
+            if not title.strip():
+                st.warning("Bitte Titel ergänzen / Please provide a title")
+            else:
+                add_milestone(
+                    todo.id,
+                    title=title.strip(),
+                    complexity=complexity,
+                    points=int(points),
+                    note=note.strip(),
+                )
+                st.success("Meilenstein gespeichert / Milestone saved")
+                st.rerun()
+
+    _render_milestone_suggestions(todo=todo, gamification_mode=gamification_mode, ai_enabled=ai_enabled)
+
+
 def render_task_row(todo: TodoItem, *, parent: Any | None = None) -> None:
     container = (parent or st).container(border=True)
+    gamification_mode = _current_gamification_mode()
     with container:
         container.markdown("<div class='task-list-row'>", unsafe_allow_html=True)
         row_columns = st.columns([0.1, 0.38, 0.16, 0.18, 0.18])
@@ -633,6 +839,8 @@ def render_task_row(todo: TodoItem, *, parent: Any | None = None) -> None:
                         f"No target configured. Current progress: {todo.progress_current:.2f} {todo.progress_unit}",
                     )
                 )
+
+            _render_milestone_board(todo, gamification_mode=gamification_mode)
 
             with st.form(f"quick_edit_{todo.id}"):
                 left, right = st.columns(2)
@@ -1133,8 +1341,14 @@ def render_todo_section(
             NEW_TODO_ENABLE_TARGET_KEY,
             NEW_TODO_RECURRENCE_KEY,
             NEW_TODO_REMINDER_KEY,
+            NEW_TODO_DRAFT_MILESTONES_KEY,
+            NEW_MILESTONE_TITLE_KEY,
+            NEW_MILESTONE_COMPLEXITY_KEY,
+            NEW_MILESTONE_POINTS_KEY,
+            NEW_MILESTONE_NOTE_KEY,
         ):
             st.session_state.pop(cleanup_key, None)
+        st.session_state.pop(NEW_MILESTONE_SUGGESTIONS_KEY, None)
 
     prefilled_quadrant = st.session_state.pop(
         NEW_TODO_QUADRANT_PREFILL_KEY,
@@ -1155,6 +1369,8 @@ def render_todo_section(
     st.session_state.setdefault(NEW_TODO_ENABLE_TARGET_KEY, False)
     st.session_state.setdefault(NEW_TODO_RECURRENCE_KEY, RecurrencePattern.ONCE)
     st.session_state.setdefault(NEW_TODO_REMINDER_KEY, EmailReminderOffset.NONE)
+    st.session_state.setdefault(NEW_TODO_DRAFT_MILESTONES_KEY, [])
+    st.session_state.setdefault(NEW_MILESTONE_SUGGESTIONS_KEY, {})
 
     with st.form("add_todo_form", clear_on_submit=False):
         title_col, _ = st.columns([1, 1])
@@ -1296,6 +1512,109 @@ def render_todo_section(
                 else:
                     st.caption("Keine Kriterien gepflegt / No criteria provided.")
 
+            st.markdown("##### Unterziele / Milestones")
+            draft_milestones: list[dict[str, object]] = st.session_state.get(NEW_TODO_DRAFT_MILESTONES_KEY, [])
+            suggestion_store: dict[str, list[dict[str, str]]] = st.session_state.get(NEW_MILESTONE_SUGGESTIONS_KEY, {})
+            milestone_title = st.text_input(
+                "Titel des Meilensteins / Milestone title",
+                key=NEW_MILESTONE_TITLE_KEY,
+                placeholder="z. B. Konzept fertigstellen / e.g., finalize concept",
+            )
+            milestone_complexity = st.selectbox(
+                "Aufwand / Complexity",
+                options=list(MilestoneComplexity),
+                key=NEW_MILESTONE_COMPLEXITY_KEY,
+                format_func=lambda option: option.label,
+            )
+            suggested_points = _points_for_complexity(milestone_complexity)
+            milestone_points = st.number_input(
+                "Punkte / Points",
+                min_value=0,
+                value=int(st.session_state.get(NEW_MILESTONE_POINTS_KEY, suggested_points)),
+                step=1,
+                key=NEW_MILESTONE_POINTS_KEY,
+                help=f"Empfehlung anhand Aufwand: {suggested_points}",
+            )
+            milestone_note = st.text_area(
+                "Notiz (optional) / Note (optional)",
+                key=NEW_MILESTONE_NOTE_KEY,
+                placeholder="Kurze Beschreibung oder DoD / Brief description or DoD",
+            )
+            add_milestone_draft = st.button(
+                "Meilenstein vormerken / Queue milestone",
+                key="queue_new_milestone",
+                help="Unterziel für diese Aufgabe vormerken / Queue a milestone for this task.",
+            )
+
+            generate_suggestions = st.button(
+                "AI: Meilensteine vorschlagen / Suggest milestones",
+                key="ai_suggest_new_milestones",
+                disabled=not ai_enabled,
+                help="Erzeuge Vorschläge für Unterziele / Generate milestone proposals",
+            )
+
+            suggestion_candidates = [
+                MilestoneSuggestionItem.model_validate(item) for item in suggestion_store.get("draft", [])
+            ]
+            if generate_suggestions:
+                milestone_suggestion: AISuggestion[MilestoneSuggestionList] = suggest_milestones(
+                    title or "Aufgabe",
+                    gamification_mode=_current_gamification_mode(),
+                    client=client if ai_enabled else None,
+                )
+                suggestion_store["draft"] = [item.model_dump() for item in milestone_suggestion.payload.milestones]
+                st.session_state[NEW_MILESTONE_SUGGESTIONS_KEY] = suggestion_store
+                suggestion_candidates = milestone_suggestion.payload.milestones
+                label = "KI-Vorschlag / AI suggestion" if milestone_suggestion.from_ai else "Fallback"
+                st.info(f"{label}: {len(suggestion_candidates)} Ideen bereit.")
+
+            if add_milestone_draft:
+                if not milestone_title.strip():
+                    st.warning("Bitte Titel ergänzen / Please provide a title")
+                else:
+                    draft_milestones.append(
+                        {
+                            "title": milestone_title.strip(),
+                            "complexity": milestone_complexity.value,
+                            "points": int(milestone_points),
+                            "note": milestone_note.strip(),
+                        }
+                    )
+                    st.session_state[NEW_TODO_DRAFT_MILESTONES_KEY] = draft_milestones
+                    st.success("Meilenstein vorgemerkt / Milestone queued")
+                    st.rerun()
+
+            if suggestion_candidates:
+                st.markdown("###### Vorschläge übernehmen / Apply suggestions")
+                for idx, candidate in enumerate(suggestion_candidates):
+                    complexity = MilestoneComplexity(candidate.complexity)
+                    default_points = _points_for_complexity(complexity)
+                    st.caption(f"{candidate.title} · {complexity.label} · ~{default_points} Punkte")
+                    if st.button(f"Übernehmen #{idx + 1}", key=f"apply_new_milestone_{idx}"):
+                        draft_milestones.append(
+                            {
+                                "title": candidate.title,
+                                "complexity": complexity.value,
+                                "points": default_points,
+                                "note": candidate.rationale,
+                            }
+                        )
+                        st.session_state[NEW_TODO_DRAFT_MILESTONES_KEY] = draft_milestones
+                        st.success("Vorschlag übernommen / Suggestion added")
+                        st.rerun()
+
+            if draft_milestones:
+                st.markdown("###### Vorgemerkte Unterziele / Draft milestones")
+                for index, entry in enumerate(draft_milestones):
+                    complexity_label = MilestoneComplexity(entry.get("complexity", "medium")).label
+                    st.caption(f"{entry.get('title')} · {complexity_label} · {entry.get('points', 0)} Punkte")
+                    if entry.get("note"):
+                        st.caption(entry["note"])
+                    if st.button(f"Entfernen #{index + 1}", key=f"remove_draft_{index}"):
+                        draft_milestones.pop(index)
+                        st.session_state[NEW_TODO_DRAFT_MILESTONES_KEY] = draft_milestones
+                        st.rerun()
+
         action_cols = st.columns(2)
         with action_cols[0]:
             suggest_quadrant_clicked = st.form_submit_button(
@@ -1328,21 +1647,57 @@ def render_todo_section(
                 resolved_auto_complete = auto_complete if enable_target else False
                 resolved_unit = progress_unit if enable_target else ""
                 resolved_criteria = completion_criteria_md if enable_target else ""
-                add_todo(
-                    title=title.strip(),
-                    quadrant=quadrant,
-                    due_date=due_date,
-                    category=category,
-                    priority=priority,
-                    description_md=description_md,
-                    progress_current=current_value,
-                    progress_target=resolved_target,
-                    progress_unit=resolved_unit,
-                    auto_done_when_target_reached=resolved_auto_complete,
-                    completion_criteria_md=resolved_criteria,
-                    recurrence=recurrence,
-                    email_reminder=reminder,
-                )
+                draft_models = [
+                    Milestone(
+                        title=entry.get("title", ""),
+                        complexity=MilestoneComplexity(entry.get("complexity", "medium")),
+                        points=int(
+                            entry.get(
+                                "points",
+                                _points_for_complexity(MilestoneComplexity.MEDIUM),
+                            )
+                        ),
+                        note=str(entry.get("note", "")),
+                    )
+                    for entry in st.session_state.get(NEW_TODO_DRAFT_MILESTONES_KEY, [])
+                    if str(entry.get("title", "")).strip()
+                ]
+                if draft_models:
+                    add_todo(
+                        title=title.strip(),
+                        quadrant=quadrant,
+                        due_date=due_date,
+                        category=category,
+                        priority=priority,
+                        description_md=description_md,
+                        progress_current=current_value,
+                        progress_target=resolved_target,
+                        progress_unit=resolved_unit,
+                        auto_done_when_target_reached=resolved_auto_complete,
+                        completion_criteria_md=resolved_criteria,
+                        milestones=draft_models,
+                        recurrence=recurrence,
+                        email_reminder=reminder,
+                    )
+                else:
+                    add_todo(
+                        title=title.strip(),
+                        quadrant=quadrant,
+                        due_date=due_date,
+                        category=category,
+                        priority=priority,
+                        description_md=description_md,
+                        progress_current=current_value,
+                        progress_target=resolved_target,
+                        progress_unit=resolved_unit,
+                        auto_done_when_target_reached=resolved_auto_complete,
+                        completion_criteria_md=resolved_criteria,
+                        recurrence=recurrence,
+                        email_reminder=reminder,
+                    )
+                st.session_state[NEW_TODO_DRAFT_MILESTONES_KEY] = []
+                suggestion_store["draft"] = []
+                st.session_state[NEW_MILESTONE_SUGGESTIONS_KEY] = suggestion_store
                 st.success("ToDo gespeichert / Task saved.")
                 st.session_state[NEW_TODO_RESET_TRIGGER_KEY] = True
                 st.rerun()
