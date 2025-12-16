@@ -131,6 +131,7 @@ OPENAI_API_KEY = "sk-..."
 - Tageslogik: `done_today` wird automatisch auf den aktuellen Kalendertag bezogen; bei Datumswechsel werden die Tageswerte zurückgesetzt.
 - Kontinuität (Streak): zählt zusammenhängende Tage mit mindestens einem Abschluss.
 - Wochenansicht: Interaktives Plotly-Balkendiagramm der letzten 7 Tage mit Hover-Details und Zoom für die Abschlüsse, abgestimmt auf das dunkle Dashboard-Farbschema.
+- Zwischen KPI-Karten und Wochenchart erscheinen die wichtigsten offenen Aufgaben der Quadranten **U+I** und **I+nU** inklusive Unterziele / Between the KPI cards and the weekly chart the most relevant open tasks from the **U+I** and **I+nU** quadrants are shown, including their milestones.
 - Zusätzlich ein gestapeltes Plotly-Balkendiagramm für die letzten 7 Tage, aufgeteilt nach Kategorien, um Fortschritt je Lebensbereich sichtbar zu machen / Added a stacked 7-day Plotly bar by category for a quiet, dark-friendly overview that matches the dark-green theme.
 
 ## Gamification
