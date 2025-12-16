@@ -1626,41 +1626,6 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
     if profile_saved:
         panel.success("Zielprofil aktualisiert")
 
-    panel.markdown("### Tagesziel")
-    goal_input_value = _resolve_goal_input_value(settings=settings, stats=stats)
-    goal_row = panel.columns(3)
-    with goal_row[0]:
-        goal_value = panel.number_input(
-            "Ziel pro Tag",
-            min_value=1,
-            step=1,
-            value=goal_input_value,
-            key=SETTINGS_GOAL_DAILY_KEY,
-            help=("Lege ein realistisches Tagesziel fest"),
-        )
-    with goal_row[1]:
-        if panel.button("Ziel speichern", key="settings_save_goal"):
-            update_goal_daily(int(goal_value))
-            panel.success("Tagesziel aktualisiert")
-            st.rerun()
-    with goal_row[2]:
-        if panel.button(
-            "AI: Ziel vorschlagen",
-            key="settings_ai_goal",
-            disabled=not ai_enabled,
-            help=("Lässt OpenAI einen Vorschlag machen; ohne Schlüssel wird ein Fallback genutzt"),
-        ):
-            suggestion = suggest_goals(stats, client=client if ai_enabled else None)
-            st.session_state[AI_GOAL_SUGGESTION_KEY] = suggestion
-            st.session_state[GOAL_SUGGESTED_VALUE_KEY] = suggestion.payload.daily_goal
-            st.rerun()
-    settings["goal_daily"] = int(goal_value)
-
-    goal_suggestion: AISuggestion[Any] | None = st.session_state.get(AI_GOAL_SUGGESTION_KEY)
-    if goal_suggestion:
-        badge = "🤖" if goal_suggestion.from_ai else "🧭"
-        panel.info(f"{badge} {goal_suggestion.payload.focus} — {goal_suggestion.payload.daily_goal} Ziele")
-
     with _panel_section(panel, "Kategorienziele"):
         category_goals = settings.get("category_goals", {})
         goal_columns = panel.columns(2)
@@ -1903,6 +1868,17 @@ def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, categor
         width="stretch",
         config={"displaylogo": False, "responsive": True},
     )
+
+
+def render_shared_calendar() -> None:
+    st.subheader("Gemeinsamer Kalender / Shared calendar")
+    st.caption(
+        "2025 von Carla, Miri & Gerrit · Google Kalender — 2025 by Carla, Miri & Gerrit · Google Calendar"
+    )
+    calendar_iframe = """
+    <iframe src="https://calendar.google.com/calendar/embed?height=600&wkst=1&ctz=Europe%2FAmsterdam&showPrint=0&src=e2a52f862c8088c82d9f74825b8c39f6069965fdc652472fbf5ec28e891c077e%40group.calendar.google.com&color=%23616161" style="border:solid 1px #777" width="800" height="600" frameborder="0" scrolling="no"></iframe>
+    """
+    st.markdown(calendar_iframe, unsafe_allow_html=True)
 
 
 def render_todo_section(
@@ -3144,6 +3120,8 @@ def main() -> None:
                 stats=stats,
                 category_goals=category_goals,
             )
+
+        render_shared_calendar()
 
         settings_container = st.container()
         ai_enabled = render_settings_panel(stats, client, panel=settings_container)

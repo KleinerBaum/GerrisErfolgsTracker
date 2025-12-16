@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Ziele-Seite zeigt jetzt den Google-Kalender **2025 von Carla, Miri & Gerrit** zwischen KPI-Dashboard und Einstellungen / Goals page now embeds the Google Calendar **2025 by Carla, Miri & Gerrit** between the KPI dashboard and settings.
 - Standard-Startseite auf **Ziele / Goals** gesetzt, sodass die App direkt die Zielübersicht lädt / Default landing page switched to **Ziele / Goals** so the app opens on the goals overview.
 - Tagesziel-Sektion aus der Seite **Ziele** entfernt und das Ziel-Canvas konsequent zweispaltig angeordnet / Removed the daily target section from the **Ziele** page and organized the goal canvas in a consistent two-column layout.
 - Alle verbleibenden englischen UI-Texte entfernt; Labels, Hinweise und Gamification-Meldungen sind jetzt ausschließlich auf Deutsch.
