@@ -249,7 +249,7 @@ def test_quadrant_suggestion_sets_prefill_and_rationale(
     session_state: Dict[str, object], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session_state[NEW_TODO_TITLE_KEY] = "Testaufgabe"
-    plan = _FormPlan(submit_sequence=[True, False])
+    plan = _FormPlan(submit_sequence=[False, False, True, False])
     st_stub = _StreamlitTodoStub(session_state, plan)
 
     suggestion = AISuggestion[TodoCategorization](
@@ -281,7 +281,7 @@ def test_submit_resets_form_state_without_widget_writes(
     session_state[NEW_TODO_QUADRANT_KEY] = EisenhowerQuadrant.URGENT_IMPORTANT
     session_state[AI_QUADRANT_RATIONALE_KEY] = "Alt / Old"
 
-    submissions = _FormPlan(submit_sequence=[False, True])
+    submissions = _FormPlan(submit_sequence=[False, False, False, True])
     st_stub = _StreamlitTodoStub(session_state, submissions)
     added: Dict[str, Any] = {}
 
