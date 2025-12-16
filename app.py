@@ -1481,8 +1481,8 @@ def render_gamification_panel(
 
         panel.caption(gamification_mode.label)
         panel.caption(
-            "Dipl.-Psych. Roß steht für warme, therapeutische Motivation (Brünette, ca. 45 Jahre, Brille) / "
-            "Dipl.-Psych. Roß offers warm, therapeutic motivation (brunette, about 45 years old, with glasses)."
+            "Dipl.-Psych. Roß steht für warme, therapeutische Motivation / "
+            "Dipl.-Psych. Roß offers warm, therapeutic motivation."
         )
     else:
         panel.caption(gamification_mode.label)
