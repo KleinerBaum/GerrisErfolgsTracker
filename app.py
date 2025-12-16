@@ -1489,7 +1489,7 @@ def render_gamification_panel(
     except ValueError:
         gamification_mode = GamificationMode.POINTS
 
-    panel.subheader("Gamification")
+    panel.subheader("Gamification-Variante / Gamification variant")
 
     if allow_mode_selection:
         gamification_mode_options = list(GamificationMode)
