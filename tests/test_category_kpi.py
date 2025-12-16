@@ -65,6 +65,7 @@ def test_aggregate_category_kpis_tracks_counts_and_streaks() -> None:
         Category.JOB_SEARCH.value: 2,
         Category.ADMIN.value: 1,
         Category.DRUGS.value: 0,
+        Category.ISSUES.value: 0,
     }
     snapshots = aggregate_category_kpis(
         todos,
@@ -87,6 +88,11 @@ def test_aggregate_category_kpis_tracks_counts_and_streaks() -> None:
     assert drugs.daily_goal == 0
     assert drugs.goal_progress == 0.0
     assert drugs.streak == 1
+
+    issues = snapshots[Category.ISSUES]
+    assert issues.daily_goal == 0
+    assert issues.goal_progress == 0.0
+    assert issues.streak == 4
 
     daily_structure = snapshots[Category.DAILY_STRUCTURE]
     assert daily_structure.streak == 4
@@ -130,4 +136,5 @@ def test_last_7_days_counts_by_category() -> None:
     assert counts_by_date[date(2024, 1, 10).isoformat()][Category.JOB_SEARCH.value] == 1
     assert counts_by_date[date(2024, 1, 9).isoformat()][Category.ADMIN.value] == 1
     assert counts_by_date[date(2024, 1, 6).isoformat()][Category.FRIENDS_FAMILY.value] == 1
+    assert counts_by_date[date(2024, 1, 7).isoformat()][Category.ISSUES.value] == 0
     assert counts_by_date[date(2024, 1, 4).isoformat()][Category.DAILY_STRUCTURE.value] == 0

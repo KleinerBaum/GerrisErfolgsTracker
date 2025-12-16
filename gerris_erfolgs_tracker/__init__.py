@@ -1,1 +1,1 @@
-"""Core package for Gerris ErfolgsTracker state management."""
+"""Core package for InnerBalance Companion / Selbsttherapie-Begleiter state management."""
