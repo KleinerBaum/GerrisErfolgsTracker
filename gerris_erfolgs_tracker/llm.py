@@ -13,6 +13,7 @@ from openai import (
     OpenAI,
     RateLimitError,
 )
+from streamlit.errors import StreamlitSecretNotFoundError
 from pydantic import BaseModel
 
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -29,9 +30,12 @@ class LLMError(RuntimeError):
 
 
 def _get_secret(name: str) -> Optional[str]:
-    value = st.secrets.get(name)
-    if value:
-        return str(value)
+    try:
+        value = st.secrets.get(name)
+        if value:
+            return str(value)
+    except StreamlitSecretNotFoundError:
+        value = None
     return os.getenv(name)
 
 

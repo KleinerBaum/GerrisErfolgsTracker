@@ -59,6 +59,7 @@ from gerris_erfolgs_tracker.eisenhower import (
     sort_todos,
 )
 from gerris_erfolgs_tracker.gamification import (
+    award_journal_points,
     calculate_progress_to_next_level,
     get_gamification_state,
     next_avatar_prompt,
@@ -80,6 +81,11 @@ from gerris_erfolgs_tracker.journal import (
     get_journal_entries,
     journal_gratitude_suggestions,
     upsert_journal_entry,
+)
+from gerris_erfolgs_tracker.journal_alignment import (
+    JournalAlignmentSuggestion,
+    JournalUpdateCandidate,
+    suggest_journal_alignment,
 )
 from gerris_erfolgs_tracker.i18n import (
     LANGUAGE_OPTIONS,
@@ -287,6 +293,8 @@ SortOverride = Literal["priority", "due_date", "created_at"]
 JOURNAL_ACTIVE_DATE_KEY = "journal_active_date"
 JOURNAL_FORM_SEED_KEY = "journal_form_seed"
 JOURNAL_FIELD_PREFIX = "journal_field_"
+JOURNAL_PENDING_UPDATES_KEY = "journal_pending_updates"
+JOURNAL_PENDING_SELECTION_PREFIX = "journal_pending_selection_"
 MOOD_PRESETS: tuple[str, ...] = (
     "ruhig / calm",
     "dankbar / grateful",
@@ -339,11 +347,107 @@ def _prefill_journal_form(entry: JournalEntry) -> None:
     for key in [key for key in st.session_state if key.startswith("journal_gratitude_")]:
         del st.session_state[key]
 
-    gratitudes = entry.gratitudes or [entry.gratitude_1, entry.gratitude_2, entry.gratitude_3]
-    cleaned_gratitudes = [value for value in gratitudes if value.strip()]
-    st.session_state[_journal_field_key("gratitudes")] = cleaned_gratitudes
-    for index, value in enumerate(cleaned_gratitudes):
-        st.session_state[f"journal_gratitude_{index}"] = value
+
+def _serialize_journal_candidate(candidate: JournalUpdateCandidate) -> dict[str, object]:
+    return {
+        "target_id": candidate.target_id,
+        "target_title": candidate.target_title,
+        "suggested_points": candidate.suggested_points,
+        "follow_up": candidate.follow_up,
+        "rationale": candidate.rationale,
+    }
+
+
+def _store_journal_alignment(entry_date: date, suggestion: AISuggestion[JournalAlignmentSuggestion]) -> None:
+    payload = suggestion.payload
+    actions: list[JournalUpdateCandidate] = getattr(payload, "actions", []) if payload else []
+    summary: str = getattr(payload, "summary", "") if payload else ""
+    st.session_state[JOURNAL_PENDING_UPDATES_KEY] = {
+        "entry_date": entry_date.isoformat(),
+        "actions": [_serialize_journal_candidate(action) for action in actions],
+        "summary": summary,
+        "from_ai": suggestion.from_ai,
+    }
+
+    for key in [key for key in st.session_state if key.startswith(JOURNAL_PENDING_SELECTION_PREFIX)]:
+        del st.session_state[key]
+
+
+def _render_journal_alignment_review() -> None:
+    pending = st.session_state.get(JOURNAL_PENDING_UPDATES_KEY)
+    if not isinstance(pending, Mapping):
+        return
+
+    entry_date_raw = pending.get("entry_date")
+    try:
+        entry_date = date.fromisoformat(str(entry_date_raw))
+    except Exception:
+        return
+
+    actions = pending.get("actions", [])
+    summary = str(pending.get("summary", ""))
+    from_ai = bool(pending.get("from_ai"))
+    badge = "🤖" if from_ai else "🧭"
+
+    if not actions:
+        if summary:
+            st.info(f"{badge} {summary}")
+        return
+
+    st.markdown("#### Vorgeschlagene Updates / Proposed updates")
+    if summary:
+        st.caption(f"{badge} {summary}")
+    st.info(
+        "Bitte prüfe die vermuteten Fortschritte und bestätige die gewünschten Updates. / "
+        "Review the inferred progress and confirm which updates to apply.",
+    )
+
+    selected_indices: list[int] = []
+    for index, action in enumerate(actions):
+        if not isinstance(action, Mapping):
+            continue
+
+        title = str(action.get("target_title", "Ziel / Goal"))
+        suggested_points = int(action.get("suggested_points", 0) or 0)
+        follow_up = str(action.get("follow_up", ""))
+        rationale = str(action.get("rationale", ""))
+
+        checkbox_key = f"{JOURNAL_PENDING_SELECTION_PREFIX}{index}"
+        label = f"{title} (+{suggested_points} Punkte)"
+        confirmed = st.checkbox(label, key=checkbox_key)
+        if follow_up:
+            st.caption(follow_up)
+        if rationale:
+            st.caption(f"Grund / Reason: {rationale}")
+
+        if confirmed:
+            selected_indices.append(index)
+
+    apply_disabled = len(selected_indices) == 0
+    if st.button(
+        "Ausgewählte Updates anwenden / Apply selected updates",
+        type="primary",
+        disabled=apply_disabled,
+    ):
+        for index in selected_indices:
+            if index >= len(actions):
+                continue
+            action = actions[index]
+            if not isinstance(action, Mapping):
+                continue
+            title = str(action.get("target_title", "Ziel / Goal"))
+            points = int(action.get("suggested_points", 0) or 0)
+            rationale = str(action.get("rationale", "")) or "Journalabgleich"
+            award_journal_points(
+                entry_date=entry_date,
+                target_title=title,
+                points=points,
+                rationale=rationale,
+            )
+
+        st.success("Updates gespeichert / Updates applied.")
+        st.session_state.pop(JOURNAL_PENDING_UPDATES_KEY, None)
+        st.rerun()
 
 
 def _json_default(value: Any) -> str:
@@ -1788,7 +1892,7 @@ def _resolve_active_journal_date() -> date:
         return date.today()
 
 
-def render_journal_section() -> None:
+def render_journal_section(*, ai_enabled: bool, client: Optional[OpenAI], todos: list[TodoItem]) -> None:
     ensure_journal_state()
     entries = get_journal_entries()
     active_date = _resolve_active_journal_date()
@@ -1922,9 +2026,18 @@ def render_journal_section() -> None:
                 categories=[Category(item) for item in selected_categories],
             )
             upsert_journal_entry(journal_entry)
+            with st.spinner("Prüfe Eintrag gegen Ziele / Matching entry with goals..."):
+                alignment = suggest_journal_alignment(
+                    entry=journal_entry,
+                    todos=todos,
+                    client=client if ai_enabled else None,
+                )
+            _store_journal_alignment(journal_entry.date, alignment)
             st.success("Eintrag gespeichert / Entry saved.")
             st.session_state[JOURNAL_FORM_SEED_KEY] = journal_entry.date
             st.rerun()
+
+    _render_journal_alignment_review()
 
     if entries:
         st.markdown("#### Letzte Einträge / Recent entries")
@@ -1990,7 +2103,7 @@ def main() -> None:
         st.caption("Verwalte und plane deine Aufgaben. Ziele & KI konfigurierst du im Bereich 'Ziele'.")
         render_todo_section(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
     else:
-        render_journal_section()
+        render_journal_section(ai_enabled=ai_enabled, client=client, todos=todos)
 
 
 if __name__ == "__main__":
