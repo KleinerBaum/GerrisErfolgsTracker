@@ -1955,8 +1955,6 @@ def main() -> None:
             "Kein OPENAI_API_KEY gefunden. Vorschläge nutzen Fallbacks, bis ein Key in "
             "st.secrets oder der Umgebung hinterlegt ist."
         )
-    else:
-        st.caption(f"Aktives Modell: {get_default_model()} (konfigurierbar via OPENAI_MODEL).")
 
     if selection == translate_text(GOALS_PAGE_LABEL):
         settings_container = st.container()
