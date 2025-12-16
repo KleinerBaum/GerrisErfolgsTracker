@@ -553,6 +553,21 @@ MOOD_PRESETS: tuple[str, ...] = (
     "überfordert",
     "fokussiert",
 )
+GOAL_COMPLETION_SELECTOR_VISIBLE_KEY = "goal_completion_selector_visible"
+GOAL_COMPLETION_SELECTED_ID_KEY = "goal_completion_selected_id"
+QUICK_GOAL_TODO_FORM_KEY = "quick_goal_todo_form"
+QUICK_GOAL_JOURNAL_FORM_KEY = "quick_goal_journal_form"
+QUICK_GOAL_TODO_DESCRIPTION_KEY = "quick_goal_todo_description"
+QUICK_GOAL_TODO_DUE_KEY = "quick_goal_todo_due"
+QUICK_GOAL_TODO_QUADRANT_KEY = "quick_goal_todo_quadrant"
+QUICK_GOAL_TODO_CATEGORY_KEY = "quick_goal_todo_category"
+QUICK_GOAL_TODO_PRIORITY_KEY = "quick_goal_todo_priority"
+QUICK_GOAL_TODO_TITLE_KEY = "quick_goal_todo_title"
+QUICK_GOAL_JOURNAL_DATE_KEY = "quick_goal_journal_date"
+QUICK_GOAL_JOURNAL_MOODS_KEY = "quick_goal_journal_moods"
+QUICK_GOAL_JOURNAL_NOTES_KEY = "quick_goal_journal_notes"
+QUICK_GOAL_JOURNAL_CATEGORIES_KEY = "quick_goal_journal_categories"
+QUICK_GOAL_JOURNAL_GRATITUDE_KEY = "quick_goal_journal_gratitude"
 
 
 def _is_streamlit_cloud() -> bool:
@@ -1794,10 +1809,208 @@ def _build_new_tasks_gauge(new_task_count: int) -> go.Figure:
     return figure
 
 
-def render_goal_completion_logger(todos: list[TodoItem]) -> None:
-    st.subheader("Aktivität abhaken / Log activity")
+def _render_goal_quick_todo_popover() -> None:
+    with st.popover(
+        translate_text(("Aufgabe erstellen", "Create task")),
+        use_container_width=True,
+    ):
+        st.markdown("**ToDo hinzufügen / Add task**")
+        with st.form(QUICK_GOAL_TODO_FORM_KEY):
+            title = st.text_input(
+                translate_text(("Titel / Title", "Title / Title")),
+                key=QUICK_GOAL_TODO_TITLE_KEY,
+                placeholder=translate_text(
+                    (
+                        "z. B. Neue Aufgabe anlegen",
+                        "e.g., Add a new task",
+                    )
+                ),
+            )
+            due_date = st.date_input(
+                translate_text(("Fälligkeitsdatum", "Due date")),
+                value=st.session_state.get(QUICK_GOAL_TODO_DUE_KEY, date.today()),
+                format="YYYY-MM-DD",
+                key=QUICK_GOAL_TODO_DUE_KEY,
+            )
+            quadrant = st.selectbox(
+                translate_text(("Eisenhower-Quadrant", "Eisenhower quadrant")),
+                options=list(EisenhowerQuadrant),
+                format_func=lambda option: option.label,
+                key=QUICK_GOAL_TODO_QUADRANT_KEY,
+            )
+            meta_cols = st.columns(2)
+            with meta_cols[0]:
+                category = st.selectbox(
+                    translate_text(("Kategorie", "Category")),
+                    options=list(Category),
+                    format_func=lambda option: option.label,
+                    key=QUICK_GOAL_TODO_CATEGORY_KEY,
+                )
+            with meta_cols[1]:
+                priority = st.slider(
+                    translate_text(("Priorität", "Priority")),
+                    min_value=1,
+                    max_value=5,
+                    value=int(st.session_state.get(QUICK_GOAL_TODO_PRIORITY_KEY, 3)),
+                    key=QUICK_GOAL_TODO_PRIORITY_KEY,
+                )
 
+            description_md = st.text_area(
+                translate_text(("Beschreibung", "Description")),
+                key=QUICK_GOAL_TODO_DESCRIPTION_KEY,
+                placeholder=translate_text(
+                    (
+                        "Kurz notieren, worum es geht",
+                        "Briefly describe the task",
+                    )
+                ),
+            )
+
+            submitted = st.form_submit_button(
+                translate_text(("Aufgabe speichern", "Save task")),
+                type="primary",
+            )
+
+            if submitted:
+                if not title.strip():
+                    st.warning(
+                        translate_text(
+                            (
+                                "Bitte einen Titel eintragen.",
+                                "Please add a title.",
+                            )
+                        )
+                    )
+                else:
+                    add_todo(
+                        title=title.strip(),
+                        quadrant=quadrant,
+                        due_date=due_date,
+                        category=category,
+                        priority=priority,
+                        description_md=description_md.strip(),
+                    )
+                    st.success(
+                        translate_text(
+                            (
+                                "Aufgabe angelegt.",
+                                "Task created.",
+                            )
+                        )
+                    )
+                    st.rerun()
+
+
+def _render_goal_quick_journal_popover() -> None:
+    with st.popover(
+        translate_text(("Tagebucheintrag erstellen", "Create journal entry")),
+        use_container_width=True,
+    ):
+        st.markdown("**Tagebucheintrag / Journal entry**")
+        with st.form(QUICK_GOAL_JOURNAL_FORM_KEY):
+            entry_date = st.date_input(
+                translate_text(("Datum", "Date")),
+                value=st.session_state.get(QUICK_GOAL_JOURNAL_DATE_KEY, date.today()),
+                max_value=date.today(),
+                format="YYYY-MM-DD",
+                key=QUICK_GOAL_JOURNAL_DATE_KEY,
+            )
+            moods = st.multiselect(
+                translate_text(("Stimmung", "Mood")),
+                options=list(MOOD_PRESETS),
+                default=st.session_state.get(QUICK_GOAL_JOURNAL_MOODS_KEY, list(MOOD_PRESETS[:2])),
+                key=QUICK_GOAL_JOURNAL_MOODS_KEY,
+                help=translate_text(
+                    (
+                        "Wähle passende Stimmungstags aus oder ergänze eigene.",
+                        "Pick mood tags or add your own.",
+                    )
+                ),
+            )
+            notes = st.text_area(
+                translate_text(("Notizen", "Notes")),
+                key=QUICK_GOAL_JOURNAL_NOTES_KEY,
+                placeholder=translate_text(
+                    (
+                        "Kurz festhalten, was heute wichtig war",
+                        "Briefly capture what mattered today",
+                    )
+                ),
+            )
+            gratitude = st.text_input(
+                translate_text(("Dankbarkeit (optional)", "Gratitude (optional)")),
+                key=QUICK_GOAL_JOURNAL_GRATITUDE_KEY,
+                placeholder=translate_text(
+                    (
+                        "z. B. Spaziergang in der Sonne",
+                        "e.g., Walk in the sun",
+                    )
+                ),
+            )
+            categories = st.multiselect(
+                translate_text(("Kategorien", "Categories")),
+                options=list(Category),
+                format_func=lambda option: option.label,
+                key=QUICK_GOAL_JOURNAL_CATEGORIES_KEY,
+                help=translate_text(
+                    (
+                        "Ordne den Eintrag optional deinen Lebensbereichen zu.",
+                        "Optionally map the entry to your life areas.",
+                    )
+                ),
+            )
+
+            submitted = st.form_submit_button(
+                translate_text(("Eintrag speichern", "Save entry")),
+                type="primary",
+            )
+            if submitted:
+                entry = JournalEntry(
+                    date=entry_date,
+                    moods=list(moods),
+                    mood_notes=notes.strip(),
+                    triggers_and_reactions="",
+                    negative_thought="",
+                    rational_response="",
+                    self_care_today="",
+                    self_care_tomorrow="",
+                    gratitudes=[gratitude.strip()] if gratitude.strip() else [],
+                    categories=list(categories),
+                )
+                upsert_journal_entry(entry)
+                st.success(
+                    translate_text(
+                        (
+                            "Eintrag gespeichert.",
+                            "Entry saved.",
+                        )
+                    )
+                )
+                st.rerun()
+
+
+def render_goal_completion_logger(todos: list[TodoItem]) -> None:
     open_todos = [todo for todo in todos if not todo.completed]
+    show_selector = bool(st.session_state.get(GOAL_COMPLETION_SELECTOR_VISIBLE_KEY, False))
+
+    action_cols = st.columns([1, 1, 1])
+    with action_cols[0]:
+        completion_clicked = st.button(
+            "Gelöst / Completed",
+            type="primary",
+            disabled=not open_todos,
+            help=translate_text(
+                (
+                    "Dokumentiert den Abschluss, aktualisiert KPI-Dashboard, Tachometer und Gamification.",
+                    "Logs the completion and refreshes the KPI dashboard, gauges, and gamification.",
+                )
+            ),
+        )
+    with action_cols[1]:
+        _render_goal_quick_todo_popover()
+    with action_cols[2]:
+        _render_goal_quick_journal_popover()
+
     if not open_todos:
         st.info(
             translate_text(
@@ -1807,58 +2020,58 @@ def render_goal_completion_logger(todos: list[TodoItem]) -> None:
                 )
             )
         )
+        st.session_state[GOAL_COMPLETION_SELECTOR_VISIBLE_KEY] = False
+        st.session_state.pop(GOAL_COMPLETION_SELECTED_ID_KEY, None)
         return
 
     option_lookup = {todo.id: f"{todo.title} · {todo.category.label} · {todo.quadrant.label}" for todo in open_todos}
 
-    selected_todo_id = st.selectbox(
-        "Welche Aufgabe ist erledigt? / Which task is done?",
-        options=list(option_lookup),
-        format_func=lambda value: option_lookup.get(value, value),
-        help=translate_text(
-            (
-                "Wähle eine offene Aufgabe aus, die du abschließen möchtest.",
-                "Pick one of your open tasks to complete it.",
-            )
-        ),
-    )
-
-    if st.button(
-        "Gelöst / Completed",
-        type="primary",
-        help=translate_text(
-            (
-                "Dokumentiert den Abschluss, aktualisiert KPI-Dashboard, Tachometer und Gamification.",
-                "Logs the completion and refreshes the KPI dashboard, gauges, and gamification.",
-            )
-        ),
-    ):
-        target = next((todo for todo in open_todos if todo.id == selected_todo_id), None)
-        if not target:
-            st.warning(
-                translate_text(
-                    (
-                        "Bitte wähle eine Aufgabe aus der Liste aus.",
-                        "Please select a task from the list.",
-                    )
+    selected_todo_id: str | None = None
+    if show_selector:
+        selected_todo_id = st.selectbox(
+            "Welche Aufgabe ist erledigt? / Which task is done?",
+            options=list(option_lookup),
+            format_func=lambda value: option_lookup.get(value, value),
+            key=GOAL_COMPLETION_SELECTED_ID_KEY,
+            help=translate_text(
+                (
+                    "Wähle eine offene Aufgabe aus, die du abschließen möchtest.",
+                    "Pick one of your open tasks to complete it.",
                 )
-            )
-            return
+            ),
+        )
 
-        previous_state = _gamification_snapshot()
-        updated = toggle_complete(target.id)
-        if updated and updated.completed:
-            _handle_completion_success(updated, previous_state=previous_state)
+    if completion_clicked:
+        if not show_selector:
+            st.session_state[GOAL_COMPLETION_SELECTOR_VISIBLE_KEY] = True
             st.rerun()
         else:
-            st.error(
-                translate_text(
-                    (
-                        "Konnte den Abschluss nicht speichern.",
-                        "Could not persist the completion.",
+            target = next((todo for todo in open_todos if todo.id == selected_todo_id), None)
+            if not target:
+                st.warning(
+                    translate_text(
+                        (
+                            "Bitte wähle eine Aufgabe aus der Liste aus.",
+                            "Please select a task from the list.",
+                        )
                     )
                 )
-            )
+                return
+
+            previous_state = _gamification_snapshot()
+            updated = toggle_complete(target.id)
+            if updated and updated.completed:
+                _handle_completion_success(updated, previous_state=previous_state)
+                st.rerun()
+            else:
+                st.error(
+                    translate_text(
+                        (
+                            "Konnte den Abschluss nicht speichern.",
+                            "Could not persist the completion.",
+                        )
+                    )
+                )
 
 
 def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[TodoItem]) -> list[str]:
