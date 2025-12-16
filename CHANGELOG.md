@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Behebt Streamlit-Fehler im ToDo-Formular, indem alle Meilenstein-Buttons innerhalb des Formulars als Submit-Buttons laufen / Fixes Streamlit errors in the ToDo form by using submit buttons for all milestone actions inside the form.
 - KI-gestützter Abgleich neuer Tagebucheinträge mit vorhandenen Zielen/Aufgaben inklusive manueller Freigabe der vorgeschlagenen Punkte-Updates / AI-assisted matching of new journal entries against existing goals/tasks with manual approval for the proposed point updates.
 - Behebt einen fehlenden Import für Milestone-Vorschlags-Schemas, sodass die Streamlit-App ohne `ImportError` startet / Fixed missing milestone suggestion schema export so the Streamlit app starts without `ImportError`.
 - Wiederholbare Aufgaben mit Auswahl für einmalig, werktags, wöchentlich, monatlich oder jährlich sowie optionale E-Mail-Erinnerungen 1 Stunde oder 1 Tag vor Fälligkeit im Erfassungs- und Quick-Edit-Formular / Repeatable tasks with one-time, weekday, weekly, monthly, or yearly cadence plus optional email reminders 1 hour or 1 day before due dates in the create and quick-edit forms.
