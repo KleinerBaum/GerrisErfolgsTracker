@@ -6,7 +6,8 @@ from contextlib import nullcontext
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any, Literal, Mapping, Optional, TypedDict, cast
+from typing import Any, Literal, Mapping, Optional, Sequence, TypedDict, cast
+
 import plotly.graph_objects as go
 import streamlit as st
 from openai import OpenAI
@@ -39,6 +40,7 @@ from gerris_erfolgs_tracker.constants import (
     GOAL_CREATION_VISIBLE_KEY,
     GOAL_OVERVIEW_SHOW_CATEGORY_KEY,
     GOAL_OVERVIEW_SHOW_KPI_KEY,
+    GOAL_OVERVIEW_SELECTED_TASKS_KEY,
     GOAL_SUGGESTED_VALUE_KEY,
     NEW_TODO_CATEGORY_KEY,
     NEW_TODO_DESCRIPTION_KEY,
@@ -519,6 +521,29 @@ def _sanitize_category_goals(settings: Mapping[str, object]) -> dict[str, int]:
             sanitized_value = 1
         sanitized[category.value] = sanitized_value
     return sanitized
+
+
+def _sanitize_goal_overview_tasks(selection: object, todos: Sequence[TodoItem]) -> list[str]:
+    valid_ids = {todo.id for todo in todos}
+    if not isinstance(selection, list):
+        return []
+
+    sanitized: list[str] = []
+    for candidate in selection:
+        candidate_id = str(candidate)
+        if candidate_id in valid_ids:
+            sanitized.append(candidate_id)
+
+    return sanitized
+
+
+def _filter_goal_overview_todos(todos: Sequence[TodoItem], selected_ids: Sequence[str]) -> list[TodoItem]:
+    if not selected_ids:
+        return list(todos)
+
+    selected_lookup = set(selected_ids)
+    filtered = [todo for todo in todos if todo.id in selected_lookup]
+    return filtered or list(todos)
 
 
 SortOverride = Literal["priority", "due_date", "created_at"]
@@ -1787,25 +1812,47 @@ def _build_category_gauge(snapshot: CategoryKpi) -> go.Figure:
     return figure
 
 
+def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[TodoItem]) -> list[str]:
+    with st.expander("Einstellungen / Settings", expanded=False):
+        st.caption(
+            "Wähle die Aufgaben aus, die im Dashboard gezählt werden. / Select which tasks feed the dashboard.",
+        )
+        if not todos:
+            st.info("Keine Aufgaben vorhanden / No tasks available.")
+            return []
+
+        option_lookup = {
+            todo.id: f"{todo.title} · {translate_text(todo.category.label)} · "
+            f"{translate_text(('Status: offen', 'Status: open')) if not todo.completed else translate_text(('Status: erledigt', 'Status: done'))}"
+            for todo in todos
+        }
+        previous_selection = _sanitize_goal_overview_tasks(settings.get(GOAL_OVERVIEW_SELECTED_TASKS_KEY, []), todos)
+        default_selection = previous_selection or list(option_lookup)
+
+        selection = st.multiselect(
+            "Aufgaben für das Dashboard / Tasks mirrored on dashboard",
+            options=list(option_lookup),
+            default=default_selection,
+            format_func=lambda value: option_lookup.get(value, value),
+            help=(
+                "Setze ein Häkchen bei den Aufgaben, die in KPI-Zielen und Kategorien berücksichtigt werden sollen / "
+                "Pick the tasks that should count toward KPI goals and categories."
+            ),
+        )
+        sanitized_selection = _sanitize_goal_overview_tasks(selection, todos)
+        if sanitized_selection != previous_selection:
+            settings[GOAL_OVERVIEW_SELECTED_TASKS_KEY] = sanitized_selection
+            st.session_state[SS_SETTINGS] = settings
+            persist_state()
+
+        return sanitized_selection
+
+
 def render_goal_overview(
-    todos: list[TodoItem], *, stats: KpiStats, category_goals: Mapping[str, int]
+    todos: list[TodoItem], *, stats: KpiStats, category_goals: Mapping[str, int], settings: dict[str, Any]
 ) -> tuple[bool, bool]:
     st.subheader("Ziele im Überblick / Goals at a glance")
-    snapshots = aggregate_category_kpis(
-        todos,
-        category_goals=category_goals,
-        fallback_streak=stats.streak,
-    )
-
     overview_columns = st.columns([1, 1, 1, 1, 1, 0.8])
-    for category_index, category in enumerate(Category):
-        snapshot = snapshots[category]
-        with overview_columns[category_index]:
-            st.plotly_chart(
-                _build_category_gauge(snapshot),
-                width="stretch",
-                config={"displaylogo": False, "responsive": True},
-            )
 
     with overview_columns[-1]:
         st.markdown("**Visualisierungen / Visualisations**")
@@ -1819,8 +1866,25 @@ def render_goal_overview(
             "Kategorie-Trends anzeigen / Show category trends",
             value=st.session_state.get(GOAL_OVERVIEW_SHOW_CATEGORY_KEY, True),
             key=GOAL_OVERVIEW_SHOW_CATEGORY_KEY,
-            help="Blendet die Detailvisualisierungen zu den Kategorien ein / Show detailed category charts.",
+            help=("Blendet die Detailvisualisierungen zu den Kategorien ein / Show detailed category charts."),
         )
+        selected_task_ids = _render_goal_overview_settings(settings=settings, todos=todos)
+
+    filtered_todos = _filter_goal_overview_todos(todos, selected_task_ids)
+    snapshots = aggregate_category_kpis(
+        filtered_todos,
+        category_goals=category_goals,
+        fallback_streak=stats.streak,
+    )
+
+    for category_index, category in enumerate(Category):
+        snapshot = snapshots[category]
+        with overview_columns[category_index]:
+            st.plotly_chart(
+                _build_category_gauge(snapshot),
+                width="stretch",
+                config={"displaylogo": False, "responsive": True},
+            )
 
     return show_kpi_dashboard, show_category_trends
 
@@ -2992,11 +3056,15 @@ def main() -> None:
         )
 
     if selection == translate_text(GOALS_PAGE_LABEL):
-        category_goals = _sanitize_category_goals(st.session_state.get(SS_SETTINGS, {}))
+        settings = st.session_state.get(SS_SETTINGS, {})
+        if not isinstance(settings, dict):
+            settings = {}
+        category_goals = _sanitize_category_goals(settings)
         show_kpi_dashboard, show_category_trends = render_goal_overview(
             todos,
             stats=stats,
             category_goals=category_goals,
+            settings=settings,
         )
 
         if show_kpi_dashboard:
