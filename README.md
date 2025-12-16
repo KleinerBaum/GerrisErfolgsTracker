@@ -84,7 +84,7 @@ OPENAI_API_KEY = "sk-..."
 
 ## Einstellungen & Sicherheit / Settings & Safety
 
-- Die Seitenleiste bündelt die Navigation zwischen **Ziele / Goals**, **Aufgaben / Tasks** und **Tagebuch / Journal** und zeigt direkt darunter das Gamification-Panel inkl. Modus-Wahl (Punkte, Badges, Dipl.-Psych. Roß); die App startet mit geöffneter Sidebar und lädt standardmäßig die Seite **Aufgaben / Tasks** / The sidebar hosts navigation plus the gamification section including mode selection (points, badges, Dipl.-Psych. Roß) and starts expanded, defaulting to the **Aufgaben / Tasks** page on load.
+- Die Seitenleiste bündelt die Navigation zwischen **Ziele / Goals**, **Aufgaben / Tasks** und **Tagebuch / Journal** und zeigt direkt darunter das Gamification-Panel inkl. Modus-Wahl (Punkte, Abzeichen oder Avatar-Option); die App startet mit geöffneter Sidebar und lädt standardmäßig die Seite **Aufgaben / Tasks** / The sidebar hosts navigation plus the gamification section including mode selection (points, badges, or the avatar option) and starts expanded, defaulting to the **Aufgaben / Tasks** page on load.
 - Über einen Sprachumschalter **Deutsch / English** in der Sidebar lässt sich die gesamte UI einsprachig darstellen / A sidebar language toggle (**Deutsch / English**) renders the whole UI in the selected language without bilingual labels.
 - Auf der Seite **Ziele / Goals** findest du **AI aktiv / AI enabled**, **Tagesziel / Daily goal** inklusive KI-Vorschlag und die Kategorienziele (0–20 pro Tag) in einem kompakten, mehrspaltigen Panel mit ausgerichteten Buttons.
 - AI-Zielvorschläge übernehmen den empfohlenen Wert automatisch in das Zahlenfeld (kein manuelles Nachtragen nötig) / AI goal suggestions now auto-fill the number input for convenience.
@@ -136,7 +136,7 @@ OPENAI_API_KEY = "sk-..."
   - **Double Digits / Zweistellig** – 10 erledigte Tasks insgesamt.
 - Anti-Doppelzählung: Abschlüsse werden als Events protokolliert, sodass Punkte und Badges auch nach einem Reload nicht mehrfach vergeben werden.
 - Abschluss-Events werden zusätzlich als Verlaufseinträge mit Token gespeichert, um Wiederholungen durch doppelte Toggles oder Neustarts zu verhindern / Completion events are stored with tokens in the history to avoid repeated rewards after reloads.
-- Drop-down für Gamification-Modus (Punkte, Abzeichen oder neuer Avatar **Dipl.-Psych. Roß** mit motivierenden Sprüchen; brünette Therapeutin ca. 45 Jahre mit Brille) auf der Seite **Ziele / Goals**; Fortschritt, Level und Motivation erscheinen im Gamification-Panel der Sidebar.
+- Drop-down für Gamification-Modus (Punkte, Abzeichen oder ein neuer Avatar-Modus mit motivierenden Sprüchen) auf der Seite **Ziele / Goals**; Fortschritt, Level und Motivation erscheinen im Gamification-Panel der Sidebar.
 
 ## KI-Features / AI features
 

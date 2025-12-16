@@ -1500,8 +1500,8 @@ def render_gamification_panel(
             format_func=lambda option: option.label,
             index=mode_index,
             help=(
-                "Wähle Punkte, Abzeichen oder die motivierende Avatar-Option Dipl.-Psych. Roß / "
-                "Choose points, badges, or the motivational avatar option Dipl.-Psych. Roß."
+                "Wähle Punkte, Abzeichen oder die motivierende Avatar-Option / "
+                "Choose points, badges, or the motivational avatar option."
             ),
         )
 
@@ -1512,10 +1512,6 @@ def render_gamification_panel(
             persist_state()
 
         panel.caption(gamification_mode.label)
-        panel.caption(
-            "Dipl.-Psych. Roß steht für warme, therapeutische Motivation / "
-            "Dipl.-Psych. Roß offers warm, therapeutic motivation."
-        )
     else:
         panel.caption(gamification_mode.label)
 
@@ -1568,14 +1564,10 @@ def render_gamification_panel(
         )
 
     else:
-        panel.markdown("#### Dipl.-Psych. Roß")
-        panel.caption(
-            "Avatar: brünette Therapeutin (~45 Jahre) mit Brille, warme Ansprache / "
-            "Avatar: brunette therapist (~45 years) with glasses, warm encouragement."
-        )
+        panel.markdown("#### Avatar")
         message_index = int(st.session_state.get(AVATAR_PROMPT_INDEX_KEY, 0))
         avatar_message = next_avatar_prompt(message_index)
-        panel.info(f"👩‍⚕️ Dipl.-Psych. Roß: {avatar_message}")
+        panel.info(f"👩‍⚕️ {avatar_message}")
 
         if panel.button("Neuen Spruch anzeigen / Show another quote", key="avatar_prompt_btn"):
             st.session_state[AVATAR_PROMPT_INDEX_KEY] = message_index + 1
