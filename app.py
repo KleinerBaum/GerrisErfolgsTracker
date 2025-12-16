@@ -2560,8 +2560,6 @@ def render_gamification_panel(
     except ValueError:
         gamification_mode = GamificationMode.POINTS
 
-    panel.subheader("Gamification-Variante / Gamification variant")
-
     if allow_mode_selection:
         gamification_mode_options = list(GamificationMode)
         mode_index = gamification_mode_options.index(gamification_mode)
@@ -2620,7 +2618,6 @@ def render_gamification_panel(
         )
 
     elif gamification_mode is GamificationMode.BADGES:
-        panel.markdown("#### Badges")
         if gamification_state.badges:
             badge_labels = " ".join(f"🏅 {badge}" for badge in gamification_state.badges)
             panel.markdown(
@@ -2635,7 +2632,6 @@ def render_gamification_panel(
         )
 
     else:
-        panel.markdown("#### Avatar")
         message_index = int(st.session_state.get(AVATAR_PROMPT_INDEX_KEY, 0))
         avatar_message = next_avatar_prompt(message_index)
         panel.info(f"👩‍⚕️ {avatar_message}")
