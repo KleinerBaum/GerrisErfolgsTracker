@@ -92,6 +92,7 @@ from gerris_erfolgs_tracker.kpis import (
 from gerris_erfolgs_tracker.kpi import (
     CategoryKpi,
     aggregate_category_kpis,
+    count_new_tasks_last_7_days,
     last_7_days_completions_by_category,
 )
 from gerris_erfolgs_tracker.journal import (
@@ -1756,6 +1757,10 @@ def _build_category_progress(snapshot: CategoryKpi) -> go.Figure:
     return figure
 
 
+NEW_TASK_WEEKLY_GOAL = 7
+POINTS_PER_NEW_TASK = 10
+
+
 def _build_category_gauge(snapshot: CategoryKpi) -> go.Figure:
     axis_max = max(snapshot.daily_goal, snapshot.done_today, 1)
     figure = go.Figure(
@@ -1783,6 +1788,44 @@ def _build_category_gauge(snapshot: CategoryKpi) -> go.Figure:
     )
     figure.update_layout(
         height=240,
+        margin=dict(t=10, r=10, b=0, l=10),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    return figure
+
+
+def _build_new_tasks_gauge(new_task_count: int) -> go.Figure:
+    axis_max = max(NEW_TASK_WEEKLY_GOAL, new_task_count, 1)
+    target_suffix = f"/{NEW_TASK_WEEKLY_GOAL}"
+    figure = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=new_task_count,
+            number={
+                "suffix": target_suffix,
+                "font": {"color": "#E6F2EC", "size": 26},
+            },
+            title={
+                "text": translate_text(("Neue Aufgaben (7 Tage)", "New tasks (7 days)")),
+                "font": {"color": "#E6F2EC", "size": 14},
+            },
+            gauge={
+                "axis": {"range": [0, axis_max], "tickcolor": "#c5d5d1"},
+                "bar": {"color": PRIMARY_COLOR, "thickness": 0.4},
+                "bgcolor": "rgba(255,255,255,0.03)",
+                "borderwidth": 1,
+                "bordercolor": "#1f4a42",
+                "steps": [
+                    {"range": [0, axis_max * 0.5], "color": "rgba(28,156,130,0.08)"},
+                    {"range": [axis_max * 0.5, axis_max * 0.85], "color": "rgba(28,156,130,0.14)"},
+                    {"range": [axis_max * 0.85, axis_max], "color": "rgba(28,156,130,0.22)"},
+                ],
+            },
+        )
+    )
+    figure.update_layout(
+        height=260,
         margin=dict(t=10, r=10, b=0, l=10),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -2414,6 +2457,42 @@ def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
         f"{stats.done_today}/{stats.goal_daily}",
         delta=goal_delta,
     )
+
+    new_tasks_count = count_new_tasks_last_7_days(todos)
+    st.markdown("#### " + translate_text(("Neue Aufgaben (7 Tage)", "New tasks (7 days)")))
+    gauge_column, info_column = st.columns([2, 1])
+    with gauge_column:
+        st.plotly_chart(
+            _build_new_tasks_gauge(new_tasks_count),
+            width="stretch",
+            config={"displaylogo": False, "responsive": True},
+        )
+    with info_column:
+        total_points = new_tasks_count * POINTS_PER_NEW_TASK
+        info_column.metric(
+            translate_text(("Punkte aus neuen Aufgaben", "Points from new tasks")),
+            f"{total_points}",
+            delta=translate_text(
+                (
+                    f"{new_tasks_count} von {NEW_TASK_WEEKLY_GOAL}",
+                    f"{new_tasks_count} of {NEW_TASK_WEEKLY_GOAL}",
+                )
+            ),
+            help=translate_text(
+                (
+                    f"{POINTS_PER_NEW_TASK} Punkte pro neuer Aufgabe",
+                    f"{POINTS_PER_NEW_TASK} points per new task",
+                )
+            ),
+        )
+        info_column.caption(
+            translate_text(
+                (
+                    f"Ziel: {NEW_TASK_WEEKLY_GOAL} neue Aufgaben pro Woche",
+                    f"Target: {NEW_TASK_WEEKLY_GOAL} new tasks per week",
+                )
+            )
+        )
 
     _render_quadrant_focus_items(todos)
 

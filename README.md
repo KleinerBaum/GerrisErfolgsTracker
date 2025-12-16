@@ -129,6 +129,7 @@ OPENAI_API_KEY = "sk-..."
 - Sofort sichtbare KPIs: **Erledigt gesamt / Done total**, **Heute erledigt / Done today**, **Kontinuität / Streak**, sowie **Zielerreichung / Goal progress** mit Tagesziel (Standard: 3 Abschlüsse pro Tag).
 - KPI-Dashboard liegt direkt unter dem Seitentitel und ist ohne Tabs sichtbar, um Fortschritt sofort zu erkennen / KPI dashboard sits right below the page title (outside tabs) for instant visibility.
 - Neues Top-Dashboard direkt unter dem Titel mit fünf Karten (eine pro Kategorie) inklusive Tagesfortschritt, Streak und offen vs. erledigt / New top-of-page dashboard with five category cards showing daily progress, streak, open vs. done.
+- Tachometer für neu erfasste Aufgaben mit Wochenziel 7 (je 10 Punkte pro Aufgabe) direkt im KPI-Block / Tachometer inside the KPI block tracks newly added tasks with a weekly target of 7 and awards 10 points per task.
 - Tageslogik: `done_today` wird automatisch auf den aktuellen Kalendertag bezogen; bei Datumswechsel werden die Tageswerte zurückgesetzt.
 - Kontinuität (Streak): zählt zusammenhängende Tage mit mindestens einem Abschluss.
 - Wochenansicht: Interaktives Plotly-Balkendiagramm der letzten 7 Tage mit Hover-Details und Zoom für die Abschlüsse, abgestimmt auf das dunkle Dashboard-Farbschema.
