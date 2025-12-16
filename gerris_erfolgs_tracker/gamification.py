@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from typing import Dict
+from typing import Dict, Optional
 
 import streamlit as st
 
@@ -53,10 +53,18 @@ def _completion_id(todo: TodoItem) -> str:
     return f"{todo.id}:{timestamp.isoformat()}"
 
 
-def _log_completion_event(state: GamificationState, todo: TodoItem, *, points: int, completion_token: str) -> None:
+def _log_completion_event(
+    state: GamificationState,
+    todo: TodoItem,
+    *,
+    points: int,
+    completion_token: str,
+    note: Optional[str] = None,
+) -> None:
     timestamp = (todo.completed_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    note_suffix = f" · Notiz: {note.strip()}" if note and note.strip() else ""
     state.history.append(
-        (f"{timestamp.isoformat()} · {todo.quadrant.label}: +{points} Punkte · Token {completion_token}")
+        (f"{timestamp.isoformat()} · {todo.quadrant.label}: +{points} Punkte · Token {completion_token}{note_suffix}")
     )
 
 
@@ -105,7 +113,12 @@ def award_journal_points(
     return state
 
 
-def update_gamification_on_completion(todo: TodoItem, stats: KpiStats) -> GamificationState:
+def update_gamification_on_completion(
+    todo: TodoItem,
+    stats: KpiStats,
+    *,
+    note: Optional[str] = None,
+) -> GamificationState:
     if not todo.completed or todo.completed_at is None:
         return get_gamification_state()
 
@@ -117,7 +130,13 @@ def update_gamification_on_completion(todo: TodoItem, stats: KpiStats) -> Gamifi
     state.processed_completions.append(completion_token)
     points_gained = POINTS_PER_QUADRANT.get(todo.quadrant, 10)
 
-    _log_completion_event(state, todo, points=points_gained, completion_token=completion_token)
+    _log_completion_event(
+        state,
+        todo,
+        points=points_gained,
+        completion_token=completion_token,
+        note=note,
+    )
 
     state.points += points_gained
     state.level = max(1, 1 + state.points // 100)

@@ -68,3 +68,12 @@ def test_completion_event_is_logged_once(session_state: dict[str, object]) -> No
 
     state_second = update_gamification_on_completion(todo, stats)
     assert len(state_second.history) == 1
+
+
+def test_completion_event_keeps_note(session_state: dict[str, object]) -> None:
+    todo = _completed_todo(EisenhowerQuadrant.NOT_URGENT_NOT_IMPORTANT)
+    stats = KpiStats(done_total=1, streak=1)
+
+    state = update_gamification_on_completion(todo, stats, note="Kurze Notiz")
+
+    assert any("Kurze Notiz" in entry for entry in state.history)

@@ -2,6 +2,7 @@
 
 ## Unreleased
 - Standard-Startseite auf **Ziele / Goals** gesetzt, sodass die App direkt die Zielübersicht lädt / Default landing page switched to **Ziele / Goals** so the app opens on the goals overview.
+- Neuer Button **Gelöst / Completed** auf der Seite **Ziele / Goals**: Wählt eine offene Aufgabe, dokumentiert optional die Aktivität, markiert sie als erledigt, aktualisiert KPIs/Tachometer und zeigt neu erreichte Gamification-Belohnungen als Pop-up an / The **Ziele / Goals** page now offers a **Gelöst / Completed** action to pick an open task, optionally log the activity, mark it done, refresh KPIs/gauges, and surface freshly earned gamification rewards via pop-up.
 - Tagesziel-Sektion aus der Seite **Ziele** entfernt und das Ziel-Canvas konsequent zweispaltig angeordnet / Removed the daily target section from the **Ziele** page and organized the goal canvas in a consistent two-column layout.
 - Alle verbleibenden englischen UI-Texte entfernt; Labels, Hinweise und Gamification-Meldungen sind jetzt ausschließlich auf Deutsch.
 - Oberfläche durchgehend auf Deutsch: Sprachumschalter entfernt und sichtbare Titel/Labels ohne englische Zusätze.

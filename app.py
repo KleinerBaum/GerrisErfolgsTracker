@@ -15,6 +15,7 @@ from openai import OpenAI
 from gerris_erfolgs_tracker.ai_features import (
     AISuggestion,
     generate_motivation,
+    suggest_goals,
     suggest_milestones,
     suggest_quadrant,
 )
@@ -29,6 +30,7 @@ from gerris_erfolgs_tracker.charts import (
 )
 from gerris_erfolgs_tracker.constants import (
     AI_ENABLED_KEY,
+    AI_GOAL_SUGGESTION_KEY,
     AI_MOTIVATION_KEY,
     AI_QUADRANT_RATIONALE_KEY,
     AVATAR_PROMPT_INDEX_KEY,
@@ -36,6 +38,7 @@ from gerris_erfolgs_tracker.constants import (
     FILTER_SHOW_DONE_KEY,
     FILTER_SORT_OVERRIDE_KEY,
     GOAL_CREATION_VISIBLE_KEY,
+    GOAL_SUGGESTED_VALUE_KEY,
     GOAL_OVERVIEW_SHOW_CATEGORY_KEY,
     GOAL_OVERVIEW_SHOW_KPI_KEY,
     GOAL_OVERVIEW_SELECTED_TASKS_KEY,
@@ -79,10 +82,12 @@ from gerris_erfolgs_tracker.gamification import (
     get_gamification_state,
     next_avatar_prompt,
     update_gamification_on_completion,
+    GamificationState,
 )
 from gerris_erfolgs_tracker.kpis import (
     get_kpi_stats,
     get_weekly_completion_counts,
+    update_goal_daily,
     update_kpis_on_completion,
 )
 from gerris_erfolgs_tracker.kpi import (
@@ -1428,6 +1433,18 @@ def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> d
     return settings
 
 
+def _resolve_goal_input_value(*, settings: Mapping[str, Any], stats: KpiStats) -> int:
+    suggested_value = st.session_state.get(GOAL_SUGGESTED_VALUE_KEY)
+    if isinstance(suggested_value, (int, float)):
+        return int(suggested_value)
+
+    configured_goal = settings.get("goal_daily")
+    if isinstance(configured_goal, (int, float)):
+        return int(configured_goal)
+
+    return int(stats.goal_daily)
+
+
 def _panel_section(panel: Any, label: str) -> Any:
     expander = getattr(panel, "expander", None)
     if callable(expander):
@@ -1635,7 +1652,6 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
             min_value=1,
             step=1,
             value=goal_input_value,
-            key=SETTINGS_GOAL_DAILY_KEY,
             help=("Lege ein realistisches Tagesziel fest"),
         )
     with goal_row[1]:
@@ -1815,6 +1831,111 @@ def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[
             persist_state()
 
         return sanitized_selection
+
+
+def _render_gamification_popups(previous_state: GamificationState, current_state: GamificationState) -> None:
+    leveled_up = current_state.level > previous_state.level
+    if leveled_up:
+        st.toast(
+            translate_text(
+                (
+                    f"Levelaufstieg! Du bist jetzt auf Level {current_state.level}.",
+                    f"Level up! You are now at level {current_state.level}.",
+                )
+            )
+        )
+
+    new_badges = sorted(set(current_state.badges) - set(previous_state.badges))
+    for badge in new_badges:
+        st.toast(
+            translate_text(
+                (
+                    f"Neues Abzeichen freigeschaltet: {badge}",
+                    f"Unlocked a new badge: {badge}",
+                )
+            )
+        )
+
+
+def render_goal_completion_action(*, todos: list[TodoItem], stats: KpiStats) -> None:
+    st.subheader(translate_text(("Gelöst", "Completed")))
+    st.caption(
+        translate_text(
+            (
+                f"Dokumentiere erledigte Aktivitäten, damit KPIs (Ziel: {stats.goal_daily} pro Tag) "
+                "und Gamification sofort aktualisiert werden.",
+                f"Log completed activities so KPIs (target: {stats.goal_daily} per day) and gamification update instantly.",
+            )
+        )
+    )
+
+    open_todos = [todo for todo in todos if not todo.completed]
+    if not open_todos:
+        st.info(
+            translate_text(
+                (
+                    "Alle Aufgaben sind abgehakt – großartige Arbeit!",
+                    "All tasks are checked off – great job!",
+                )
+            )
+        )
+        return
+
+    option_lookup = {todo.id: f"{todo.title} · {translate_text(todo.category.label)}" for todo in open_todos}
+
+    selected_task_id: str | None = None
+    activity_note: str = ""
+    with st.form("goal_completion_form"):
+        selected_task_id = st.selectbox(
+            translate_text(("Welche Aufgabe hast du gelöst?", "Which task did you complete?")),
+            options=list(option_lookup),
+            format_func=lambda value: option_lookup.get(value, value),
+        )
+
+        activity_note = st.text_area(
+            translate_text(
+                (
+                    "Aktivität dokumentieren (optional)",
+                    "Document activity (optional)",
+                )
+            ),
+            placeholder=translate_text(
+                (
+                    "z. B. kurze Notiz oder Ergebnis festhalten",
+                    "Add a short note about what you accomplished",
+                )
+            ),
+        )
+
+        submitted = st.form_submit_button(translate_text(("Gelöst", "Completed")), type="primary")
+
+    if not submitted or not selected_task_id:
+        return
+
+    updated = toggle_complete(selected_task_id)
+    if not updated:
+        st.error(translate_text(("Aufgabe nicht gefunden", "Task not found")))
+        return
+
+    previous_state = get_gamification_state()
+    sanitized_note = activity_note.strip()
+    updated_stats = update_kpis_on_completion(updated.completed_at)
+    gamification_state = update_gamification_on_completion(
+        updated,
+        updated_stats,
+        note=sanitized_note or None,
+    )
+
+    st.success(
+        translate_text(
+            (
+                f"{updated.title} als erledigt dokumentiert.",
+                f"Logged {updated.title} as completed.",
+            )
+        )
+    )
+    _render_gamification_popups(previous_state, gamification_state)
+    st.rerun()
 
 
 def render_goal_overview(
@@ -2245,7 +2366,7 @@ def render_todo_section(
             )
 
             st.markdown("#### Fortschritt / Progress")
-            enable_target: bool = st.checkbox(
+            enable_target_progress: bool = st.checkbox(
                 "Zielvorgabe nutzen / Enable target",
                 value=bool(st.session_state.get(NEW_TODO_ENABLE_TARGET_KEY, False)),
                 key=NEW_TODO_ENABLE_TARGET_KEY,
@@ -2260,7 +2381,7 @@ def render_todo_section(
                     value=float(st.session_state.get(NEW_TODO_PROGRESS_TARGET_KEY, 0.0)),
                     step=1.0,
                     key=NEW_TODO_PROGRESS_TARGET_KEY,
-                    disabled=not enable_target,
+                    disabled=not enable_target_progress,
                     help="Numerisches Ziel, z. B. 10.0",
                 )
             with target_cols[1]:
@@ -2268,7 +2389,7 @@ def render_todo_section(
                     "Einheit / Unit",
                     value=st.session_state.get(NEW_TODO_PROGRESS_UNIT_KEY, ""),
                     key=NEW_TODO_PROGRESS_UNIT_KEY,
-                    disabled=not enable_target,
+                    disabled=not enable_target_progress,
                     help="z. B. km, Seiten, Minuten",
                 )
 
@@ -3128,6 +3249,7 @@ def main() -> None:
         if not isinstance(settings, dict):
             settings = {}
         category_goals = _sanitize_category_goals(settings)
+        render_goal_completion_action(todos=todos, stats=stats)
         show_kpi_dashboard, show_category_trends = render_goal_overview(
             todos,
             stats=stats,
