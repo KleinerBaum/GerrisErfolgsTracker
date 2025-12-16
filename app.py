@@ -103,11 +103,9 @@ from gerris_erfolgs_tracker.journal_alignment import (
     suggest_journal_alignment,
 )
 from gerris_erfolgs_tracker.i18n import (
-    LANGUAGE_OPTIONS,
     LanguageCode,
     get_language,
     localize_streamlit,
-    set_language,
     translate_text,
 )
 from gerris_erfolgs_tracker.llm import get_openai_client
@@ -1872,9 +1870,7 @@ def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, categor
 
 def render_shared_calendar() -> None:
     st.subheader("Gemeinsamer Kalender / Shared calendar")
-    st.caption(
-        "2025 von Carla, Miri & Gerrit · Google Kalender — 2025 by Carla, Miri & Gerrit · Google Calendar"
-    )
+    st.caption("2025 von Carla, Miri & Gerrit · Google Kalender — 2025 by Carla, Miri & Gerrit · Google Calendar")
     calendar_iframe = """
     <iframe src="https://calendar.google.com/calendar/embed?height=600&wkst=1&ctz=Europe%2FAmsterdam&showPrint=0&src=e2a52f862c8088c82d9f74825b8c39f6069965fdc652472fbf5ec28e891c077e%40group.calendar.google.com&color=%23616161" style="border:solid 1px #777" width="800" height="600" frameborder="0" scrolling="no"></iframe>
     """
@@ -2445,30 +2441,7 @@ JOURNAL_PAGE_LABEL = "Tagebuch"
 
 
 def render_language_toggle() -> LanguageCode:
-    current_language = get_language()
-    language_labels = list(LANGUAGE_OPTIONS.keys())
-    selected_label = st.sidebar.radio(
-        translate_text(("Sprache", "Sprache")),
-        options=language_labels,
-        index=list(LANGUAGE_OPTIONS.values()).index(current_language),
-        disabled=True,
-    )
-    chosen_language = LANGUAGE_OPTIONS[selected_label]
-
-    if chosen_language != current_language:
-        set_language(chosen_language)
-        st.rerun()
-
-    st.sidebar.caption(
-        translate_text(
-            (
-                "Die Nutzeroberfläche steht vollständig auf Deutsch zur Verfügung.",
-                "Die Nutzeroberfläche steht vollständig auf Deutsch zur Verfügung.",
-            ),
-        ),
-    )
-    st.sidebar.divider()
-    return chosen_language
+    return get_language()
 
 
 def render_ai_toggle_sidebar(settings: dict[str, Any], *, client: Optional[OpenAI]) -> bool:

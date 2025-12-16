@@ -6,6 +6,7 @@
 - Tagesziel-Sektion aus der Seite **Ziele** entfernt und das Ziel-Canvas konsequent zweispaltig angeordnet / Removed the daily target section from the **Ziele** page and organized the goal canvas in a consistent two-column layout.
 - Alle verbleibenden englischen UI-Texte entfernt; Labels, Hinweise und Gamification-Meldungen sind jetzt ausschließlich auf Deutsch.
 - Oberfläche durchgehend auf Deutsch: Sprachumschalter entfernt und sichtbare Titel/Labels ohne englische Zusätze.
+- Hinweisblock zur Sprache aus der Sidebar gestrichen, um die Navigation kompakter zu halten / Removed the language notice block from the sidebar to keep navigation compact.
 - Neues Einstellungs-Panel im Abschnitt **Ziele im Überblick / Goals at a glance**, um gezielt Aufgaben auszuwählen, die in KPI-Dashboard und Kategorien einfließen (z. B. Fokus-Tasks) / New **Settings** expander inside **Goals at a glance** lets you pick which tasks feed the KPI dashboard and category charts (e.g., focus tasks).
 - Formular **ToDo hinzufügen / Add task** in drei Spalten umgebaut: Titel mit integriertem Aufgabenvorschlag/Dropdown (inkl. "Freie Eingabe"), Unterziele separat und Meta-/Quadranten-/Prioritätsfelder plus Fortschritt rechts / **Add task** form now uses three columns with the title plus suggestion dropdown (including "Free input"), milestones in the middle, and category/quadrant/priority plus progress on the right.
 

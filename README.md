@@ -4,6 +4,7 @@
 Streamlit-App mit Eisenhower-ToDo-Board, Gamification und optionaler OpenAI-Integration für KI-gestützte Vorschläge (Auto-Kategorisierung, Motivation). Ohne API-Key greifen Fallback-Texte und die App bleibt voll funktionsfähig.
 
 Die UI folgt einem klaren, fokussierten Dark-Theme mit dunkelgrünem Primärton (#1C9C82) auf einem dezenten, bildfreien Gradient-Hintergrund, um einen ruhigen, professionellen Eindruck zu vermitteln. Statusinformationen werden textlich und über Typografie/Abstände vermittelt, um Icon-Lärm zu vermeiden. Alle sichtbaren Texte sind ausschließlich auf Deutsch gehalten, damit keine englischen Begriffe mehr auftauchen.
+Die Sidebar verzichtet bewusst auf Sprachumschalter oder Hinweisblöcke, damit Navigation und Quick-Actions kompakt bleiben / The sidebar deliberately omits language toggles or notice blocks to keep navigation and quick actions compact.
 
 Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI aktiv / AI enabled** gesetzt ist, nutzt die App GPT-Modelle (Standard: `gpt-4o-mini`, per Einstellung überschreibbar), um z. B. automatisch den Eisenhower-Quadranten zu empfehlen oder kurze Motivationsnachrichten basierend auf den jüngsten KPIs zu erstellen. Ist kein API-Key hinterlegt oder die AI-Option deaktiviert, werden statische, vorgefertigte Texte verwendet, sodass die Anwendung weiterhin vollständig nutzbar bleibt.
 
