@@ -29,6 +29,7 @@ from gerris_erfolgs_tracker.charts import (
 )
 from gerris_erfolgs_tracker.constants import (
     AI_ENABLED_KEY,
+    AI_GOAL_SUGGESTION_KEY,
     AI_MOTIVATION_KEY,
     AI_QUADRANT_RATIONALE_KEY,
     AVATAR_PROMPT_INDEX_KEY,
@@ -36,9 +37,14 @@ from gerris_erfolgs_tracker.constants import (
     FILTER_SHOW_DONE_KEY,
     FILTER_SORT_OVERRIDE_KEY,
     GOAL_CREATION_VISIBLE_KEY,
+    GOAL_SUGGESTED_VALUE_KEY,
     GOAL_OVERVIEW_SHOW_CATEGORY_KEY,
     GOAL_OVERVIEW_SHOW_KPI_KEY,
     GOAL_OVERVIEW_SELECTED_TASKS_KEY,
+    KPI_GAUGE_COLOR_KEY,
+    KPI_GAUGE_COUNT_KEY,
+    KPI_GAUGE_SELECTION_KEY,
+    KPI_GAUGE_STYLE_KEY,
     NEW_TODO_CATEGORY_KEY,
     NEW_TODO_DESCRIPTION_KEY,
     NEW_TODO_DUE_KEY,
@@ -1428,6 +1434,18 @@ def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> d
     return settings
 
 
+def _resolve_goal_input_value(*, settings: Mapping[str, Any], stats: KpiStats) -> int:
+    suggested_goal = st.session_state.get(GOAL_SUGGESTED_VALUE_KEY)
+    if isinstance(suggested_goal, (int, float)) and suggested_goal > 0:
+        return int(suggested_goal)
+
+    stored_goal = settings.get("goal_daily", stats.goal_daily)
+    if isinstance(stored_goal, (int, float)) and stored_goal > 0:
+        return int(stored_goal)
+
+    return max(1, int(stats.goal_daily))
+
+
 def _panel_section(panel: Any, label: str) -> Any:
     expander = getattr(panel, "expander", None)
     if callable(expander):
@@ -1655,6 +1673,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
             st.session_state[GOAL_SUGGESTED_VALUE_KEY] = suggestion.payload.daily_goal
             st.rerun()
     settings["goal_daily"] = int(goal_value)
+    st.session_state.pop(SETTINGS_GOAL_DAILY_KEY, None)
 
     goal_suggestion: AISuggestion[Any] | None = st.session_state.get(AI_GOAL_SUGGESTION_KEY)
     if goal_suggestion:
@@ -1714,8 +1733,51 @@ NEW_TASK_WEEKLY_GOAL = 7
 POINTS_PER_NEW_TASK = 10
 
 
-def _build_category_gauge(snapshot: CategoryKpi) -> go.Figure:
+def _build_category_gauge(
+    snapshot: CategoryKpi,
+    *,
+    accent_color: str = PRIMARY_COLOR,
+    style: Literal["radial", "bar"] = "radial",
+) -> go.Figure:
     axis_max = max(snapshot.daily_goal, snapshot.done_today, 1)
+
+    if style == "bar":
+        remaining = max(axis_max - snapshot.done_today, 0)
+        figure = go.Figure(
+            [
+                go.Bar(
+                    x=[snapshot.done_today],
+                    y=[snapshot.category.label],
+                    orientation="h",
+                    marker=dict(color=accent_color, line=dict(color="#1f4a42", width=1)),
+                    width=0.6,
+                    name=translate_text(("Fortschritt", "Progress")),
+                ),
+                go.Bar(
+                    x=[remaining],
+                    y=[snapshot.category.label],
+                    orientation="h",
+                    marker=dict(color="rgba(255,255,255,0.08)"),
+                    width=0.6,
+                    name=translate_text(("Restziel", "Remaining goal")),
+                    base=snapshot.done_today,
+                    hovertemplate="%{x}",
+                    showlegend=False,
+                ),
+            ]
+        )
+        figure.update_layout(
+            barmode="stack",
+            height=180,
+            margin=dict(t=10, r=10, b=10, l=10),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(range=[0, axis_max], visible=False),
+            yaxis=dict(visible=False),
+            showlegend=False,
+        )
+        return figure
+
     figure = go.Figure(
         go.Indicator(
             mode="gauge+number",
@@ -1727,7 +1789,7 @@ def _build_category_gauge(snapshot: CategoryKpi) -> go.Figure:
             title={"text": snapshot.category.label, "font": {"color": "#E6F2EC", "size": 14}},
             gauge={
                 "axis": {"range": [0, axis_max], "tickcolor": "#c5d5d1"},
-                "bar": {"color": PRIMARY_COLOR, "thickness": 0.4},
+                "bar": {"color": accent_color, "thickness": 0.4},
                 "bgcolor": "rgba(255,255,255,0.03)",
                 "borderwidth": 1,
                 "bordercolor": "#1f4a42",
@@ -1786,9 +1848,35 @@ def _build_new_tasks_gauge(new_task_count: int) -> go.Figure:
     return figure
 
 
+def _default_goal_overview_kpis(*, count: int) -> list[str]:
+    return [category.value for category in list(Category)[:count]]
+
+
+def _sanitize_goal_overview_kpi_selection(selection: Sequence[str], *, count: int) -> list[str]:
+    selection_unique: list[str] = []
+    for value in selection:
+        try:
+            category = Category(value)
+        except ValueError:
+            continue
+        if category.value not in selection_unique:
+            selection_unique.append(category.value)
+
+    fallback_order = _default_goal_overview_kpis(count=count)
+    for value in fallback_order:
+        if len(selection_unique) >= count:
+            break
+        if value not in selection_unique:
+            selection_unique.append(value)
+
+    return selection_unique[:count]
+
+
 def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[TodoItem]) -> list[str]:
     with st.expander("Einstellungen", expanded=False):
-        st.caption("Wähle die Aufgaben aus, die im Dashboard gezählt werden.")
+        st.caption(
+            "Steuere, wie viele Tachometer erscheinen, welche Aufgaben einfließen und wie sie dargestellt werden."
+        )
         if not todos:
             st.info("Keine Aufgaben vorhanden.")
             return []
@@ -1814,6 +1902,92 @@ def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[
             st.session_state[SS_SETTINGS] = settings
             persist_state()
 
+        max_kpis = len(Category)
+        default_count = int(settings.get(KPI_GAUGE_COUNT_KEY, max_kpis))
+        gauge_count = int(
+            st.number_input(
+                translate_text(("Anzahl KPIs", "Number of KPIs")),
+                min_value=1,
+                max_value=max_kpis,
+                value=default_count,
+                step=1,
+                help=translate_text(
+                    (
+                        "Bestimme, wie viele Tachometer im Ziel-Überblick sichtbar sind.",
+                        "Control how many gauges appear in the goals overview.",
+                    )
+                ),
+            )
+        )
+        if gauge_count != default_count:
+            settings[KPI_GAUGE_COUNT_KEY] = gauge_count
+            settings[KPI_GAUGE_SELECTION_KEY] = _sanitize_goal_overview_kpi_selection(
+                settings.get(KPI_GAUGE_SELECTION_KEY, []), count=gauge_count
+            )
+            st.session_state[SS_SETTINGS] = settings
+            persist_state()
+
+        category_lookup = {category.value: translate_text((category.label, category.label)) for category in Category}
+        previous_kpi_selection = _sanitize_goal_overview_kpi_selection(
+            settings.get(KPI_GAUGE_SELECTION_KEY, []), count=gauge_count
+        )
+        default_kpi_selection = previous_kpi_selection or _default_goal_overview_kpis(count=gauge_count)
+        raw_kpi_selection = st.multiselect(
+            translate_text(("KPIs auswählen", "Choose KPIs")),
+            options=list(category_lookup),
+            default=default_kpi_selection,
+            format_func=lambda value: category_lookup.get(value, value),
+            help=translate_text(
+                (
+                    "Stelle zusammen, welche Lebensbereiche du als Tachometer siehst.",
+                    "Assemble which life areas appear as gauges.",
+                )
+            ),
+        )
+        sanitized_kpis = _sanitize_goal_overview_kpi_selection(raw_kpi_selection, count=gauge_count)
+        if sanitized_kpis != previous_kpi_selection:
+            settings[KPI_GAUGE_SELECTION_KEY] = sanitized_kpis
+            st.session_state[SS_SETTINGS] = settings
+            persist_state()
+
+        previous_color = settings.get(KPI_GAUGE_COLOR_KEY, PRIMARY_COLOR)
+        chosen_color = st.color_picker(
+            translate_text(("Akzentfarbe", "Accent color")),
+            value=previous_color,
+            help=translate_text(
+                (
+                    "Passe die Farbe deiner Tachometer an (betrifft auch die Balken-Variante).",
+                    "Adjust the gauge accent color, also used for the bar variant.",
+                )
+            ),
+        )
+        if chosen_color != previous_color:
+            settings[KPI_GAUGE_COLOR_KEY] = chosen_color
+            st.session_state[SS_SETTINGS] = settings
+            persist_state()
+
+        style_options: dict[str, tuple[str, str]] = {
+            "radial": ("Tachometer (rund)", "Gauge (radial)"),
+            "bar": ("Balken (horizontal)", "Bar (horizontal)"),
+        }
+        previous_style = settings.get(KPI_GAUGE_STYLE_KEY, "radial")
+        selected_style = st.radio(
+            translate_text(("Darstellungsart", "Visualization style")),
+            options=list(style_options),
+            index=list(style_options).index(previous_style if previous_style in style_options else "radial"),
+            format_func=lambda value: translate_text(style_options[value]),
+            help=translate_text(
+                (
+                    "Wähle zwischen Tachometer- oder Balken-Darstellung für die KPIs.",
+                    "Choose between a gauge or bar representation for the KPIs.",
+                )
+            ),
+        )
+        if selected_style != previous_style:
+            settings[KPI_GAUGE_STYLE_KEY] = selected_style
+            st.session_state[SS_SETTINGS] = settings
+            persist_state()
+
         return sanitized_selection
 
 
@@ -1821,7 +1995,15 @@ def render_goal_overview(
     todos: list[TodoItem], *, stats: KpiStats, category_goals: Mapping[str, int], settings: dict[str, Any]
 ) -> tuple[bool, bool]:
     st.subheader("Ziele im Überblick")
-    overview_columns = st.columns([1, 1, 1, 1, 1, 0.8])
+    max_kpis = len(Category)
+    configured_kpis = int(settings.get(KPI_GAUGE_COUNT_KEY, max_kpis))
+    gauge_count = max(1, min(configured_kpis, max_kpis))
+    configured_styles = {"radial", "bar"}
+    gauge_style = settings.get(KPI_GAUGE_STYLE_KEY, "radial")
+    if gauge_style not in configured_styles:
+        gauge_style = "radial"
+    configured_color = settings.get(KPI_GAUGE_COLOR_KEY, PRIMARY_COLOR)
+    overview_columns = st.columns([1] * gauge_count + [0.8])
 
     with overview_columns[-1]:
         st.markdown("**Visualisierungen**")
@@ -1846,11 +2028,22 @@ def render_goal_overview(
         fallback_streak=stats.streak,
     )
 
-    for category_index, category in enumerate(Category):
+    selected_kpis = _sanitize_goal_overview_kpi_selection(
+        settings.get(KPI_GAUGE_SELECTION_KEY, []), count=gauge_count
+    )
+    if selected_kpis != settings.get(KPI_GAUGE_SELECTION_KEY):
+        settings[KPI_GAUGE_SELECTION_KEY] = selected_kpis
+        st.session_state[SS_SETTINGS] = settings
+        persist_state()
+
+    gauge_categories = [Category(value) for value in selected_kpis]
+    gauge_columns = overview_columns[:-1]
+
+    for category_index, category in enumerate(gauge_categories):
         snapshot = snapshots[category]
-        with overview_columns[category_index]:
+        with gauge_columns[category_index]:
             st.plotly_chart(
-                _build_category_gauge(snapshot),
+                _build_category_gauge(snapshot, accent_color=configured_color, style=gauge_style),
                 width="stretch",
                 config={"displaylogo": False, "responsive": True},
             )
