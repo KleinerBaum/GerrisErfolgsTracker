@@ -2,6 +2,7 @@
 
 ## Unreleased
 - Entfernt die Überschriften **Gemeinsamer Kalender / Shared calendar** und **Kategorie-Überblick** sowie die Wochen-Grafik **Abschlüsse der letzten 7 Tage**, um das Ziele-Layout zu entschlacken / Removed the **Shared calendar** and **Category overview** headers plus the **Completions from the last 7 days** weekly chart to streamline the Goals layout.
+- Überschrift **Ziele & Einstellungen / Goals & settings** von der Ziele-Seite entfernt, damit der Abschnitt ohne Titel eingebettet ist / Removed the **Goals & settings** header from the Goals page so the section sits inline without a title.
 - Ziel-Aktionsleiste: Der Button **Ziel erstellen / Create goal** sitzt jetzt neben den Quick-Actions, die Hinweise im Einstellungs-Panel entfallen, und alle Buttons teilen sich dieselbe Primärfarbe für ein konsistentes Erscheinungsbild / Goal action row now places **Create goal** beside the quick actions, removes the intro helper text in the settings panel, and applies one primary color across all buttons for consistency.
 - Sidebar-Gamification: Entfernt den Button **AI: Motivation**, damit die Seitenleiste schlanker bleibt / Sidebar gamification: removed the **AI: Motivation** button to keep the sidebar streamlined.
 - Neues Abschluss-Widget **Gelöst / Completed** auf der Seite **Ziele**: offene Aufgaben auswählen, abschließen und sofort KPIs,

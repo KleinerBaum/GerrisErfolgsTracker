@@ -1507,7 +1507,6 @@ def _panel_section(panel: Any, label: str) -> Any:
 
 def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: Any | None = None) -> bool:
     panel = panel or st
-    panel.header("Ziele & Einstellungen")
 
     settings = _ensure_settings_defaults(client=client, stats=stats)
     ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
