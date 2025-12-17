@@ -1,26 +1,32 @@
 from __future__ import annotations
 
-from gerris_erfolgs_tracker.charts import (
-    PRIMARY_COLOR,
-    build_weekly_completion_figure,
-)
+from gerris_erfolgs_tracker.charts import build_category_weekly_completion_figure
+from gerris_erfolgs_tracker.kpi import DailyCategoryCount
+from gerris_erfolgs_tracker.models import Category
 
 
-def test_build_weekly_completion_figure_sets_expected_styling() -> None:
-    weekly_data = [
-        {"date": "2024-10-01", "completions": 3},
-        {"date": "2024-10-02", "completions": 0},
-        {"date": "2024-10-03", "completions": 5},
+def test_build_category_weekly_completion_figure_stacks_categories() -> None:
+    weekly_data: list[DailyCategoryCount] = [
+        {
+            "date": "2024-10-01",
+            "counts": {
+                Category.ADMIN.value: 2,
+                Category.FRIENDS_FAMILY.value: 1,
+            },
+        },
+        {
+            "date": "2024-10-02",
+            "counts": {
+                Category.ADMIN.value: 0,
+                Category.FRIENDS_FAMILY.value: 3,
+            },
+        },
     ]
 
-    figure = build_weekly_completion_figure(weekly_data)
+    figure = build_category_weekly_completion_figure(weekly_data)
 
-    assert figure.data
-    bar_trace = figure.data[0]
-    assert bar_trace.type == "bar"
-    assert list(bar_trace.x) == ["2024-10-01", "2024-10-02", "2024-10-03"]
-    assert list(bar_trace.y) == [3, 0, 5]
-    assert bar_trace.marker.color == PRIMARY_COLOR
-    assert "Abschlüsse:" in bar_trace.hovertemplate
-    assert "Abschlüsse der letzten 7 Tage" in str(figure.layout.title.text)
-    assert figure.layout.yaxis.rangemode == "tozero"
+    assert len(figure.data) == len(list(Category))
+    first_trace = figure.data[0]
+    assert list(first_trace.x) == ["2024-10-01", "2024-10-02"]
+    assert first_trace.type == "bar"
+    assert figure.layout.barmode == "stack"

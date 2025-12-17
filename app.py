@@ -24,7 +24,6 @@ from gerris_erfolgs_tracker.llm_schemas import (
 from gerris_erfolgs_tracker.charts import (
     PRIMARY_COLOR,
     build_category_weekly_completion_figure,
-    build_weekly_completion_figure,
 )
 from gerris_erfolgs_tracker.constants import (
     AI_ENABLED_KEY,
@@ -81,7 +80,6 @@ from gerris_erfolgs_tracker.gamification import (
 )
 from gerris_erfolgs_tracker.kpis import (
     get_kpi_stats,
-    get_weekly_completion_counts,
     update_kpis_on_completion,
 )
 from gerris_erfolgs_tracker.kpi import (
@@ -2201,7 +2199,6 @@ def render_goal_overview(
 
 
 def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, category_goals: Mapping[str, int]) -> None:
-    st.subheader("Kategorie-Überblick")
     snapshots = aggregate_category_kpis(
         todos,
         category_goals=category_goals,
@@ -2248,7 +2245,6 @@ def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, categor
 
 
 def render_shared_calendar() -> None:
-    st.subheader("Gemeinsamer Kalender / Shared calendar")
     st.caption("2025 von Carla, Miri & Gerrit · Google Kalender — 2025 by Carla, Miri & Gerrit · Google Calendar")
     calendar_iframe = """
     <iframe src="https://calendar.google.com/calendar/embed?height=600&wkst=1&ctz=Europe%2FAmsterdam&showPrint=0&src=e2a52f862c8088c82d9f74825b8c39f6069965fdc652472fbf5ec28e891c077e%40group.calendar.google.com&color=%23616161" style="border:solid 1px #777" width="800" height="600" frameborder="0" scrolling="no"></iframe>
@@ -2794,15 +2790,6 @@ def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
         )
 
     _render_quadrant_focus_items(todos)
-
-    st.caption("Wochenübersicht der Abschlüsse")
-    weekly_data = get_weekly_completion_counts(stats)
-    weekly_chart = build_weekly_completion_figure(weekly_data)
-    st.plotly_chart(
-        weekly_chart,
-        width="stretch",
-        config={"displaylogo": False, "responsive": True},
-    )
 
     st.info(
         translate_text(

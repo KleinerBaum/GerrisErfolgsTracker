@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Mapping, Sequence
+from typing import Iterable, Mapping, Sequence
 
 import plotly.graph_objects as go
 
@@ -28,61 +28,6 @@ def _apply_dark_theme(figure: go.Figure) -> go.Figure:
         xaxis=dict(gridcolor=GRID_COLOR, zerolinecolor=GRID_COLOR),
         yaxis=dict(gridcolor=GRID_COLOR, zerolinecolor=GRID_COLOR),
     )
-    return figure
-
-
-def build_weekly_completion_figure(
-    weekly_data: List[dict[str, object]],
-) -> go.Figure:
-    """Create an interactive bar chart for the last 7 days.
-
-    Args:
-        weekly_data: Sequence of mappings with ``date`` (ISO string) and
-            ``completions`` (int) entries.
-
-    Returns:
-        A Plotly figure configured with bilingual labels and hover details.
-    """
-
-    dates = [str(entry.get("date", "")) for entry in weekly_data]
-    completions: list[int] = []
-    for entry in weekly_data:
-        value = entry.get("completions")
-        if isinstance(value, (int, float)):
-            completions.append(int(value))
-        elif isinstance(value, str) and value.strip():
-            try:
-                completions.append(int(float(value)))
-            except ValueError:
-                completions.append(0)
-        else:
-            completions.append(0)
-
-    figure = go.Figure(
-        data=[
-            go.Bar(
-                x=dates,
-                y=completions,
-                text=completions,
-                textposition="auto",
-                textfont_color=FONT_COLOR,
-                marker_color=PRIMARY_COLOR,
-                hovertemplate=("<b>%{x}</b><br>Abschlüsse: %{y}<extra></extra>"),
-            )
-        ]
-    )
-
-    figure.update_layout(
-        bargap=0.35,
-        title_text="Abschlüsse der letzten 7 Tage",
-        xaxis_title="Datum",
-        yaxis_title="Abschlüsse",
-        margin=dict(t=60, r=10, b=40, l=10),
-    )
-
-    figure.update_yaxes(rangemode="tozero")
-    _apply_dark_theme(figure)
-
     return figure
 
 
@@ -133,7 +78,6 @@ def build_category_weekly_completion_figure(
 
 __all__ = [
     "build_category_weekly_completion_figure",
-    "build_weekly_completion_figure",
     "CATEGORY_COLORS",
     "PRIMARY_COLOR",
 ]
