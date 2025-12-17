@@ -116,10 +116,12 @@ def add_todo(
 def toggle_complete(todo_id: str) -> Optional[TodoItem]:
     todos: list[TodoItem] = get_todos()
     updated: Optional[TodoItem] = None
+    was_completed = False
     for index, todo in enumerate(todos):
         if todo.id != todo_id:
             continue
 
+        was_completed = todo.completed
         completed = not todo.completed
         todos[index] = todo.model_copy(
             update={
@@ -132,6 +134,8 @@ def toggle_complete(todo_id: str) -> Optional[TodoItem]:
 
     if updated:
         save_todos(todos)
+        if updated.completed and not was_completed:
+            _process_completion(updated, was_completed=was_completed)
     return updated
 
 

@@ -67,7 +67,9 @@ def _coerce_todo(raw: Any) -> TodoItem:
         migrated.setdefault("progress_current", 0.0)
         migrated.setdefault("progress_target", None)
         migrated.setdefault("progress_unit", "")
-        migrated.setdefault("auto_done_when_target_reached", bool(migrated.get("progress_target")))
+        migrated.setdefault(
+            "auto_done_when_target_reached", migrated.get("progress_target") is not None
+        )
         migrated.setdefault("completion_criteria_md", "")
         migrated.setdefault("processed_progress_events", [])
         kanban_default_factory = cast(Callable[[], object] | None, TodoItem.model_fields["kanban"].default_factory)

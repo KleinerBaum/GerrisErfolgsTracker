@@ -154,6 +154,7 @@ OPENAI_API_KEY = "sk-..."
   - **Double Digits / Zweistellig** – 10 erledigte Tasks insgesamt.
 - Anti-Doppelzählung: Abschlüsse werden als Events protokolliert, sodass Punkte und Badges auch nach einem Reload nicht mehrfach vergeben werden.
 - Abschluss-Events werden zusätzlich als Verlaufseinträge mit Token gespeichert, um Wiederholungen durch doppelte Toggles oder Neustarts zu verhindern / Completion events are stored with tokens in the history to avoid repeated rewards after reloads.
+- Abschluss-Logik liegt zentral im Domain-Layer (`todos.toggle_complete`, Auto-Progress), sodass KPI- und Gamification-Updates genau einmal pro Abschluss ausgeführt werden, egal aus welchem UI-Pfad / Completion handling lives in the domain layer (`todos.toggle_complete`, auto progress), ensuring KPI and gamification updates run exactly once per completion across all UI paths.
 - Drop-down für Gamification-Modus (Punkte, Abzeichen oder ein neuer Avatar-Modus mit motivierenden Sprüchen) auf der Seite **Ziele / Goals**; Fortschritt, Level und Motivation erscheinen im Gamification-Panel der Sidebar.
 
 ### Meilensteine & Priority-Board

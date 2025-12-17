@@ -5,7 +5,7 @@ import json
 from contextlib import nullcontext
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from typing import Any, Literal, Mapping, Optional, Sequence, TypedDict, cast
 
 import plotly.graph_objects as go
@@ -76,12 +76,8 @@ from gerris_erfolgs_tracker.gamification import (
     calculate_progress_to_next_level,
     get_gamification_state,
     next_avatar_prompt,
-    update_gamification_on_completion,
 )
-from gerris_erfolgs_tracker.kpis import (
-    get_kpi_stats,
-    update_kpis_on_completion,
-)
+from gerris_erfolgs_tracker.kpis import get_kpi_stats
 from gerris_erfolgs_tracker.kpi import (
     CategoryKpi,
     aggregate_category_kpis,
@@ -847,10 +843,8 @@ def _celebrate_gamification_changes(before: GamificationState, after: Gamificati
 
 
 def _handle_completion_success(todo: TodoItem, *, previous_state: GamificationState | None = None) -> None:
-    completion_time = todo.completed_at or datetime.now(timezone.utc)
-    stats = update_kpis_on_completion(completion_time)
     before_state = previous_state or _gamification_snapshot()
-    after_state = update_gamification_on_completion(todo, stats)
+    after_state = get_gamification_state()
     _celebrate_gamification_changes(before_state, after_state)
     st.success(
         translate_text(
