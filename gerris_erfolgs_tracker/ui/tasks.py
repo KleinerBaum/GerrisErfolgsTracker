@@ -838,11 +838,12 @@ def render_task_list_view(todos: list[TodoItem]) -> None:
             if isinstance(current_sort_value, str) and current_sort_value in sort_labels
             else "priority"
         )
+        sort_override_options: list[SortOverride] = list(sort_labels.keys())
         sort_override: SortOverride = st.selectbox(
             "Sortierung",
-            options=list(sort_labels.keys()),
+            options=sort_override_options,
             format_func=lambda key: sort_labels[key],
-            index=list(sort_labels.keys()).index(current_sort),
+            index=sort_override_options.index(current_sort),
             key=FILTER_SORT_OVERRIDE_KEY,
         )
 

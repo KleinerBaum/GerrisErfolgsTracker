@@ -14,6 +14,7 @@ from gerris_erfolgs_tracker.constants import (
     SS_SETTINGS,
     SS_STATS,
     SS_TODOS,
+    TODO_TEMPLATE_LAST_APPLIED_KEY,
     cap_list_tail,
 )
 from gerris_erfolgs_tracker.models import (
@@ -113,6 +114,8 @@ def init_state() -> None:
 
     if SS_JOURNAL not in st.session_state:
         st.session_state[SS_JOURNAL] = _default_journal()
+
+    st.session_state.setdefault(TODO_TEMPLATE_LAST_APPLIED_KEY, "free")
 
     persist_state()
 
