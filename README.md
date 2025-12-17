@@ -33,6 +33,10 @@ streamlit run app.py
 # streamlit run app.py
 ```
 
+## Code-Struktur / Code structure
+
+- `app.py` bleibt der Streamlit-Einstiegspunkt, während UI-Helfer (Badges, Dark-Theme-Styling) in `gerris_erfolgs_tracker/ui/common.py` gebündelt sind / `app.py` stays the Streamlit entry point and UI helpers (badges, dark theme styling) live in `gerris_erfolgs_tracker/ui/common.py`.
+
 Hinweise:
 - Der Start funktioniert auch ohne API Key; die App zeigt dann einen Hinweis an.
 - Falls du den EU-Endpunkt nutzen möchtest, setze `OPENAI_BASE_URL=https://eu.api.openai.com/v1`.
