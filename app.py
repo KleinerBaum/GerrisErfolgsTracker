@@ -1519,6 +1519,28 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
         return ai_enabled
 
     panel.markdown("### Ziel-Canvas")
+    panel.info(
+        translate_text(
+            (
+                """
+                **Wichtigste Elemente / Key essentials**
+                - Titel & Fokus-Kategorien für Klarheit
+                - Zeithorizont & Zieltermin für die Planung
+                - Messbarer Zielwert inklusive Einheit
+                - Konkreter nächster Schritt als Startpunkt
+                - Motivation und Erfolgskriterien für Verbindlichkeit
+                """,
+                """
+                **Key essentials when creating a goal**
+                - Title & focus categories to keep the scope clear
+                - Time horizon & target date for planning
+                - Measurable target value including the unit
+                - A concrete next step to get started
+                - Motivation and success criteria to stay committed
+                """,
+            )
+        )
+    )
     canvas_columns = panel.columns(2)
     horizon_options = [option for option, _ in GOAL_HORIZON_OPTIONS]
     cadence_options = [option for option, _ in GOAL_CHECKIN_OPTIONS]
