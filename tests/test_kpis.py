@@ -69,3 +69,37 @@ def test_count_new_tasks_last_7_days_filters_by_window() -> None:
     count = count_new_tasks_last_7_days([in_window, boundary, out_of_window], today=today)
 
     assert count == 2
+
+
+def test_count_new_tasks_last_7_days_accepts_mappings_and_strings() -> None:
+    today = datetime(2024, 3, 10, tzinfo=timezone.utc).date()
+    model_instance = TodoItem(
+        title="Model",
+        quadrant=EisenhowerQuadrant.URGENT_IMPORTANT,
+        category=Category.ADMIN,
+        created_at=datetime(2024, 3, 10, 12, tzinfo=timezone.utc),
+    )
+    dict_task = {
+        "title": "Dict",
+        "created_at": "2024-03-09T08:30:00Z",
+    }
+    naive_string_task = {
+        "title": "Naive",
+        "created_at": "2024-03-04 10:00:00",
+    }
+    too_old = {"title": "Old", "created_at": "2024-03-02"}
+
+    count = count_new_tasks_last_7_days([model_instance, dict_task, naive_string_task, too_old], today=today)
+
+    assert count == 3
+
+
+def test_count_new_tasks_last_7_days_handles_invalid_data_gracefully() -> None:
+    today = datetime(2024, 4, 15, tzinfo=timezone.utc).date()
+    missing_created_at: dict[str, object] = {"title": "No timestamp"}
+    malformed_string = {"title": "Broken", "created_at": "not-a-date"}
+    boundary = {"title": "Boundary", "created_at": "2024-04-09"}
+
+    count = count_new_tasks_last_7_days([missing_created_at, malformed_string, boundary], today=today)
+
+    assert count == 1
