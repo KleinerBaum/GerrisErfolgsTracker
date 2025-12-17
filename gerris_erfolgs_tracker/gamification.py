@@ -5,7 +5,13 @@ from typing import Dict
 
 import streamlit as st
 
-from gerris_erfolgs_tracker.constants import SS_GAMIFICATION
+from gerris_erfolgs_tracker.constants import (
+    GAMIFICATION_HISTORY_LIMIT,
+    PROCESSED_COMPLETIONS_LIMIT,
+    PROCESSED_JOURNAL_EVENTS_LIMIT,
+    SS_GAMIFICATION,
+    cap_list_tail,
+)
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
 from gerris_erfolgs_tracker.models import (
     GamificationMode,
@@ -35,10 +41,22 @@ AVATAR_ROSS_PROMPTS = [
 
 def _coerce_state(raw: object | None) -> GamificationState:
     if isinstance(raw, GamificationState):
-        return raw
+        return raw.model_copy(
+            update={
+                "history": cap_list_tail(list(raw.history), GAMIFICATION_HISTORY_LIMIT),
+                "processed_completions": cap_list_tail(list(raw.processed_completions), PROCESSED_COMPLETIONS_LIMIT),
+                "processed_journal_events": cap_list_tail(
+                    list(raw.processed_journal_events), PROCESSED_JOURNAL_EVENTS_LIMIT
+                ),
+            }
+        )
     if raw is None:
         return GamificationState()
-    return GamificationState.model_validate(raw)
+    state = GamificationState.model_validate(raw)
+    state.history = cap_list_tail(list(state.history), GAMIFICATION_HISTORY_LIMIT)
+    state.processed_completions = cap_list_tail(list(state.processed_completions), PROCESSED_COMPLETIONS_LIMIT)
+    state.processed_journal_events = cap_list_tail(list(state.processed_journal_events), PROCESSED_JOURNAL_EVENTS_LIMIT)
+    return state
 
 
 def get_gamification_state() -> GamificationState:
@@ -58,6 +76,7 @@ def _log_completion_event(state: GamificationState, todo: TodoItem, *, points: i
     state.history.append(
         (f"{timestamp.isoformat()} · {todo.quadrant.label}: +{points} Punkte · Token {completion_token}")
     )
+    state.history = cap_list_tail(state.history, GAMIFICATION_HISTORY_LIMIT)
 
 
 def _award_badge(state: GamificationState, badge: str) -> None:
@@ -95,11 +114,13 @@ def award_journal_points(
         return state
 
     state.processed_journal_events.append(token)
+    state.processed_journal_events = cap_list_tail(state.processed_journal_events, PROCESSED_JOURNAL_EVENTS_LIMIT)
     state.points += sanitized_points
     state.level = max(1, 1 + state.points // 100)
     state.history.append(
         (f"{entry_date.isoformat()} · Journal: +{sanitized_points} Punkte für {target_title} · {rationale}")
     )
+    state.history = cap_list_tail(state.history, GAMIFICATION_HISTORY_LIMIT)
     st.session_state[SS_GAMIFICATION] = state.model_dump()
     persist_state()
     return state
@@ -115,6 +136,7 @@ def update_gamification_on_completion(todo: TodoItem, stats: KpiStats) -> Gamifi
         return state
 
     state.processed_completions.append(completion_token)
+    state.processed_completions = cap_list_tail(state.processed_completions, PROCESSED_COMPLETIONS_LIMIT)
     points_gained = POINTS_PER_QUADRANT.get(todo.quadrant, 10)
 
     _log_completion_event(state, todo, points=points_gained, completion_token=completion_token)

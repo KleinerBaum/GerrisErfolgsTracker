@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Begrenzte Gamification-Historie und verarbeitete Eventlisten per Ringpuffer (je 1 000 Einträge) für stabile Deduplikation ohne unbeschränktes Wachstum / Capped gamification history and processed event lists with 1,000-entry ring buffers to keep deduplication stable without unbounded growth.
 - Korrigiert die Abschlusslogik, sodass KPI- und Gamification-Updates nur einmal pro Abschluss ausgelöst werden und `auto_done_when_target_reached` auch bei einem Zielwert von 0 korrekt migriert wird / Fixed completion handling to trigger KPI and gamification updates exactly once per completion and to migrate `auto_done_when_target_reached` even when the progress target is 0.
 - Entfernt die Überschriften **Gemeinsamer Kalender / Shared calendar** und **Kategorie-Überblick** sowie die Wochen-Grafik **Abschlüsse der letzten 7 Tage**, um das Ziele-Layout zu entschlacken / Removed the **Shared calendar** and **Category overview** headers plus the **Completions from the last 7 days** weekly chart to streamline the Goals layout.
 - Überschrift **Ziele & Einstellungen / Goals & settings** von der Ziele-Seite entfernt, damit der Abschnitt ohne Titel eingebettet ist / Removed the **Goals & settings** header from the Goals page so the section sits inline without a title.

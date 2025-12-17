@@ -8,11 +8,13 @@ import streamlit as st
 from pydantic_core import to_jsonable_python
 
 from gerris_erfolgs_tracker.constants import (
+    PROCESSED_PROGRESS_EVENTS_LIMIT,
     SS_GAMIFICATION,
     SS_JOURNAL,
     SS_SETTINGS,
     SS_STATS,
     SS_TODOS,
+    cap_list_tail,
 )
 from gerris_erfolgs_tracker.models import (
     Category,
@@ -67,11 +69,12 @@ def _coerce_todo(raw: Any) -> TodoItem:
         migrated.setdefault("progress_current", 0.0)
         migrated.setdefault("progress_target", None)
         migrated.setdefault("progress_unit", "")
-        migrated.setdefault(
-            "auto_done_when_target_reached", migrated.get("progress_target") is not None
-        )
+        migrated.setdefault("auto_done_when_target_reached", migrated.get("progress_target") is not None)
         migrated.setdefault("completion_criteria_md", "")
         migrated.setdefault("processed_progress_events", [])
+        migrated["processed_progress_events"] = cap_list_tail(
+            list(migrated["processed_progress_events"]), PROCESSED_PROGRESS_EVENTS_LIMIT
+        )
         kanban_default_factory = cast(Callable[[], object] | None, TodoItem.model_fields["kanban"].default_factory)
         migrated.setdefault("kanban", (kanban_default_factory or TodoKanban)())
         migrated.setdefault("milestones", [])

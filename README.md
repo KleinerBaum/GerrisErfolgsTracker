@@ -82,6 +82,7 @@ OPENAI_API_KEY = "sk-..."
 - Typprüfung: `mypy`
 - Tests: `pytest -q`
 - CI: GitHub Actions Workflow (`.github/workflows/ci.yml`) führt `ruff check .` und `pytest -q` bei Push/PR aus.
+- Ereignislisten (z. B. Gamification-Historie, processed IDs) werden nach jedem Append als Ringpuffer auf 1 000 Einträge begrenzt, um Speicherverbrauch und Dedup-Logik stabil zu halten / Event lists (e.g., gamification history, processed IDs) use 1,000-entry ring buffers after each append to contain memory use while keeping dedup working.
 - Streamlit-Forms: Alle Submit-Buttons müssen innerhalb ihres `st.form` stehen; die Quick-Edit-Speicheraktion im Aufgabenlisten-Formular ist entsprechend eingebettet, sodass keine `st.form_submit_button`-API-Fehler auftreten.
 - ToDo-Meilenstein-Aktionen nutzen `st.form_submit_button`, damit Entwürfe und Vorschläge ohne `StreamlitAPIException` funktionieren / ToDo milestone actions rely on `st.form_submit_button` so drafts and suggestions work without `StreamlitAPIException`.
 - Widget-Keys: Der frühere Button "AI: Motivation" entfällt, sodass keine kontextspezifischen Sidebar-Keys mehr nötig sind / Widget keys: The former "AI: Motivation" button has been removed, so sidebar-specific keys are no longer required.
