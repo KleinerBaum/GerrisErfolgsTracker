@@ -60,6 +60,7 @@
   bleiben.
 - Added centralized session-state initialization and constants for todo, KPI, and gamification data.
 - Documented the new state management modules and defaults.
+- Behebt einen Streamlit-Session-State-Fehler beim Übernehmen von Aufgabenvorlagen im ToDo-Formular / Fixes a Streamlit session state error when applying task templates in the ToDo form.
 - Implemented ToDo CRUD workflow with Streamlit UI (Form, Filter, Edit/Delete/Complete toggle).
 - Added Eisenhower-Matrix board with quadrant enum, sorting helpers, and per-task quadrant changes.
 - Neu: Meilenstein-Board pro Aufgabe mit Spalten Backlog → Ready → In Progress → Review → Done, inklusive Punkte/Komplexitäts-

@@ -397,7 +397,6 @@ def _todo_templates(*, today: date) -> list[TaskTemplate]:
 def _apply_task_template(template: TaskTemplate) -> None:
     for key, value in template.settings.items():
         st.session_state[key] = value
-    st.session_state[NEW_TODO_TEMPLATE_KEY] = template.key
     st.session_state["_todo_template_last_applied"] = template.key
 
 
