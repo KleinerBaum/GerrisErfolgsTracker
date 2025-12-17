@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
 from gerris_erfolgs_tracker.gamification import get_gamification_state
 from gerris_erfolgs_tracker.kpis import get_kpi_stats
-from gerris_erfolgs_tracker.todos import add_todo, update_todo_progress
 from gerris_erfolgs_tracker.state import init_state
-from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
+from gerris_erfolgs_tracker.todos import add_todo, update_todo_progress
 
 
 def test_progress_auto_completes_once(session_state: dict[str, object]) -> None:

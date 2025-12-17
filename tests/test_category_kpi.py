@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
+from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
 from gerris_erfolgs_tracker.kpi import (
     aggregate_category_kpis,
     last_7_days_completions_by_category,
 )
 from gerris_erfolgs_tracker.models import Category, TodoItem
-from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
 
 
 def _todo(

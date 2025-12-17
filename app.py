@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import os
 import json
+import os
 from contextlib import nullcontext
-
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Literal, Mapping, Optional, Sequence, TypedDict, cast
@@ -17,10 +16,7 @@ from gerris_erfolgs_tracker.ai_features import (
     suggest_milestones,
     suggest_quadrant,
 )
-from gerris_erfolgs_tracker.llm_schemas import (
-    MilestoneSuggestionItem,
-    MilestoneSuggestionList,
-)
+from gerris_erfolgs_tracker.calendar_view import render_calendar_view
 from gerris_erfolgs_tracker.charts import (
     PRIMARY_COLOR,
     build_category_weekly_completion_figure,
@@ -34,38 +30,37 @@ from gerris_erfolgs_tracker.constants import (
     FILTER_SHOW_DONE_KEY,
     FILTER_SORT_OVERRIDE_KEY,
     GOAL_CREATION_VISIBLE_KEY,
+    GOAL_OVERVIEW_SELECTED_TASKS_KEY,
     GOAL_OVERVIEW_SHOW_CATEGORY_KEY,
     GOAL_OVERVIEW_SHOW_KPI_KEY,
-    GOAL_OVERVIEW_SELECTED_TASKS_KEY,
-    NEW_TODO_CATEGORY_KEY,
-    NEW_TODO_DESCRIPTION_KEY,
-    NEW_TODO_DUE_KEY,
-    NEW_TODO_ENABLE_TARGET_KEY,
-    NEW_TODO_TEMPLATE_KEY,
-    NEW_TODO_PRIORITY_KEY,
-    NEW_TODO_PROGRESS_CURRENT_KEY,
-    NEW_TODO_PROGRESS_TARGET_KEY,
-    NEW_TODO_PROGRESS_UNIT_KEY,
-    NEW_TODO_AUTO_COMPLETE_KEY,
-    NEW_TODO_COMPLETION_CRITERIA_KEY,
-    NEW_TODO_QUADRANT_KEY,
-    NEW_TODO_QUADRANT_PREFILL_KEY,
-    NEW_TODO_RESET_TRIGGER_KEY,
-    NEW_TODO_TITLE_KEY,
-    NEW_TODO_RECURRENCE_KEY,
-    NEW_TODO_REMINDER_KEY,
     NEW_MILESTONE_COMPLEXITY_KEY,
     NEW_MILESTONE_NOTE_KEY,
     NEW_MILESTONE_POINTS_KEY,
     NEW_MILESTONE_SUGGESTIONS_KEY,
     NEW_MILESTONE_TITLE_KEY,
+    NEW_TODO_AUTO_COMPLETE_KEY,
+    NEW_TODO_CATEGORY_KEY,
+    NEW_TODO_COMPLETION_CRITERIA_KEY,
+    NEW_TODO_DESCRIPTION_KEY,
     NEW_TODO_DRAFT_MILESTONES_KEY,
+    NEW_TODO_DUE_KEY,
+    NEW_TODO_ENABLE_TARGET_KEY,
+    NEW_TODO_PRIORITY_KEY,
+    NEW_TODO_PROGRESS_CURRENT_KEY,
+    NEW_TODO_PROGRESS_TARGET_KEY,
+    NEW_TODO_PROGRESS_UNIT_KEY,
+    NEW_TODO_QUADRANT_KEY,
+    NEW_TODO_QUADRANT_PREFILL_KEY,
+    NEW_TODO_RECURRENCE_KEY,
+    NEW_TODO_REMINDER_KEY,
+    NEW_TODO_RESET_TRIGGER_KEY,
+    NEW_TODO_TEMPLATE_KEY,
+    NEW_TODO_TITLE_KEY,
     PENDING_DELETE_TODO_KEY,
     SETTINGS_GOAL_DAILY_KEY,
     SHOW_STORAGE_NOTICE_KEY,
     SS_SETTINGS,
 )
-from gerris_erfolgs_tracker.calendar_view import render_calendar_view
 from gerris_erfolgs_tracker.eisenhower import (
     EisenhowerQuadrant,
     group_by_quadrant,
@@ -77,12 +72,11 @@ from gerris_erfolgs_tracker.gamification import (
     get_gamification_state,
     next_avatar_prompt,
 )
-from gerris_erfolgs_tracker.kpis import get_kpi_stats
-from gerris_erfolgs_tracker.kpi import (
-    CategoryKpi,
-    aggregate_category_kpis,
-    count_new_tasks_last_7_days,
-    last_7_days_completions_by_category,
+from gerris_erfolgs_tracker.i18n import (
+    LanguageCode,
+    get_language,
+    localize_streamlit,
+    translate_text,
 )
 from gerris_erfolgs_tracker.journal import (
     ensure_journal_state,
@@ -95,13 +89,18 @@ from gerris_erfolgs_tracker.journal_alignment import (
     JournalUpdateCandidate,
     suggest_journal_alignment,
 )
-from gerris_erfolgs_tracker.i18n import (
-    LanguageCode,
-    get_language,
-    localize_streamlit,
-    translate_text,
+from gerris_erfolgs_tracker.kpi import (
+    CategoryKpi,
+    aggregate_category_kpis,
+    count_new_tasks_last_7_days,
+    last_7_days_completions_by_category,
 )
+from gerris_erfolgs_tracker.kpis import get_kpi_stats
 from gerris_erfolgs_tracker.llm import get_openai_client
+from gerris_erfolgs_tracker.llm_schemas import (
+    MilestoneSuggestionItem,
+    MilestoneSuggestionList,
+)
 from gerris_erfolgs_tracker.models import (
     Category,
     EmailReminderOffset,
@@ -126,17 +125,16 @@ from gerris_erfolgs_tracker.state import (
 from gerris_erfolgs_tracker.storage import FileStorageBackend
 from gerris_erfolgs_tracker.todos import (
     add_kanban_card,
+    add_milestone,
     add_todo,
     delete_todo,
     duplicate_todo,
     move_kanban_card,
-    add_milestone,
     move_milestone,
     toggle_complete,
-    update_todo,
     update_milestone,
+    update_todo,
 )
-
 
 GoalHorizon = Literal["1_week", "30_days", "90_days", "custom"]
 GoalCheckInCadence = Literal["weekly", "biweekly", "monthly"]
@@ -930,7 +928,7 @@ def _render_todo_kanban(todo: TodoItem) -> None:
     for card in sorted(kanban.cards, key=lambda card: card.created_at):
         cards_by_column.setdefault(card.column_id, []).append(card)
 
-    for column_index, (column, container) in enumerate(zip(ordered_columns, column_containers)):
+    for column_index, (column, container) in enumerate(zip(ordered_columns, column_containers, strict=True)):
         with container:
             label = column_labels.get(column.id, column.title)
             st.markdown(f"**{label}**")
@@ -1029,7 +1027,7 @@ def _render_milestone_board(todo: TodoItem, *, gamification_mode: GamificationMo
 
     status_order = list(MilestoneStatus)
     status_columns = st.columns(len(status_order))
-    for status, column in zip(status_order, status_columns):
+    for status, column in zip(status_order, status_columns, strict=True):
         with column:
             column.markdown(f"**{status.label}**")
             items = [item for item in todo.milestones if item.status is status]
@@ -2198,7 +2196,7 @@ def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, categor
     )
     card_columns = st.columns(len(Category))
 
-    for category, column in zip(Category, card_columns):
+    for category, column in zip(Category, card_columns, strict=True):
         snapshot = snapshots[category]
         with column:
             with st.container(border=True):
@@ -2676,7 +2674,7 @@ def render_todo_section(
         st.subheader("Eisenhower-Matrix")
         grouped = group_by_quadrant(sort_todos(todos, by="due_date"))
         quadrant_columns = st.columns(4)
-        for quadrant, column in zip(EisenhowerQuadrant, quadrant_columns):
+        for quadrant, column in zip(EisenhowerQuadrant, quadrant_columns, strict=True):
             render_quadrant_board(column, quadrant, grouped.get(quadrant, []))
 
     with calendar_tab:
@@ -2692,7 +2690,7 @@ def _render_quadrant_focus_items(todos: list[TodoItem]) -> None:
     st.caption("Prüfe die wichtigsten Aufgaben aus den Aufgabenansichten und ihre Unterziele.")
 
     focus_columns = st.columns(2)
-    for quadrant, column in zip(focus_quadrants, focus_columns):
+    for quadrant, column in zip(focus_quadrants, focus_columns, strict=True):
         with column:
             st.markdown(f"**{quadrant.label}**")
             open_items = [

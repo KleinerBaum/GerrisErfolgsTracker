@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import wraps
-from typing import Iterable, Literal, Mapping
+from typing import Iterable, Literal, Mapping, Protocol, cast
 
 import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
@@ -74,19 +74,27 @@ def translate_value(value: object) -> object:
     return value
 
 
+class LocalizedMethod(Protocol):
+    _is_localized: bool
+
+    def __call__(self, *args: object, **kwargs: object) -> object:
+        ...
+
+
 def _wrap_method(method_name: str, *, delta_generator: type[DeltaGenerator]) -> None:
     original = getattr(delta_generator, method_name, None)
     if original is None or getattr(original, "_is_localized", False):
         return
 
     @wraps(original)
-    def wrapper(self: DeltaGenerator, *args: object, **kwargs: object):
+    def wrapper(self: DeltaGenerator, *args: object, **kwargs: object) -> object:
         localized_args = [translate_value(arg) for arg in args]
         localized_kwargs = {key: value if key == "key" else translate_value(value) for key, value in kwargs.items()}
         return original(self, *localized_args, **localized_kwargs)
 
-    setattr(wrapper, "_is_localized", True)
-    setattr(delta_generator, method_name, wrapper)
+    localized_wrapper = cast(LocalizedMethod, wrapper)
+    localized_wrapper._is_localized = True
+    setattr(delta_generator, method_name, localized_wrapper)
 
 
 def localize_streamlit(methods: Iterable[str] | None = None) -> None:

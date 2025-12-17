@@ -13,8 +13,8 @@ from openai import (
     OpenAI,
     RateLimitError,
 )
-from streamlit.errors import StreamlitSecretNotFoundError
 from pydantic import BaseModel
+from streamlit.errors import StreamlitSecretNotFoundError
 
 DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_REASONING_MODEL = "o3-mini"
