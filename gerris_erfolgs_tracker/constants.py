@@ -2,7 +2,6 @@
 
 from typing import List, TypeVar
 
-
 T = TypeVar("T")
 
 PROCESSED_PROGRESS_EVENTS_LIMIT: int = 1000

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Generic, Optional, TypeVar
 
 from openai import OpenAI
+
 from gerris_erfolgs_tracker.kpis import get_kpi_stats
 from gerris_erfolgs_tracker.llm import (
     LLMError,
@@ -20,7 +21,6 @@ from gerris_erfolgs_tracker.llm_schemas import (
     TodoCategorization,
 )
 from gerris_erfolgs_tracker.models import GamificationMode, KpiStats
-
 
 PayloadT = TypeVar("PayloadT")
 

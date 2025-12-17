@@ -27,7 +27,6 @@ from gerris_erfolgs_tracker.models import (
 )
 from gerris_erfolgs_tracker.storage import StorageBackend
 
-
 LOGGER = logging.getLogger(__name__)
 PERSISTED_KEYS: tuple[str, ...] = (SS_TODOS, SS_STATS, SS_GAMIFICATION, SS_SETTINGS, SS_JOURNAL)
 _storage_backend: StorageBackend | None = None

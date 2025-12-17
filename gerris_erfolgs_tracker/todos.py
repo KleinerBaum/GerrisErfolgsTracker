@@ -18,7 +18,6 @@ from gerris_erfolgs_tracker.models import (
 )
 from gerris_erfolgs_tracker.state import get_todos, save_todos
 
-
 _UNSET: Final = object()
 
 
