@@ -45,7 +45,8 @@ def _build_cycle_time_metrics(durations: list[timedelta]) -> CycleTimeMetrics:
         return CycleTimeMetrics(average=None, median=None, count=0)
 
     average_duration = sum((duration for duration in durations), timedelta()) / len(durations)
-    median_duration = median(durations)
+    median_seconds = median(duration.total_seconds() for duration in durations)
+    median_duration = timedelta(seconds=median_seconds)
     return CycleTimeMetrics(average=average_duration, median=median_duration, count=len(durations))
 
 

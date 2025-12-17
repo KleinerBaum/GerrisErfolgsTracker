@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any, Literal, Mapping, Optional
+from typing import Any, Literal, Mapping, Optional, cast
 
 import streamlit as st
 from openai import OpenAI
@@ -833,12 +833,17 @@ def render_task_list_view(todos: list[TodoItem]) -> None:
             "created_at": "Erstellungsdatum zuerst",
         }
         current_sort_value = st.session_state.get(FILTER_SORT_OVERRIDE_KEY, "priority")
-        current_sort: SortOverride = current_sort_value if current_sort_value in sort_labels else "priority"  # type: ignore[assignment]
+        current_sort: SortOverride = (
+            cast(SortOverride, current_sort_value)
+            if isinstance(current_sort_value, str) and current_sort_value in sort_labels
+            else "priority"
+        )
+        sort_override_options: list[SortOverride] = list(sort_labels.keys())
         sort_override: SortOverride = st.selectbox(
             "Sortierung",
-            options=list(sort_labels.keys()),
+            options=sort_override_options,
             format_func=lambda key: sort_labels[key],
-            index=list(sort_labels.keys()).index(current_sort),
+            index=sort_override_options.index(current_sort),
             key=FILTER_SORT_OVERRIDE_KEY,
         )
 
