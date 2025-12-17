@@ -77,8 +77,7 @@ def translate_value(value: object) -> object:
 class LocalizedMethod(Protocol):
     _is_localized: bool
 
-    def __call__(self, *args: object, **kwargs: object) -> object:
-        ...
+    def __call__(self, *args: object, **kwargs: object) -> object: ...
 
 
 def _wrap_method(method_name: str, *, delta_generator: type[DeltaGenerator]) -> None:
