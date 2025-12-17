@@ -278,6 +278,21 @@ def _inject_dark_theme_styles() -> None:
                 margin-bottom: 0.5rem;
             }
 
+            .stButton > button,
+            .stPopover button {
+                background: var(--gerris-primary);
+                color: #0b1311;
+                border: 1px solid var(--gerris-border);
+                font-weight: 600;
+            }
+
+            .stButton > button:hover,
+            .stPopover button:hover {
+                background: #23b497;
+                border-color: #23b497;
+                color: #0b1311;
+            }
+
             /* Highlight today's date inside Streamlit date pickers without breaking dark mode */
             .stDateInput .flatpickr-day.today:not(.selected) {
                 border: 1.5px solid var(--gerris-primary);
@@ -1499,17 +1514,8 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
     settings = _ensure_settings_defaults(client=client, stats=stats)
     ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
     goal_profile: GoalProfile = settings.get("goal_profile", _default_goal_profile())
-    panel.info("Steuere den KI-Schalter jetzt in der Sidebar über dem Sprachen-Toggle.")
 
     if not st.session_state.get(GOAL_CREATION_VISIBLE_KEY, False):
-        profile_title = goal_profile.get("title") or translate_text(("Neues Ziel", "New goal"))
-        horizon_label = _goal_option_label(goal_profile.get("horizon", "30_days"), GOAL_HORIZON_OPTIONS)
-        cadence_label = _goal_option_label(goal_profile.get("check_in_cadence", "weekly"), GOAL_CHECKIN_OPTIONS)
-        panel.caption("Starte die Zielkonfiguration über den Button.")
-        panel.info(f"{profile_title} · {horizon_label} · {translate_text(('Check-in: ', 'Check-in: '))}{cadence_label}")
-        if panel.button("Ziel erstellen", type="primary"):
-            st.session_state[GOAL_CREATION_VISIBLE_KEY] = True
-            st.rerun()
         return ai_enabled
 
     panel.markdown("### Ziel-Canvas")
@@ -1992,8 +1998,19 @@ def render_goal_completion_logger(todos: list[TodoItem]) -> None:
     open_todos = [todo for todo in todos if not todo.completed]
     show_selector = bool(st.session_state.get(GOAL_COMPLETION_SELECTOR_VISIBLE_KEY, False))
 
-    action_cols = st.columns([1, 1, 1])
+    action_cols = st.columns([1, 1, 1, 1])
     with action_cols[0]:
+        create_goal_clicked = st.button(
+            translate_text(("Ziel erstellen", "Create goal")),
+            type="primary",
+            help=translate_text(
+                (
+                    "Öffnet die Ziel-Canvas für neue Ziele.",
+                    "Opens the goal canvas for new objectives.",
+                )
+            ),
+        )
+    with action_cols[1]:
         completion_clicked = st.button(
             "Gelöst / Completed",
             type="primary",
@@ -2005,10 +2022,14 @@ def render_goal_completion_logger(todos: list[TodoItem]) -> None:
                 )
             ),
         )
-    with action_cols[1]:
-        _render_goal_quick_todo_popover()
     with action_cols[2]:
+        _render_goal_quick_todo_popover()
+    with action_cols[3]:
         _render_goal_quick_journal_popover()
+
+    if create_goal_clicked:
+        st.session_state[GOAL_CREATION_VISIBLE_KEY] = True
+        st.rerun()
 
     if not open_todos:
         st.info(
