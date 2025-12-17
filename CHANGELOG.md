@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Korrigiert die Abschlusslogik, sodass KPI- und Gamification-Updates nur einmal pro Abschluss ausgelöst werden und `auto_done_when_target_reached` auch bei einem Zielwert von 0 korrekt migriert wird / Fixed completion handling to trigger KPI and gamification updates exactly once per completion and to migrate `auto_done_when_target_reached` even when the progress target is 0.
 - Entfernt die Überschriften **Gemeinsamer Kalender / Shared calendar** und **Kategorie-Überblick** sowie die Wochen-Grafik **Abschlüsse der letzten 7 Tage**, um das Ziele-Layout zu entschlacken / Removed the **Shared calendar** and **Category overview** headers plus the **Completions from the last 7 days** weekly chart to streamline the Goals layout.
 - Überschrift **Ziele & Einstellungen / Goals & settings** von der Ziele-Seite entfernt, damit der Abschnitt ohne Titel eingebettet ist / Removed the **Goals & settings** header from the Goals page so the section sits inline without a title.
 - Ziel-Aktionsleiste: Der Button **Ziel erstellen / Create goal** sitzt jetzt neben den Quick-Actions, die Hinweise im Einstellungs-Panel entfallen, und alle Buttons teilen sich dieselbe Primärfarbe für ein konsistentes Erscheinungsbild / Goal action row now places **Create goal** beside the quick actions, removes the intro helper text in the settings panel, and applies one primary color across all buttons for consistency.
