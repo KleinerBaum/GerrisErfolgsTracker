@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone
+from calendar import monthrange
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Callable, Final, Literal, Optional
+from uuid import UUID, uuid5
 
 from gerris_erfolgs_tracker.constants import PROCESSED_PROGRESS_EVENTS_LIMIT, cap_list_tail
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, ensure_quadrant
@@ -19,6 +21,7 @@ from gerris_erfolgs_tracker.models import (
 from gerris_erfolgs_tracker.state import get_todos, save_todos
 
 _UNSET: Final = object()
+_RECURRENCE_SPAWN_NAMESPACE = UUID("c1c4db05-050c-4b1a-9c8a-2f2b5756fa0c")
 
 
 def _ensure_kanban(todo: TodoItem) -> TodoKanban:
@@ -40,6 +43,57 @@ def _process_completion(updated: TodoItem, *, was_completed: bool) -> None:
 
     stats = update_kpis_on_completion(updated.completed_at)
     update_gamification_on_completion(updated, stats)
+    _spawn_recurring_successor(updated)
+
+
+def _spawn_recurring_successor(completed: TodoItem) -> Optional[TodoItem]:
+    if completed.recurrence is RecurrencePattern.ONCE:
+        return None
+
+    if completed.completed_at is None:
+        return None
+
+    todos = get_todos()
+    spawn_token = f"{completed.id}:{completed.completed_at.isoformat()}"
+    successor_id = uuid5(_RECURRENCE_SPAWN_NAMESPACE, spawn_token)
+
+    for existing in todos:
+        if str(successor_id) == existing.id:
+            return existing
+
+    advanced_due = _advance_due_date(completed.due_date, completed.recurrence)
+    reset_milestones = [
+        Milestone(
+            title=milestone.title,
+            points=milestone.points,
+            complexity=milestone.complexity,
+            status=MilestoneStatus.BACKLOG,
+            note=milestone.note,
+        )
+        for milestone in completed.milestones
+    ]
+
+    successor = TodoItem(
+        id=str(successor_id),
+        title=completed.title,
+        quadrant=completed.quadrant,
+        due_date=advanced_due,
+        category=completed.category,
+        priority=completed.priority,
+        description_md=completed.description_md,
+        progress_current=0.0,
+        progress_target=completed.progress_target,
+        progress_unit=completed.progress_unit,
+        auto_done_when_target_reached=completed.auto_done_when_target_reached,
+        completion_criteria_md=completed.completion_criteria_md,
+        recurrence=completed.recurrence,
+        email_reminder=completed.email_reminder,
+        milestones=reset_milestones,
+    )
+
+    todos.append(successor)
+    save_todos(todos)
+    return successor
 
 
 def _apply_auto_completion_if_ready(todos: list[TodoItem], index: int, *, previous_completed: bool) -> TodoItem:
@@ -68,6 +122,41 @@ def _normalize_due_date(due_date: Optional[date | datetime]) -> Optional[datetim
         return due_date
 
     return datetime.combine(due_date, time.min, tzinfo=timezone.utc)
+
+
+def _advance_due_date(current: Optional[datetime], recurrence: RecurrencePattern) -> Optional[datetime]:
+    if current is None:
+        return None
+
+    if recurrence is RecurrencePattern.ONCE:
+        return None
+
+    normalized = current if current.tzinfo else current.replace(tzinfo=timezone.utc)
+
+    if recurrence is RecurrencePattern.DAILY:
+        return normalized + timedelta(days=1)
+
+    if recurrence is RecurrencePattern.WEEKDAYS:
+        candidate = normalized + timedelta(days=1)
+        while candidate.weekday() >= 5:
+            candidate += timedelta(days=1)
+        return candidate
+
+    if recurrence is RecurrencePattern.WEEKLY:
+        return normalized + timedelta(weeks=1)
+
+    if recurrence is RecurrencePattern.MONTHLY:
+        year = normalized.year + (1 if normalized.month == 12 else 0)
+        month = 1 if normalized.month == 12 else normalized.month + 1
+        day = min(normalized.day, monthrange(year, month)[1])
+        return normalized.replace(year=year, month=month, day=day)
+
+    if recurrence is RecurrencePattern.YEARLY:
+        target_year = normalized.year + 1
+        day = min(normalized.day, monthrange(target_year, normalized.month)[1])
+        return normalized.replace(year=target_year, day=day)
+
+    return normalized
 
 
 def add_todo(
