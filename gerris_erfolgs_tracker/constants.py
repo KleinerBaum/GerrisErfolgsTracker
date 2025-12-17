@@ -1,5 +1,27 @@
 """Central constants for Streamlit session state keys and defaults."""
 
+from typing import List, TypeVar
+
+
+T = TypeVar("T")
+
+PROCESSED_PROGRESS_EVENTS_LIMIT: int = 1000
+PROCESSED_COMPLETIONS_LIMIT: int = 1000
+PROCESSED_JOURNAL_EVENTS_LIMIT: int = 1000
+GAMIFICATION_HISTORY_LIMIT: int = 1000
+
+
+def cap_list_tail(values: List[T], limit: int) -> List[T]:
+    """Return at most the last ``limit`` items of ``values``.
+
+    A non-positive ``limit`` clears the list to avoid unbounded growth.
+    """
+
+    if limit <= 0:
+        return []
+    return values[-limit:]
+
+
 SS_TODOS: str = "todos"
 SS_STATS: str = "stats"
 SS_SETTINGS: str = "settings"

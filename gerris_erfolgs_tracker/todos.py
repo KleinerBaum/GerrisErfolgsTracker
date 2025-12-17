@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timezone
 from typing import Callable, Final, Literal, Optional
 
+from gerris_erfolgs_tracker.constants import PROCESSED_PROGRESS_EVENTS_LIMIT, cap_list_tail
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, ensure_quadrant
 from gerris_erfolgs_tracker.models import (
     Category,
@@ -411,7 +412,9 @@ def update_todo_progress(todo: TodoItem, *, delta: float, source_event_id: str) 
             return existing
 
         updated_progress = existing.progress_current + float(delta)
-        updated_events = [*existing.processed_progress_events, source_event_id]
+        updated_events = cap_list_tail(
+            [*existing.processed_progress_events, source_event_id], PROCESSED_PROGRESS_EVENTS_LIMIT
+        )
         updates: dict[str, object] = {
             "progress_current": updated_progress,
             "processed_progress_events": updated_events,
