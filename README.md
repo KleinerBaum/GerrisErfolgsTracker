@@ -25,8 +25,12 @@ Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt  # Dev-Setup / development setup
 streamlit run app.py
+
+# Runtime-only / nur Laufzeit (z. B. Deployment):
+# pip install -r requirements.txt
+# streamlit run app.py
 ```
 
 Hinweise:
@@ -78,6 +82,7 @@ OPENAI_API_KEY = "sk-..."
 
 ## Entwicklung & Tests
 
+- Abhängigkeiten für Entwicklung: `pip install -r requirements.txt -r requirements-dev.txt` (für Runtime/Deployment genügt `requirements.txt`).
 - Lint/Format: `ruff format` und `ruff check .`
 - Typprüfung: `mypy`
 - Tests: `pytest -q`
