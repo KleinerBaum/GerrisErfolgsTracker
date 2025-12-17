@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from typing import Iterable, Mapping, Sequence, TypedDict
+from typing import Any, Iterable, Mapping, Sequence, TypedDict
 
 from gerris_erfolgs_tracker.models import Category, TodoItem
 
@@ -123,13 +123,55 @@ def last_7_days_completions_by_category(
     ]
 
 
-def count_new_tasks_last_7_days(todos: Sequence[TodoItem], *, today: date | None = None) -> int:
-    """Count todos created within the last 7 days (including today)."""
+def _parse_created_at(raw: Any) -> date | None:
+    if isinstance(raw, datetime):
+        timestamp = raw if raw.tzinfo is not None else raw.replace(tzinfo=timezone.utc)
+        return timestamp.astimezone(timezone.utc).date()
+
+    if isinstance(raw, date):
+        return raw
+
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return None
+
+        normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+
+        try:
+            parsed_dt = datetime.fromisoformat(normalized)
+            timestamp = parsed_dt if parsed_dt.tzinfo is not None else parsed_dt.replace(tzinfo=timezone.utc)
+            return timestamp.astimezone(timezone.utc).date()
+        except ValueError:
+            try:
+                return date.fromisoformat(text)
+            except ValueError:
+                return None
+
+    return None
+
+
+def count_new_tasks_last_7_days(todos: Sequence[TodoItem | Mapping[str, Any]], *, today: date | None = None) -> int:
+    """Count todos created within the last 7 days (including today).
+
+    The function accepts either ``TodoItem`` instances or mappings that expose a
+    ``created_at`` field. It also tolerates common timestamp formats (datetime,
+    date, ISO 8601 strings with or without timezone information).
+    """
 
     current_day = today or datetime.now(timezone.utc).date()
     window_start = current_day - timedelta(days=6)
 
-    return sum(1 for todo in todos if window_start <= todo.created_at.astimezone(timezone.utc).date() <= current_day)
+    count = 0
+    for todo in todos:
+        created_at = todo.get("created_at") if isinstance(todo, Mapping) else getattr(todo, "created_at", None)
+        created_date = _parse_created_at(created_at)
+        if created_date is None:
+            continue
+        if window_start <= created_date <= current_day:
+            count += 1
+
+    return count
 
 
 __all__ = [
