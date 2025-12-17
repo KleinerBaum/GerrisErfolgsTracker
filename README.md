@@ -7,6 +7,7 @@ Die UI folgt einem klaren, fokussierten Dark-Theme mit dunkelgrünem Primärton 
 Die Sidebar verzichtet bewusst auf Sprachumschalter oder Hinweisblöcke, damit Navigation und Quick-Actions kompakt bleiben / The sidebar deliberately omits language toggles or notice blocks to keep navigation and quick actions compact.
 
 - Die Ziele-Seite verzichtet auf die Überschriften für Kalender und Kategorie-Überblick sowie auf das Wochenabschluss-Diagramm, damit mehr Platz für KPIs und Aufgaben bleibt / The Goals page now hides the calendar and category overview headers and removes the weekly completions chart to leave more room for KPIs and tasks.
+- Der Bereich **Ziele & Einstellungen** wird ohne Überschrift eingebettet, damit die Seite schlanker wirkt / The **Goals & settings** section renders without a header to keep the page lean.
 
 Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI aktiv / AI enabled** gesetzt ist, nutzt die App GPT-Modelle (Standard: `gpt-4o-mini`, per Einstellung überschreibbar), um z. B. automatisch den Eisenhower-Quadranten zu empfehlen oder kurze Motivationsnachrichten basierend auf den jüngsten KPIs zu erstellen. Ist kein API-Key hinterlegt oder die AI-Option deaktiviert, werden statische, vorgefertigte Texte verwendet, sodass die Anwendung weiterhin vollständig nutzbar bleibt.
 
