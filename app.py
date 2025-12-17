@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from contextlib import nullcontext
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Literal, Mapping, Optional, Sequence, TypedDict, cast
 
 import plotly.graph_objects as go
@@ -12,9 +12,17 @@ from openai import OpenAI
 
 import gerris_erfolgs_tracker.ui.tasks as tasks_ui
 from gerris_erfolgs_tracker.ai_features import AISuggestion, suggest_quadrant
+from gerris_erfolgs_tracker.analytics import (
+    build_completion_heatmap,
+    calculate_backlog_health,
+    calculate_cycle_time,
+    calculate_cycle_time_by_category,
+)
 from gerris_erfolgs_tracker.charts import (
     PRIMARY_COLOR,
+    build_backlog_health_figure,
     build_category_weekly_completion_figure,
+    build_cycle_time_overview_figure,
 )
 from gerris_erfolgs_tracker.constants import (
     AI_ENABLED_KEY,
@@ -1324,6 +1332,19 @@ def render_shared_calendar() -> None:
     st.markdown(calendar_iframe, unsafe_allow_html=True)
 
 
+def _format_duration_short(value: timedelta | None) -> str:
+    if value is None:
+        return "–"
+
+    total_seconds = value.total_seconds()
+    total_hours = total_seconds / 3600
+    if total_hours >= 48:
+        return f"{value.days}d"
+    if total_hours >= 1:
+        return f"{total_hours:.1f}h"
+    return f"{total_seconds / 60:.0f}m"
+
+
 def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
     _sync_tasks_streamlit()
     st.subheader("KPI-Dashboard")
@@ -1379,6 +1400,60 @@ def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
                     f"Target: {NEW_TASK_WEEKLY_GOAL} new tasks per week",
                 )
             )
+        )
+
+    flow_header = translate_text(("Flow & Backlog", "Flow & backlog"))
+    st.markdown(f"#### {flow_header}")
+
+    cycle_time = calculate_cycle_time(todos)
+    backlog_health = calculate_backlog_health(todos)
+    cycle_time_by_category = calculate_cycle_time_by_category(todos)
+    last_30_days = build_completion_heatmap(todos, days=30)
+
+    metrics_column, figure_column = st.columns([1, 1])
+    with metrics_column:
+        st.metric(
+            translate_text(("Ø Cycle Time", "Avg cycle time")),
+            _format_duration_short(cycle_time.average),
+            help=translate_text(
+                (
+                    "Median- und Durchschnittswerte basieren auf abgeschlossenen Aufgaben.",
+                    "Median and average values are based on completed tasks.",
+                )
+            ),
+        )
+        st.metric(
+            translate_text(("Überfällig-Quote", "Overdue ratio")),
+            f"{backlog_health.overdue_ratio:.0%}",
+            delta=f"{backlog_health.overdue_count}/{backlog_health.open_count}",
+            help=translate_text(
+                (
+                    "Offene Aufgaben mit Fälligkeitsdatum in der Vergangenheit.",
+                    "Open tasks whose due date is in the past.",
+                )
+            ),
+        )
+        st.caption(
+            translate_text(
+                (
+                    f"Abschlüsse (30 Tage): {sum(entry['completions'] for entry in last_30_days)}",
+                    f"Completions (30 days): {sum(entry['completions'] for entry in last_30_days)}",
+                )
+            )
+        )
+
+    with figure_column:
+        st.plotly_chart(
+            build_backlog_health_figure(backlog_health),
+            width="stretch",
+            config={"displaylogo": False, "responsive": True},
+        )
+
+    if cycle_time_by_category:
+        st.plotly_chart(
+            build_cycle_time_overview_figure(cycle_time_by_category),
+            width="stretch",
+            config={"displaylogo": False, "responsive": True},
         )
 
     render_quadrant_focus_items(todos)
