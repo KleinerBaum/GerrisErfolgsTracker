@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Ziel-Aktionsleiste: Der Button **Ziel erstellen / Create goal** sitzt jetzt neben den Quick-Actions, die Hinweise im Einstellungs-Panel entfallen, und alle Buttons teilen sich dieselbe Primärfarbe für ein konsistentes Erscheinungsbild / Goal action row now places **Create goal** beside the quick actions, removes the intro helper text in the settings panel, and applies one primary color across all buttons for consistency.
 - Sidebar-Gamification: Entfernt den Button **AI: Motivation**, damit die Seitenleiste schlanker bleibt / Sidebar gamification: removed the **AI: Motivation** button to keep the sidebar streamlined.
 - Neues Abschluss-Widget **Gelöst / Completed** auf der Seite **Ziele**: offene Aufgaben auswählen, abschließen und sofort KPIs,
   Tachometer sowie Gamification-Popups (Level-Ups, Abzeichen) aktualisieren / New **Gelöst / Completed** widget on the **Goals**
