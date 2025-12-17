@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- JSON-Speicherung erfolgt jetzt atomar mit Temp-Datei, `fsync` und Backup-Rotation (`.bak1` usw.), um defekte Zustände nach Absturz/Sync-Problemen vermeiden und wiederherstellen zu können / JSON persistence now writes atomically using temp files, `fsync`, and a rotating backup set (`.bak1`, etc.) to avoid and recover from corrupted state after crashes or sync conflicts.
 - Korrigiert die Abschlusslogik, sodass KPI- und Gamification-Updates nur einmal pro Abschluss ausgelöst werden und `auto_done_when_target_reached` auch bei einem Zielwert von 0 korrekt migriert wird / Fixed completion handling to trigger KPI and gamification updates exactly once per completion and to migrate `auto_done_when_target_reached` even when the progress target is 0.
 - Entfernt die Überschriften **Gemeinsamer Kalender / Shared calendar** und **Kategorie-Überblick** sowie die Wochen-Grafik **Abschlüsse der letzten 7 Tage**, um das Ziele-Layout zu entschlacken / Removed the **Shared calendar** and **Category overview** headers plus the **Completions from the last 7 days** weekly chart to streamline the Goals layout.
 - Überschrift **Ziele & Einstellungen / Goals & settings** von der Ziele-Seite entfernt, damit der Abschnitt ohne Titel eingebettet ist / Removed the **Goals & settings** header from the Goals page so the section sits inline without a title.

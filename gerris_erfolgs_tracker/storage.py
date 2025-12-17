@@ -65,9 +65,13 @@ def resolve_state_file_path(path: str | Path | None = None, *, env: Mapping[str,
 class FileStorageBackend:
     """Persist state to a JSON file on disk."""
 
-    def __init__(self, path: str | Path | None = None) -> None:
+    def __init__(self, path: str | Path | None = None, *, backup_versions: int = 1) -> None:
         self.path = resolve_state_file_path(path)
         self._last_fingerprint: str | None = None
+        if backup_versions < 0:
+            msg = "backup_versions cannot be negative"
+            raise ValueError(msg)
+        self.backup_versions = backup_versions
 
     def load_state(self) -> Mapping[str, object]:
         if not self.path.exists():
@@ -82,10 +86,36 @@ class FileStorageBackend:
             return
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("w", encoding="utf-8") as file_handle:
-            file_handle.write(serialized)
+        temp_path = self.path.with_suffix(self.path.suffix + ".tmp")
 
-        self._last_fingerprint = serialized
+        try:
+            with temp_path.open("w", encoding="utf-8") as file_handle:
+                file_handle.write(serialized)
+                file_handle.flush()
+                os.fsync(file_handle.fileno())
+
+            if self.backup_versions and self.path.exists():
+                self._rotate_backups()
+
+            os.replace(temp_path, self.path)
+            self._last_fingerprint = serialized
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
+
+    def _rotate_backups(self) -> None:
+        for index in range(self.backup_versions, 0, -1):
+            source = self._backup_path(index - 1)
+            destination = self._backup_path(index)
+            if source.exists():
+                os.replace(source, destination)
+
+    def _backup_path(self, index: int) -> Path:
+        if index == 0:
+            return self.path
+
+        suffix = f".bak{index}"
+        return self.path.with_suffix(self.path.suffix + suffix)
 
 
 __all__ = [

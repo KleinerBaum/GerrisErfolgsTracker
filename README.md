@@ -54,6 +54,8 @@ Die App sucht nach dem OpenAI Key in `st.secrets` oder der Umgebung:
 - `OPENAI_MODEL` (optional, z. B. `gpt-4o-mini` oder `o3-mini`)
 - `GERRIS_ONEDRIVE_DIR` (optional: expliziter OneDrive-Sync-Ordner für die JSON-Datei)
 
+Die JSON-Datei `gerris_state.json` wird atomar geschrieben (Temp-Datei + `fsync` + `os.replace`) und legt standardmäßig eine Backup-Rotation an (`.bak1`, `.bak2` usw.), damit sich ein beschädigter Stand wiederherstellen lässt / The JSON state file is written atomically (temp file + `fsync` + `os.replace`) and keeps a small backup rotation by default (`.bak1`, `.bak2`, etc.) so corrupted saves can be recovered.
+
 ### Lokale Secrets
 
 Erstelle `.streamlit/secrets.toml` (siehe `.streamlit/secrets.example.toml`):
