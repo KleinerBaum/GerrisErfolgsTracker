@@ -7,6 +7,7 @@ Die UI folgt einem klaren, fokussierten Dark-Theme mit dunkelgrünem Primärton 
 Die Sidebar verzichtet bewusst auf Sprachumschalter oder Hinweisblöcke, damit Navigation und Quick-Actions kompakt bleiben / The sidebar deliberately omits language toggles or notice blocks to keep navigation and quick actions compact.
 
   - Die Aufgaben-UI liegt nun in `gerris_erfolgs_tracker/ui/tasks.py`; `app.py` bindet sie nur noch ein / The task UI now lives in `gerris_erfolgs_tracker/ui/tasks.py`, with `app.py` delegating to it.
+  - `gerris_erfolgs_tracker/ui/__init__.py` exportiert das `tasks`-Modul direkt, sodass `from gerris_erfolgs_tracker.ui import tasks` in Skripten und Tests funktioniert / `gerris_erfolgs_tracker/ui/__init__.py` now exports the `tasks` module so `from gerris_erfolgs_tracker.ui import tasks` works in scripts and tests.
   - Die Ziele-Seite verzichtet auf die Überschriften für Kalender und Kategorie-Überblick sowie auf das Wochenabschluss-Diagramm, damit mehr Platz für KPIs und Aufgaben bleibt / The Goals page now hides the calendar and category overview headers and removes the weekly completions chart to leave more room for KPIs and tasks.
   - Der Bereich **Ziele & Einstellungen** wird ohne Überschrift eingebettet, damit die Seite schlanker wirkt / The **Goals & settings** section renders without a header to keep the page lean.
   - Die Auswahl von Aufgabenvorlagen funktioniert ohne Streamlit-Fehler im Formular **ToDo hinzufügen** / Task template selection works without Streamlit errors in the **Add task** form.
