@@ -18,14 +18,14 @@ from gerris_erfolgs_tracker.analytics import (
     calculate_cycle_time,
     calculate_cycle_time_by_category,
 )
-from gerris_erfolgs_tracker.coach.engine import get_coach_state
-from gerris_erfolgs_tracker.coach.scanner import run_daily_coach_scan, schedule_weekly_review
 from gerris_erfolgs_tracker.charts import (
     PRIMARY_COLOR,
     build_backlog_health_figure,
     build_category_weekly_completion_figure,
     build_cycle_time_overview_figure,
 )
+from gerris_erfolgs_tracker.coach.engine import get_coach_state
+from gerris_erfolgs_tracker.coach.scanner import run_daily_coach_scan, schedule_weekly_review
 from gerris_erfolgs_tracker.constants import (
     AI_ENABLED_KEY,
     AI_MOTIVATION_KEY,
@@ -146,6 +146,7 @@ def render_tasks_page(
 ) -> None:
     _sync_tasks_streamlit()
     _render_tasks_page(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
+
 
 GoalHorizon = Literal["1_week", "30_days", "90_days", "custom"]
 GoalCheckInCadence = Literal["weekly", "biweekly", "monthly"]
@@ -1897,7 +1898,7 @@ def main() -> None:
         _render_storage_notice(storage_backend, is_cloud=is_cloud)
     todos = get_todos()
     run_daily_coach_scan(todos)
-    schedule_weekly_review()
+    schedule_weekly_review(todos=todos, stats=stats)
 
     if not client:
         st.info(
