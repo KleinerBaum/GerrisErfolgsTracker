@@ -22,6 +22,15 @@ Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI
 - Optional: Modell-Override via `OPENAI_MODEL` (Standard: `gpt-4o-mini`) und benutzerdefinierte Basis-URL z. B. EU-Endpunkt.
 - Optionale Persistenz & Sync: Die App schreibt standardmäßig in einen OneDrive-Sync-Ordner (z. B. `~/OneDrive/GerrisErfolgsTracker/gerris_state.json` oder `C:\\Users\\gerri\\OneDrive\\GerrisErfolgsTracker`). Über `GERRIS_ONEDRIVE_DIR` kannst du den Pfad explizit setzen; das Verzeichnis wird bei Bedarf angelegt.
 
+## Datenhaltung & Backup/Recovery
+
+- Standardpfad: `gerris_state.json` im OneDrive-Sync-Ordner `~/OneDrive/GerrisErfolgsTracker/` bzw. `C:\\Users\\<name>\\OneDrive\\GerrisErfolgsTracker`.
+- Fallback: Wenn kein OneDrive-Hinweis gefunden wird, legt die App `.data/gerris_state.json` im Projektverzeichnis an.
+- Override: Über `GERRIS_ONEDRIVE_DIR` kannst du den Pfad explizit setzen; der Ordner wird bei Bedarf erstellt.
+- Backup: Kopiere `gerris_state.json` regelmäßig in einen sicheren Ordner (z. B. OneDrive-Versionierung oder ein manuelles Backup).
+- Recovery bei defekter Datei: Benenne `gerris_state.json` in `gerris_state.bak` um, starte die App neu (sie legt eine frische Datei an) und kopiere anschließend gültige Teile aus dem Backup zurück.
+- Reset: Löschen oder Umbenennen der Datei setzt den Zustand komplett zurück; hilfreich, wenn die UI nicht mehr lädt oder JSON-Strukturen geändert wurden.
+
 ## Lokale Einrichtung
 
 ```bash
@@ -48,15 +57,15 @@ Hinweise:
 
 - **Lokal / Local:** `streamlit run app.py` öffnet die App im Browser unter `localhost:8501`. ToDos, KPIs und Einstellungen
   landen automatisch als `gerris_state.json` im OneDrive-Sync-Ordner `~/OneDrive/GerrisErfolgsTracker/` (oder dem Pfad aus
-  `GERRIS_ONEDRIVE_DIR`). So bleiben mobile Eingaben (z. B. aus der OneDrive-App) und die Streamlit-App synchron. Das
-  Verzeichnis wird beim Speichern erzeugt; ein Löschen der Datei setzt den Zustand zurück.
+  `GERRIS_ONEDRIVE_DIR`). Falls weder OneDrive noch ein Hinweis vorhanden ist, nutzt die App `.data/gerris_state.json`.
+  Ein Löschen der Datei setzt den Zustand zurück; für Backups genügt das Kopieren der JSON-Datei.
 - **Streamlit Cloud:** Repository mit dem Streamlit Cloud Dashboard verbinden und die Secrets wie unten beschrieben hinterlegen;
   danach kann die App unter der bereitgestellten URL genutzt werden (z. B. https://gerriserfolgstracker.streamlit.app/). Die
   App schreibt ebenfalls in den OneDrive-Pfad (über `GERRIS_ONEDRIVE_DIR` konfigurierbar); auf der Community Cloud kann die
-  Datei dennoch flüchtig sein und nach einem Neustart verschwinden. Funktioniert somit ohne zusätzliche Infrastruktur, aber
-  ohne Garantien für Persistenz.
+  Datei dennoch flüchtig sein und nach einem Neustart verschwinden. Sichere Daten durch OneDrive-Versionierung oder manuelle
+  Backups.
 
-## Secrets & Umgebungsvariablen
+## Secrets, AI & Datenschutz
 
 Die App sucht nach dem OpenAI Key in `st.secrets` oder der Umgebung:
 
@@ -84,16 +93,28 @@ OPENAI_API_KEY = "sk-..."
    - Optional `OPENAI_MODEL = gpt-4o-mini`
 3. Deploy starten; die Abhängigkeiten werden über `requirements.txt` installiert.
 
-> **Wichtig / Important:** API-Keys niemals in das Repository einchecken. Nutze lokal `.streamlit/secrets.toml` und auf der
-> Streamlit Community Cloud die Secrets UI.
+> **Wichtig:** API-Keys niemals in das Repository einchecken. Nutze lokal `.streamlit/secrets.toml` und auf der Streamlit
+> Community Cloud die Secrets UI. API-Keys werden nicht in der Persistenzdatei gespeichert; entferne sensible Inhalte aus
+> Notizen oder Beschreibungen, wenn du keine personenbezogenen Daten ablegen möchtest.
 
-## Entwicklung & Tests
+## Entwicklung
 
-- Abhängigkeiten für Entwicklung: `pip install -r requirements.txt -r requirements-dev.txt` (für Runtime/Deployment genügt `requirements.txt`).
-- Lint/Format: `ruff format` und `ruff check .`
+- Runtime-Abhängigkeiten: `pip install -r requirements.txt` (für Deployment oder minimale lokale Nutzung).
+- Entwicklungs-Setup: `pip install -r requirements.txt -r requirements-dev.txt` installiert zusätzlich `ruff`, `mypy` und `pytest`.
+- Format/Lint: `ruff format` und `ruff check .`
 - Typprüfung: `mypy`
 - Tests: `pytest -q`
 - CI: GitHub Actions Workflow (`.github/workflows/ci.yml`) führt `ruff check .` und `pytest -q` bei Push/PR aus.
+
+## Troubleshooting
+
+- **OneDrive-Pfad wird nicht gefunden:** `GERRIS_ONEDRIVE_DIR` explizit setzen und prüfen, ob der Ordner existiert; ansonsten
+  legt die App `.data/gerris_state.json` an.
+- **Streamlit Cloud verliert Daten:** Community-Instanzen speichern Dateien nur temporär. Lege die JSON-Datei in OneDrive ab
+  oder halte lokale Backups bereit.
+- **JSON defekt:** Datei in `gerris_state.bak` umbenennen, App starten (frische Datei), alte Datei mit einem JSON-Validator
+  prüfen und nur gültige Abschnitte zurückkopieren.
+- Ausführliche Hinweise: siehe [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 - Ereignislisten (z. B. Gamification-Historie, processed IDs) werden nach jedem Append als Ringpuffer auf 1 000 Einträge begrenzt, um Speicherverbrauch und Dedup-Logik stabil zu halten / Event lists (e.g., gamification history, processed IDs) use 1,000-entry ring buffers after each append to contain memory use while keeping dedup working.
 - Streamlit-Forms: Alle Submit-Buttons müssen innerhalb ihres `st.form` stehen; die Quick-Edit-Speicheraktion im Aufgabenlisten-Formular ist entsprechend eingebettet, sodass keine `st.form_submit_button`-API-Fehler auftreten.
 - ToDo-Meilenstein-Aktionen nutzen `st.form_submit_button`, damit Entwürfe und Vorschläge ohne `StreamlitAPIException` funktionieren / ToDo milestone actions rely on `st.form_submit_button` so drafts and suggestions work without `StreamlitAPIException`.

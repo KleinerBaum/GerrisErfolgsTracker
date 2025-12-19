@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Dokumentation erweitert (Persistenzpfade, Backup/Recovery, Troubleshooting, Dev-Setup) inklusive neuem `docs/TROUBLESHOOTING.md`-Leitfaden.
 - Stellt `gerris_erfolgs_tracker.ui.tasks` als Export im Paket her, sodass `from gerris_erfolgs_tracker.ui import tasks` fehlerfrei funktioniert / Exposes `gerris_erfolgs_tracker.ui.tasks` from the package so `from gerris_erfolgs_tracker.ui import tasks` works without errors.
 - Wiederkehrende Aufgaben erzeugen beim Abschluss automatisch eine nachfolgende Instanz mit fortgeschriebenem Fälligkeitsdatum, zurückgesetztem Fortschritt und aus dem Backlog kopierten Meilensteinen; eine Deduplizierung pro Abschlusszeitstempel verhindert doppelte Erstellungen / Completing recurring tasks now auto-creates the next instance with an advanced due date, reset progress, and milestones copied into the backlog, while per-completion deduplication avoids duplicate spawns.
 - Aufgaben-UI aus `app.py` in `gerris_erfolgs_tracker/ui/tasks.py` ausgelagert; `app.py` ruft nur noch den Wrapper auf / Moved the tasks UI from `app.py` into `gerris_erfolgs_tracker/ui/tasks.py`, with `app.py` delegating to the wrapper.
