@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Neues Coach-Modul: Ereignisse werden per Event-ID dedupliziert, mit 2-Stunden-Cooldown und Tageslimit von drei Nachrichten pro Tag.
+- Task-Completion triggert jetzt einen Coach-Hinweis aus statischen Templates (ohne OpenAI) inklusive Completion-Token-Idempotenz.
+- Täglicher Scan liefert maximal drei Hinweise zu überfälligen bzw. kurzfristigen Fälligkeiten (≤48h) pro Tag/Task; wöchentlicher Review erscheint einmal pro ISO-Woche im Sidebar-Expander.
 - Dokumentation erweitert (Persistenzpfade, Backup/Recovery, Troubleshooting, Dev-Setup) inklusive neuem `docs/TROUBLESHOOTING.md`-Leitfaden.
 - Stellt `gerris_erfolgs_tracker.ui.tasks` als Export im Paket her, sodass `from gerris_erfolgs_tracker.ui import tasks` fehlerfrei funktioniert / Exposes `gerris_erfolgs_tracker.ui.tasks` from the package so `from gerris_erfolgs_tracker.ui import tasks` works without errors.
 - Wiederkehrende Aufgaben erzeugen beim Abschluss automatisch eine nachfolgende Instanz mit fortgeschriebenem Fälligkeitsdatum, zurückgesetztem Fortschritt und aus dem Backlog kopierten Meilensteinen; eine Deduplizierung pro Abschlusszeitstempel verhindert doppelte Erstellungen / Completing recurring tasks now auto-creates the next instance with an advanced due date, reset progress, and milestones copied into the backlog, while per-completion deduplication avoids duplicate spawns.

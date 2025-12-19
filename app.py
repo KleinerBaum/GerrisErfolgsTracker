@@ -18,6 +18,8 @@ from gerris_erfolgs_tracker.analytics import (
     calculate_cycle_time,
     calculate_cycle_time_by_category,
 )
+from gerris_erfolgs_tracker.coach.engine import get_coach_state
+from gerris_erfolgs_tracker.coach.scanner import run_daily_coach_scan, schedule_weekly_review
 from gerris_erfolgs_tracker.charts import (
     PRIMARY_COLOR,
     build_backlog_health_figure,
@@ -1503,6 +1505,41 @@ def render_navigation() -> str:
     return selection
 
 
+def render_coach_sidebar() -> None:
+    coach_state = get_coach_state()
+    coach_panel = st.sidebar.expander(translate_text(("Coach", "Coach")), expanded=True)
+    with coach_panel:
+        if not coach_state.messages:
+            st.caption(
+                translate_text(
+                    (
+                        "Noch keine Coach-Nachrichten – erledige eine Aufgabe, um einen Tipp zu erhalten.",
+                        "No coach messages yet — complete a task to unlock a tip.",
+                    )
+                )
+            )
+            return
+
+        for message in reversed(coach_state.messages[-3:]):
+            if message.severity == "weekly":
+                with st.expander(translate_text(("Wochenrückblick", "Weekly review")), expanded=True):
+                    st.markdown(f"**{translate_text(message.title)}**")
+                    st.write(translate_text(message.body))
+            else:
+                st.markdown(f"**{translate_text(message.title)}**")
+                st.write(translate_text(message.body))
+
+            st.caption(
+                translate_text(
+                    (
+                        f"Zuletzt aktualisiert: {message.created_at.strftime('%d.%m %H:%M')} Uhr",
+                        f"Last updated: {message.created_at.strftime('%Y-%m-%d %H:%M')} UTC",
+                    )
+                )
+            )
+            st.divider()
+
+
 def render_sidebar_sections(
     stats: KpiStats,
     *,
@@ -1510,6 +1547,7 @@ def render_sidebar_sections(
     client: Optional[OpenAI],
     settings: Mapping[str, Any],
 ) -> bool:
+    render_coach_sidebar()
     gamification_panel = st.sidebar.expander("Gamification", expanded=True)
     with gamification_panel:
         render_gamification_panel(
@@ -1858,6 +1896,8 @@ def main() -> None:
     if show_storage_notice:
         _render_storage_notice(storage_backend, is_cloud=is_cloud)
     todos = get_todos()
+    run_daily_coach_scan(todos)
+    schedule_weekly_review()
 
     if not client:
         st.info(

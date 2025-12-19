@@ -8,6 +8,8 @@ PROCESSED_PROGRESS_EVENTS_LIMIT: int = 1000
 PROCESSED_COMPLETIONS_LIMIT: int = 1000
 PROCESSED_JOURNAL_EVENTS_LIMIT: int = 1000
 GAMIFICATION_HISTORY_LIMIT: int = 1000
+COACH_HISTORY_LIMIT: int = 200
+COACH_SEEN_EVENT_IDS_MAX: int = 500
 
 
 def cap_list_tail(values: List[T], limit: int) -> List[T]:
@@ -26,6 +28,7 @@ SS_STATS: str = "stats"
 SS_SETTINGS: str = "settings"
 SS_GAMIFICATION: str = "gamification"
 SS_JOURNAL: str = "journal_entries"
+SS_COACH: str = "coach"
 
 AI_ENABLED_KEY: str = "ai_enabled"
 AI_QUADRANT_RATIONALE_KEY: str = "ai_quadrant_rationale"
