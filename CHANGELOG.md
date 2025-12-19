@@ -4,6 +4,7 @@
 - Optionaler OpenAI-ScriptComposer erzeugt Wochenrückblicke über strukturierte Outputs; ohne API-Key oder bei Fehlern greifen automatisch die erweiterten Fallback-Templates.
 - Neues TaskAnalyzer-Modell `TaskAIProposal` mit Validierungen (Datenbereich, Milestone-Reihenfolge) und UI-Button **AI: Plan & Komplexität vorschlagen** inklusive Bearbeitung und expliziter Übernahme-Checkbox im ToDo-Formular.
 - Coach-Templates massiv erweitert (~80+ Einträge) mit Kategorie- und Ton-Tags für Task-Completion, Nudges (überfällig/bald fällig), Streak/Daily-Goal-Meilensteine und Weekly-Reviews.
+- Neuer DE-Sidebar-Coach-Template-Pack (30 Einträge) mit Talking-Head-Tonality und CTA-Metadaten in `gerris_erfolgs_tracker/coach/templates_de.py`.
 - Zusätzliche Tests für den Composer-Fallback und die TaskAnalyzer-Validierungen sichern die neuen Flows ab.
 - Neues Coach-Modul: Ereignisse werden per Event-ID dedupliziert, mit 2-Stunden-Cooldown und Tageslimit von drei Nachrichten pro Tag.
 - Task-Completion triggert jetzt einen Coach-Hinweis aus statischen Templates (ohne OpenAI) inklusive Completion-Token-Idempotenz.
