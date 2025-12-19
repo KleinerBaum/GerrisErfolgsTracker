@@ -199,6 +199,12 @@ OPENAI_API_KEY = "sk-..."
 - Punkte- und Komplexitätswerte lassen sich inline anpassen; im Gamification-Modus **Punkte & Level** wird die Punkteausbeute je Schritt sichtbar gehalten.
 - AI-Unterstützung: Button **AI: Meilensteine vorschlagen / Suggest milestones** liefert passende Unterziele, die per Klick übernommen werden können; alternativ kannst du sie manuell erfassen oder entfernen.
 
+## Coach
+
+- Mikro-Coach liefert dreimal täglich kurze Hinweise mit 2h-Abkühlphase (Weekly-Review ausgenommen), inklusive Deduplikation pro Event-ID und begrenztem Verlauf.
+- Abschluss-Events nutzen den Completion-Token, sodass wiederholtes Laden keine doppelten Nachrichten erzeugt.
+- Täglicher Scan meldet bis zu drei überfällige bzw. bald fällige Aufgaben (≤48h) einmal pro Tag/Task; wöchentliche Reviews erscheinen je ISO-Woche einmal im Sidebar-Expander.
+
 ## KI-Features / AI features
 
 - Toggle **AI aktiv / AI enabled** steuert, ob KI-Vorschläge verwendet werden; ohne Key greifen automatisch Fallback-Texte.

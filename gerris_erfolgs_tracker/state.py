@@ -7,8 +7,10 @@ from typing import Any, Callable, Iterable, List, Mapping, Sequence, cast
 import streamlit as st
 from pydantic_core import to_jsonable_python
 
+from gerris_erfolgs_tracker.coach.models import CoachState
 from gerris_erfolgs_tracker.constants import (
     PROCESSED_PROGRESS_EVENTS_LIMIT,
+    SS_COACH,
     SS_GAMIFICATION,
     SS_JOURNAL,
     SS_SETTINGS,
@@ -29,7 +31,7 @@ from gerris_erfolgs_tracker.models import (
 from gerris_erfolgs_tracker.storage import StorageBackend
 
 LOGGER = logging.getLogger(__name__)
-PERSISTED_KEYS: tuple[str, ...] = (SS_TODOS, SS_STATS, SS_GAMIFICATION, SS_SETTINGS, SS_JOURNAL)
+PERSISTED_KEYS: tuple[str, ...] = (SS_TODOS, SS_STATS, SS_GAMIFICATION, SS_SETTINGS, SS_JOURNAL, SS_COACH)
 _storage_backend: StorageBackend | None = None
 _last_persisted_fingerprint: str | None = None
 
@@ -55,6 +57,10 @@ def _default_settings() -> dict[str, Any]:
 
 def _default_journal() -> dict[str, Any]:
     return {}
+
+
+def _default_coach() -> CoachState:
+    return CoachState()
 
 
 def _coerce_todo(raw: Any) -> TodoItem:
@@ -115,6 +121,11 @@ def init_state() -> None:
     if SS_JOURNAL not in st.session_state:
         st.session_state[SS_JOURNAL] = _default_journal()
 
+    if SS_COACH not in st.session_state:
+        st.session_state[SS_COACH] = _default_coach().model_dump()
+    else:
+        st.session_state[SS_COACH] = CoachState.model_validate(st.session_state.get(SS_COACH, {})).model_dump()
+
     st.session_state.setdefault(TODO_TEMPLATE_LAST_APPLIED_KEY, "free")
 
     persist_state()
@@ -147,7 +158,7 @@ def save_todos(todos: Sequence[TodoItem]) -> None:
 def reset_state() -> None:
     """Clear managed keys and restore defaults."""
 
-    for key in (SS_TODOS, SS_STATS, SS_GAMIFICATION, SS_SETTINGS, SS_JOURNAL):
+    for key in (SS_TODOS, SS_STATS, SS_GAMIFICATION, SS_SETTINGS, SS_JOURNAL, SS_COACH):
         if key in st.session_state:
             del st.session_state[key]
     init_state()

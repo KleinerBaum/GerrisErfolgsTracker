@@ -9,6 +9,8 @@ from openai import OpenAI
 
 from gerris_erfolgs_tracker.ai_features import AISuggestion, suggest_milestones, suggest_quadrant
 from gerris_erfolgs_tracker.calendar_view import render_calendar_view
+from gerris_erfolgs_tracker.coach.factory import build_completion_event
+from gerris_erfolgs_tracker.coach.engine import process_event
 from gerris_erfolgs_tracker.constants import (
     AI_ENABLED_KEY,
     AI_QUADRANT_RATIONALE_KEY,
@@ -254,6 +256,7 @@ def _toggle_todo_completion(todo: TodoItem) -> None:
     updated = toggle_complete(todo.id)
     if updated and updated.completed:
         handle_completion_success(updated, previous_state=previous_state)
+        process_event(build_completion_event(updated))
     st.rerun()
 
 
