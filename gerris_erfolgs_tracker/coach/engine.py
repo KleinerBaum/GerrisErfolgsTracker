@@ -4,9 +4,9 @@ from datetime import datetime, timedelta, timezone
 
 import streamlit as st
 
+from gerris_erfolgs_tracker.coach.composer_openai import compose_message
 from gerris_erfolgs_tracker.coach.events import CoachEvent
 from gerris_erfolgs_tracker.coach.models import CoachMessage, CoachState
-from gerris_erfolgs_tracker.coach.templates import select_template
 from gerris_erfolgs_tracker.constants import (
     COACH_HISTORY_LIMIT,
     COACH_SEEN_EVENT_IDS_MAX,
@@ -35,9 +35,7 @@ def get_coach_state() -> CoachState:
 
 def _within_daily_cap(state: CoachState, timestamp: datetime) -> bool:
     day_messages = [
-        message
-        for message in state.messages
-        if message.created_at.astimezone(timezone.utc).date() == timestamp.date()
+        message for message in state.messages if message.created_at.astimezone(timezone.utc).date() == timestamp.date()
     ]
     return len(day_messages) < 3
 
@@ -72,7 +70,7 @@ def handle_event(state: CoachState, event: CoachEvent) -> None:
     state.seen_event_ids.append(event.event_id)
     state.seen_event_ids = cap_list_tail(state.seen_event_ids, COACH_SEEN_EVENT_IDS_MAX)
 
-    message = select_template(event)
+    message = compose_message(event)
     maybe_set_current_message(state, message)
 
 

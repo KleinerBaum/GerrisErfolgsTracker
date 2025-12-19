@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- Optionaler OpenAI-ScriptComposer erzeugt Wochenrückblicke über strukturierte Outputs; ohne API-Key oder bei Fehlern greifen automatisch die erweiterten Fallback-Templates.
+- Neues TaskAnalyzer-Modell `TaskAIProposal` mit Validierungen (Datenbereich, Milestone-Reihenfolge) und UI-Button **AI: Plan & Komplexität vorschlagen** inklusive Bearbeitung und expliziter Übernahme-Checkbox im ToDo-Formular.
+- Coach-Templates massiv erweitert (~80+ Einträge) mit Kategorie- und Ton-Tags für Task-Completion, Nudges (überfällig/bald fällig), Streak/Daily-Goal-Meilensteine und Weekly-Reviews.
+- Zusätzliche Tests für den Composer-Fallback und die TaskAnalyzer-Validierungen sichern die neuen Flows ab.
 - Neues Coach-Modul: Ereignisse werden per Event-ID dedupliziert, mit 2-Stunden-Cooldown und Tageslimit von drei Nachrichten pro Tag.
 - Task-Completion triggert jetzt einen Coach-Hinweis aus statischen Templates (ohne OpenAI) inklusive Completion-Token-Idempotenz.
 - Täglicher Scan liefert maximal drei Hinweise zu überfälligen bzw. kurzfristigen Fälligkeiten (≤48h) pro Tag/Task; wöchentlicher Review erscheint einmal pro ISO-Woche im Sidebar-Expander.

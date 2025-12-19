@@ -15,6 +15,11 @@ Die Sidebar verzichtet bewusst auf Sprachumschalter oder Hinweisblöcke, damit N
 
 Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI aktiv / AI enabled** gesetzt ist, nutzt die App GPT-Modelle (Standard: `gpt-4o-mini`, per Einstellung überschreibbar), um z. B. automatisch den Eisenhower-Quadranten zu empfehlen oder kurze Motivationsnachrichten basierend auf den jüngsten KPIs zu erstellen. Ist kein API-Key hinterlegt oder die AI-Option deaktiviert, werden statische, vorgefertigte Texte verwendet, sodass die Anwendung weiterhin vollständig nutzbar bleibt.
 
+**Neu (optional, AI):**
+
+- Wochenrückblicke können per OpenAI ScriptComposer mit strukturierten Outputs generiert werden (inkl. Sicherheits-Prompts, automatisches Fallback auf Templates).
+- Im Formular **ToDo hinzufügen** liefert der Button **AI: Plan & Komplexität vorschlagen** einen editierbaren Vorschlag (Aufwand, Priorität, Milestone-Plan) mit expliziter Checkbox zur Übernahme.
+
 ## Voraussetzungen
 
 - Python >= 3.11

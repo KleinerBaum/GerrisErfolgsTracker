@@ -9,8 +9,9 @@ from openai import OpenAI
 
 from gerris_erfolgs_tracker.ai_features import AISuggestion, suggest_milestones, suggest_quadrant
 from gerris_erfolgs_tracker.calendar_view import render_calendar_view
-from gerris_erfolgs_tracker.coach.factory import build_completion_event
 from gerris_erfolgs_tracker.coach.engine import process_event
+from gerris_erfolgs_tracker.coach.factory import build_completion_event
+from gerris_erfolgs_tracker.coach.task_analyzer_models import MilestonePlanItem, TaskAIProposal
 from gerris_erfolgs_tracker.constants import (
     AI_ENABLED_KEY,
     AI_QUADRANT_RATIONALE_KEY,
@@ -42,12 +43,14 @@ from gerris_erfolgs_tracker.constants import (
     NEW_TODO_TITLE_KEY,
     PENDING_DELETE_TODO_KEY,
     SS_SETTINGS,
+    TASK_AI_PROPOSAL_APPLY_KEY,
+    TASK_AI_PROPOSAL_KEY,
     TODO_TEMPLATE_LAST_APPLIED_KEY,
 )
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, group_by_quadrant, sort_todos
 from gerris_erfolgs_tracker.gamification import GamificationState, get_gamification_state
 from gerris_erfolgs_tracker.i18n import translate_text
-from gerris_erfolgs_tracker.llm import get_openai_client
+from gerris_erfolgs_tracker.llm import LLMError, get_default_model, get_openai_client, request_structured_response
 from gerris_erfolgs_tracker.llm_schemas import MilestoneSuggestionItem, MilestoneSuggestionList
 from gerris_erfolgs_tracker.models import (
     Category,
@@ -84,6 +87,182 @@ def _points_for_complexity(complexity: MilestoneComplexity) -> int:
     if complexity is MilestoneComplexity.MEDIUM:
         return 25
     return 50
+
+
+def _fallback_task_proposal(title: str, *, due_date: Optional[date]) -> TaskAIProposal:
+    base_title = title.strip() or "Aufgabe"
+    today = date.today()
+    milestone_due = due_date or (today + timedelta(days=7))
+    plan = [
+        MilestonePlanItem(
+            title=f"Ersten Schritt planen · {base_title}", suggested_due=today, effort=1, suggested_points=10
+        ),
+        MilestonePlanItem(
+            title=f"Zwischenstand dokumentieren · {base_title}",
+            suggested_due=min(milestone_due, today + timedelta(days=3)),
+            effort=2,
+            suggested_points=20,
+        ),
+        MilestonePlanItem(
+            title=f"Abschluss vorbereiten · {base_title}",
+            suggested_due=milestone_due,
+            effort=2,
+            suggested_points=25,
+        ),
+    ]
+    return TaskAIProposal(
+        complexity_score=3,
+        estimated_minutes=90,
+        suggested_quadrant=EisenhowerQuadrant.NOT_URGENT_IMPORTANT,
+        suggested_priority=3,
+        milestone_plan=plan,
+        start_date=today,
+        due_date=due_date,
+    )
+
+
+def _request_task_proposal(
+    *,
+    title: str,
+    description: str,
+    due_date: Optional[date],
+    quadrant: EisenhowerQuadrant,
+    client: Optional[OpenAI],
+) -> AISuggestion[TaskAIProposal]:
+    if not client or not title.strip():
+        return AISuggestion(_fallback_task_proposal(title, due_date=due_date), from_ai=False)
+
+    today = date.today()
+    model = get_default_model(reasoning=True)
+    try:
+        proposal = request_structured_response(
+            client=client,
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Du analysierst Aufgaben und schlägst Aufwand, Priorität und Milestones vor. "
+                        "Keine Diagnosen, keine Krisentipps, kein Therapeuten-Rollenspiel. "
+                        "Antworte zweisprachig (DE/EN) und halte dich strikt an das Schema."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Titel: {title}\n"
+                        f"Beschreibung: {description or '—'}\n"
+                        f"Fälligkeit: {due_date or 'kein Datum'}\n"
+                        f"Quadrant: {quadrant.label}"
+                    ),
+                },
+            ],
+            response_model=TaskAIProposal,
+        )
+        validated = TaskAIProposal.model_validate(proposal.model_dump() | {"start_date": today, "due_date": due_date})
+        return AISuggestion(validated, from_ai=True)
+    except LLMError:
+        return AISuggestion(_fallback_task_proposal(title, due_date=due_date), from_ai=False)
+
+
+def _render_task_proposal_editor(*, due_date: Optional[date]) -> Optional[TaskAIProposal]:
+    if not st.session_state.get(TASK_AI_PROPOSAL_KEY):
+        return None
+
+    try:
+        proposal = TaskAIProposal.model_validate(
+            st.session_state[TASK_AI_PROPOSAL_KEY] | {"start_date": date.today(), "due_date": due_date}
+        )
+    except Exception:
+        return None
+
+    st.markdown("###### AI: Plan & Komplexität / Plan & complexity")
+    st.caption("Vorschlag prüfen, Felder anpassen und optional übernehmen.")
+
+    complexity_score = st.number_input(
+        "Komplexität (1-5)",
+        min_value=1,
+        max_value=5,
+        value=int(proposal.complexity_score),
+        key=f"{TASK_AI_PROPOSAL_KEY}_complexity",
+    )
+    estimated_minutes = st.number_input(
+        "Geschätzte Minuten / Estimated minutes",
+        min_value=0,
+        value=int(proposal.estimated_minutes),
+        key=f"{TASK_AI_PROPOSAL_KEY}_minutes",
+    )
+    suggested_quadrant = st.selectbox(
+        "Quadrant-Vorschlag / Quadrant suggestion",
+        options=list(EisenhowerQuadrant),
+        index=list(EisenhowerQuadrant).index(proposal.suggested_quadrant),
+        format_func=lambda option: option.label,
+        key=f"{TASK_AI_PROPOSAL_KEY}_quadrant",
+    )
+    suggested_priority = st.selectbox(
+        "Priorität (1=hoch) / Priority (1=high)",
+        options=list(range(1, 6)),
+        index=list(range(1, 6)).index(proposal.suggested_priority),
+        key=f"{TASK_AI_PROPOSAL_KEY}_priority",
+    )
+
+    milestone_entries: list[MilestonePlanItem] = []
+    for idx, item in enumerate(proposal.milestone_plan):
+        st.divider()
+        milestone_title = st.text_input(
+            f"Milestone #{idx + 1}",
+            value=item.title,
+            key=f"{TASK_AI_PROPOSAL_KEY}_title_{idx}",
+        )
+        suggested_due = st.date_input(
+            f"Fällig #{idx + 1}",
+            value=item.suggested_due or due_date or date.today(),
+            key=f"{TASK_AI_PROPOSAL_KEY}_due_{idx}",
+            format="YYYY-MM-DD",
+        )
+        effort_value = st.number_input(
+            f"Aufwand #{idx + 1}",
+            min_value=0,
+            value=int(item.effort),
+            key=f"{TASK_AI_PROPOSAL_KEY}_effort_{idx}",
+        )
+        points_value = st.number_input(
+            f"Punkte #{idx + 1}",
+            min_value=0,
+            value=int(item.suggested_points),
+            key=f"{TASK_AI_PROPOSAL_KEY}_points_{idx}",
+        )
+        milestone_entries.append(
+            MilestonePlanItem(
+                title=milestone_title,
+                suggested_due=suggested_due,
+                effort=int(effort_value),
+                suggested_points=int(points_value),
+            )
+        )
+
+    try:
+        updated = TaskAIProposal(
+            complexity_score=int(complexity_score),
+            estimated_minutes=int(estimated_minutes),
+            suggested_quadrant=suggested_quadrant,
+            suggested_priority=int(suggested_priority),
+            milestone_plan=milestone_entries,
+            start_date=date.today(),
+            due_date=due_date,
+        )
+    except Exception:
+        st.warning("Vorschlag konnte nicht validiert werden.")
+        return None
+    st.session_state[TASK_AI_PROPOSAL_KEY] = updated.model_dump()
+
+    st.checkbox(
+        "Diese Werte übernehmen / Apply these values",
+        key=TASK_AI_PROPOSAL_APPLY_KEY,
+        help="Aktiviere die Übernahme vor dem Speichern.",
+    )
+
+    return updated
 
 
 @dataclass
@@ -909,6 +1088,8 @@ def render_todo_section(
             NEW_TODO_REMINDER_KEY,
             NEW_TODO_DRAFT_MILESTONES_KEY,
             NEW_TODO_TEMPLATE_KEY,
+            TASK_AI_PROPOSAL_KEY,
+            TASK_AI_PROPOSAL_APPLY_KEY,
             template_state_key,
             NEW_MILESTONE_TITLE_KEY,
             NEW_MILESTONE_COMPLEXITY_KEY,
@@ -941,6 +1122,8 @@ def render_todo_section(
     st.session_state.setdefault(NEW_MILESTONE_SUGGESTIONS_KEY, {})
     st.session_state.setdefault(NEW_TODO_TEMPLATE_KEY, "free")
     st.session_state.setdefault(template_state_key, "free")
+    st.session_state.setdefault(TASK_AI_PROPOSAL_KEY, {})
+    st.session_state.setdefault(TASK_AI_PROPOSAL_APPLY_KEY, False)
 
     with st.form("add_todo_form", clear_on_submit=False):
         today = date.today()
@@ -998,6 +1181,33 @@ def render_todo_section(
             st.markdown("##### Unterziele / Milestones")
             draft_milestones: list[dict[str, object]] = st.session_state.get(NEW_TODO_DRAFT_MILESTONES_KEY, [])
             suggestion_store: dict[str, list[dict[str, str]]] = st.session_state.get(NEW_MILESTONE_SUGGESTIONS_KEY, {})
+            analyze_plan = st.form_submit_button(
+                "AI: Plan & Komplexität vorschlagen",
+                disabled=not ai_enabled,
+                help="Schätzt Aufwand, Priorität und Unterziele",
+                key="analyze_plan_proposal",
+            )
+            if analyze_plan:
+                if not title.strip():
+                    st.warning("Bitte Titel ergänzen")
+                else:
+                    quadrant_guess = st.session_state.get(
+                        NEW_TODO_QUADRANT_KEY, EisenhowerQuadrant.NOT_URGENT_IMPORTANT
+                    )
+                    description_text = st.session_state.get(NEW_TODO_DESCRIPTION_KEY, "")
+                    plan_suggestion = _request_task_proposal(
+                        title=title,
+                        description=description_text,
+                        due_date=due_date,
+                        quadrant=quadrant_guess,
+                        client=client if ai_enabled else None,
+                    )
+                    st.session_state[TASK_AI_PROPOSAL_KEY] = plan_suggestion.payload.model_dump()
+                    st.session_state[TASK_AI_PROPOSAL_APPLY_KEY] = False
+                    label = "KI-Vorschlag" if plan_suggestion.from_ai else "Fallback"
+                    st.info(f"{label}: Plan aktualisiert.")
+
+            _render_task_proposal_editor(due_date=due_date)
             milestone_title = st.text_input(
                 "Titel des Meilensteins / Milestone title",
                 key=NEW_MILESTONE_TITLE_KEY,
@@ -1229,6 +1439,28 @@ def render_todo_section(
             if not title.strip():
                 st.warning("Bitte Titel angeben")
             else:
+                apply_proposal = bool(st.session_state.get(TASK_AI_PROPOSAL_APPLY_KEY))
+                if apply_proposal and st.session_state.get(TASK_AI_PROPOSAL_KEY):
+                    try:
+                        proposal_model = TaskAIProposal.model_validate(
+                            st.session_state[TASK_AI_PROPOSAL_KEY] | {"start_date": date.today(), "due_date": due_date}
+                        )
+                        quadrant = proposal_model.suggested_quadrant
+                        priority = proposal_model.suggested_priority
+                        for item in proposal_model.milestone_plan:
+                            draft_milestones.append(
+                                {
+                                    "title": item.title,
+                                    "complexity": MilestoneComplexity.MEDIUM.value,
+                                    "points": max(0, int(item.suggested_points)),
+                                    "note": f"AI-Plan (Aufwand {item.effort})",
+                                    "due_date": item.suggested_due.isoformat() if item.suggested_due else None,
+                                }
+                            )
+                        st.session_state[NEW_TODO_DRAFT_MILESTONES_KEY] = draft_milestones
+                    except Exception:
+                        st.warning("AI-Vorschlag konnte nicht übernommen werden.")
+
                 resolved_target = target_value if enable_target else None
                 resolved_auto_complete = auto_complete if enable_target else False
                 resolved_unit = progress_unit if enable_target else ""
