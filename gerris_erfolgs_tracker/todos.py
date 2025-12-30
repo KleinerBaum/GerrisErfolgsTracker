@@ -18,6 +18,7 @@ from gerris_erfolgs_tracker.models import (
     TodoItem,
     TodoKanban,
 )
+from gerris_erfolgs_tracker.notifications.reminders import calculate_reminder_at
 from gerris_erfolgs_tracker.state import get_todos, save_todos
 
 _UNSET: Final = object()
@@ -27,6 +28,17 @@ _RECURRENCE_SPAWN_NAMESPACE = UUID("c1c4db05-050c-4b1a-9c8a-2f2b5756fa0c")
 def _ensure_kanban(todo: TodoItem) -> TodoKanban:
     kanban = todo.kanban.ensure_default_columns()
     return kanban
+
+
+def _refresh_reminder(todo: TodoItem, *, previous: TodoItem | None = None) -> TodoItem:
+    reminder_at = calculate_reminder_at(todo.due_date, todo.email_reminder)
+    previous_reminder = previous.reminder_at if previous is not None else None
+    reminder_sent_at = todo.reminder_sent_at
+
+    if reminder_at != previous_reminder:
+        reminder_sent_at = None
+
+    return todo.model_copy(update={"reminder_at": reminder_at, "reminder_sent_at": reminder_sent_at})
 
 
 def _update_todo_at_index(todos: list[TodoItem], index: int, updated: TodoItem) -> None:
@@ -90,6 +102,8 @@ def _spawn_recurring_successor(completed: TodoItem) -> Optional[TodoItem]:
         email_reminder=completed.email_reminder,
         milestones=reset_milestones,
     )
+
+    successor = _refresh_reminder(successor)
 
     todos.append(successor)
     save_todos(todos)
@@ -197,6 +211,7 @@ def add_todo(
         email_reminder=email_reminder,
         milestones=milestones or [],
     )
+    todo = _refresh_reminder(todo)
     todos.append(todo)
     index = len(todos) - 1
     return _apply_auto_completion_if_ready(todos, index, previous_completed=todo.completed)
@@ -294,7 +309,8 @@ def update_todo(
         if milestones is not None:
             updates["milestones"] = milestones
 
-        todos[index] = todo.model_copy(update=updates)
+        candidate = todo.model_copy(update=updates)
+        todos[index] = _refresh_reminder(candidate, previous=todo)
         updated = _apply_auto_completion_if_ready(todos, index, previous_completed=todo.completed)
         break
 

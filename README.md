@@ -27,6 +27,7 @@ Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI
 - Ein OpenAI API Key, falls du Modellantworten erzeugen möchtest (`OPENAI_API_KEY`).
 - Optional: Modell-Override via `OPENAI_MODEL` (Standard: `gpt-4o-mini`) und benutzerdefinierte Basis-URL z. B. EU-Endpunkt.
 - Optionale Persistenz & Sync: Die App schreibt standardmäßig in einen OneDrive-Sync-Ordner (z. B. `~/OneDrive/GerrisErfolgsTracker/gerris_state.json` oder `C:\\Users\\gerri\\OneDrive\\GerrisErfolgsTracker`). Über `GERRIS_ONEDRIVE_DIR` kannst du den Pfad explizit setzen; das Verzeichnis wird bei Bedarf angelegt.
+- Optionale E-Mail-Erinnerungen über Brevo: `BREVO_API_KEY` + `BREVO_SENDER` (und optional `BREVO_SENDER_NAME`) in der Umgebung setzen.
 
 ## Datenhaltung & Backup/Recovery
 
@@ -79,6 +80,31 @@ Die App sucht nach dem OpenAI Key in `st.secrets` oder der Umgebung:
 - `OPENAI_BASE_URL` (optional, z. B. EU-Endpunkt)
 - `OPENAI_MODEL` (optional, z. B. `gpt-4o-mini` oder `o3-mini`)
 - `GERRIS_ONEDRIVE_DIR` (optional: expliziter OneDrive-Sync-Ordner für die JSON-Datei)
+
+## E-Mail-Erinnerungen / Email reminders
+
+- Versand per Brevo: `BREVO_API_KEY` und `BREVO_SENDER` (optional `BREVO_SENDER_NAME`).
+- Scheduler/Worker-Parameter über Umgebung: `REMINDER_RECIPIENT_EMAIL` (Default: Sender), `REMINDER_LOOKAHEAD_MINUTES` (Default: 60) und `REMINDER_POLL_INTERVAL_SECONDS` (Default: 300).
+- Beispiel `.env`:
+
+```env
+BREVO_API_KEY=your-brevo-key
+BREVO_SENDER=reminder@example.com
+# BREVO_SENDER_NAME=Gerris ErfolgsTracker
+REMINDER_RECIPIENT_EMAIL=user@example.com
+REMINDER_LOOKAHEAD_MINUTES=90
+REMINDER_POLL_INTERVAL_SECONDS=300
+```
+
+- Worker starten (z. B. in einem separaten Prozess oder Thread):
+
+```python
+from gerris_erfolgs_tracker.notifications.email_brevo import BrevoEmailNotificationService
+from gerris_erfolgs_tracker.notifications.scheduler import ReminderScheduler
+
+scheduler = ReminderScheduler(BrevoEmailNotificationService())
+scheduler.run()
+```
 
 ### Lokale Secrets
 
