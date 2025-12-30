@@ -88,6 +88,16 @@ class JournalAlignmentAction(BaseModel):
     rationale: str = Field(
         description="Begründung für das Update",
     )
+    progress_delta_percent: float | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description="Optionaler Fortschrittszuwachs in Prozentpunkten",
+    )
+    milestones_to_mark_done: list[str] = Field(
+        default_factory=list,
+        description="IDs der Meilensteine, die als erledigt markiert werden sollen",
+    )
 
 
 class JournalAlignmentResponse(BaseModel):
