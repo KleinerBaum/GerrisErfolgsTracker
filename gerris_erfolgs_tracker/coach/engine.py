@@ -13,7 +13,7 @@ from gerris_erfolgs_tracker.constants import (
     SS_COACH,
     cap_list_tail,
 )
-from gerris_erfolgs_tracker.state import persist_state
+from gerris_erfolgs_tracker.state_persistence import persist_state
 
 _COOLDOWN = timedelta(hours=2)
 
