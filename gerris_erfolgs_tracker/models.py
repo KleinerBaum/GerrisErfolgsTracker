@@ -209,6 +209,8 @@ class TodoItem(BaseModel):
     milestones: list[Milestone] = Field(default_factory=list)
     recurrence: RecurrencePattern = RecurrencePattern.ONCE
     email_reminder: EmailReminderOffset = EmailReminderOffset.NONE
+    reminder_at: Optional[datetime] = None
+    reminder_sent_at: Optional[datetime] = None
 
 
 class JournalEntry(BaseModel):

@@ -20,6 +20,8 @@ def test_todo_item_defaults() -> None:
     assert todo.processed_progress_events == []
     assert todo.recurrence is RecurrencePattern.ONCE
     assert todo.email_reminder is EmailReminderOffset.NONE
+    assert todo.reminder_at is None
+    assert todo.reminder_sent_at is None
 
 
 def test_legacy_todo_migration(session_state: dict[str, object]) -> None:
@@ -53,3 +55,5 @@ def test_legacy_todo_migration(session_state: dict[str, object]) -> None:
     assert stored["processed_progress_events"] == []
     assert stored["recurrence"] == RecurrencePattern.ONCE
     assert stored["email_reminder"] == EmailReminderOffset.NONE
+    assert stored["reminder_at"] is None
+    assert stored["reminder_sent_at"] is None

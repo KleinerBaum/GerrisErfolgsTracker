@@ -25,6 +25,7 @@ from gerris_erfolgs_tracker.models import (
     TodoItem,
     TodoKanban,
 )
+from gerris_erfolgs_tracker.notifications.reminders import calculate_reminder_at
 from gerris_erfolgs_tracker.state_persistence import (
     configure_storage,
     load_persisted_state,
@@ -92,8 +93,14 @@ def _coerce_todo(raw: Any) -> TodoItem:
         migrated.setdefault("milestones", [])
         migrated.setdefault("recurrence", RecurrencePattern.ONCE)
         migrated.setdefault("email_reminder", EmailReminderOffset.NONE)
+        migrated.setdefault("reminder_at", None)
+        migrated.setdefault("reminder_sent_at", None)
         todo = TodoItem.model_validate(migrated)
-        return todo.model_copy(update={"kanban": todo.kanban.ensure_default_columns()})
+        reminder_at = todo.reminder_at or calculate_reminder_at(todo.due_date, todo.email_reminder)
+        if todo.email_reminder is EmailReminderOffset.NONE:
+            reminder_at = None
+
+        return todo.model_copy(update={"kanban": todo.kanban.ensure_default_columns(), "reminder_at": reminder_at})
 
     todo = TodoItem.model_validate(raw)
     return todo.model_copy(update={"kanban": todo.kanban.ensure_default_columns()})
