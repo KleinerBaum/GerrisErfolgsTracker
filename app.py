@@ -81,7 +81,14 @@ from gerris_erfolgs_tracker.kpi import (
 )
 from gerris_erfolgs_tracker.kpis import get_kpi_stats
 from gerris_erfolgs_tracker.llm import get_openai_client
-from gerris_erfolgs_tracker.models import Category, GamificationMode, JournalEntry, KpiStats, TodoItem
+from gerris_erfolgs_tracker.models import (
+    Category,
+    GamificationMode,
+    JournalEntry,
+    KpiStats,
+    MilestoneStatus,
+    TodoItem,
+)
 from gerris_erfolgs_tracker.state import (
     configure_storage,
     get_todos,
@@ -91,7 +98,12 @@ from gerris_erfolgs_tracker.state import (
     reset_state,
 )
 from gerris_erfolgs_tracker.storage import FileStorageBackend
-from gerris_erfolgs_tracker.todos import add_todo, toggle_complete
+from gerris_erfolgs_tracker.todos import (
+    add_todo,
+    toggle_complete,
+    update_milestone,
+    update_todo_progress,
+)
 from gerris_erfolgs_tracker.ui.common import _inject_dark_theme_styles
 from gerris_erfolgs_tracker.ui.tasks import (
     gamification_snapshot,
@@ -377,6 +389,8 @@ def _serialize_journal_candidate(candidate: JournalUpdateCandidate) -> dict[str,
         "suggested_points": candidate.suggested_points,
         "follow_up": candidate.follow_up,
         "rationale": candidate.rationale,
+        "progress_delta_percent": candidate.progress_delta_percent,
+        "milestones_to_mark_done": candidate.milestones_to_mark_done,
     }
 
 
@@ -422,6 +436,12 @@ def _render_journal_alignment_review() -> None:
     st.info("Bitte prüfe die vermuteten Fortschritte und bestätige die gewünschten Updates.")
 
     selected_indices: list[int] = []
+    todos_by_id = {todo.id: todo for todo in get_todos()}
+    milestone_lookup: dict[str, str] = {}
+    for todo in todos_by_id.values():
+        for milestone in todo.milestones:
+            milestone_lookup[milestone.id] = milestone.title
+
     for index, action in enumerate(actions):
         if not isinstance(action, Mapping):
             continue
@@ -430,6 +450,9 @@ def _render_journal_alignment_review() -> None:
         suggested_points = int(action.get("suggested_points", 0) or 0)
         follow_up = str(action.get("follow_up", ""))
         rationale = str(action.get("rationale", ""))
+        progress_delta_percent = float(action.get("progress_delta_percent") or 0.0)
+        milestone_ids_raw = action.get("milestones_to_mark_done", [])
+        milestone_ids = [str(value) for value in milestone_ids_raw if str(value).strip()]
 
         checkbox_key = f"{JOURNAL_PENDING_SELECTION_PREFIX}{index}"
         label = f"{title} (+{suggested_points} Punkte)"
@@ -438,6 +461,11 @@ def _render_journal_alignment_review() -> None:
             st.caption(follow_up)
         if rationale:
             st.caption(f"Grund: {rationale}")
+        if progress_delta_percent > 0:
+            st.caption(f"Fortschritt / Progress: +{progress_delta_percent:.1f}%")
+        if milestone_ids:
+            milestone_titles = [milestone_lookup.get(milestone_id, milestone_id) for milestone_id in milestone_ids]
+            st.caption("Meilensteine erledigen / Complete milestones: " + ", ".join(milestone_titles))
 
         if confirmed:
             selected_indices.append(index)
@@ -457,12 +485,38 @@ def _render_journal_alignment_review() -> None:
             title = str(action.get("target_title", "Ziel"))
             points = int(action.get("suggested_points", 0) or 0)
             rationale = str(action.get("rationale", "")) or "Journalabgleich"
+            target_id = str(action.get("target_id")) if action.get("target_id") else None
+            progress_delta_percent = float(action.get("progress_delta_percent") or 0.0)
+            milestone_ids_raw = action.get("milestones_to_mark_done", [])
+            milestone_ids = [str(value) for value in milestone_ids_raw if str(value).strip()]
             award_journal_points(
                 entry_date=entry_date,
                 target_title=title,
                 points=points,
                 rationale=rationale,
             )
+
+            if target_id and progress_delta_percent > 0:
+                target_todo = todos_by_id.get(target_id)
+                if target_todo:
+                    target = target_todo.progress_target if target_todo.progress_target is not None else 100.0
+                    delta_value = target * (progress_delta_percent / 100)
+                    source_event_id = f"journal:{entry_date.isoformat()}:{target_id}:progress:{index}"
+                    updated = update_todo_progress(
+                        target_todo,
+                        delta=delta_value,
+                        source_event_id=source_event_id,
+                    )
+                    if updated:
+                        todos_by_id[target_id] = updated
+
+            if target_id and milestone_ids:
+                for milestone_id in milestone_ids:
+                    update_milestone(
+                        todo_id=target_id,
+                        milestone_id=milestone_id,
+                        status=MilestoneStatus.DONE,
+                    )
 
         st.success("Updates gespeichert.")
         st.session_state.pop(JOURNAL_PENDING_UPDATES_KEY, None)

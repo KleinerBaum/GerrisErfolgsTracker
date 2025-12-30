@@ -13,7 +13,7 @@ from gerris_erfolgs_tracker.llm import (
     request_structured_response,
 )
 from gerris_erfolgs_tracker.llm_schemas import JournalAlignmentResponse
-from gerris_erfolgs_tracker.models import JournalEntry, TodoItem
+from gerris_erfolgs_tracker.models import JournalEntry, MilestoneStatus, TodoItem
 
 
 @dataclass(frozen=True)
@@ -23,6 +23,8 @@ class JournalUpdateCandidate:
     suggested_points: int
     follow_up: str
     rationale: str
+    progress_delta_percent: float | None
+    milestones_to_mark_done: list[str]
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,17 @@ def _describe_todos(todos: Sequence[TodoItem]) -> list[str]:
     descriptions: list[str] = []
     for todo in todos:
         status = "done" if todo.completed else "open"
+        milestone_descriptions: list[str] = []
+        for milestone in todo.milestones:
+            milestone_descriptions.append(
+                " ".join(
+                    [
+                        f"milestone_id={milestone.id}",
+                        f"milestone_title={milestone.title}",
+                        f"milestone_status={milestone.status.value}",
+                    ]
+                )
+            )
         descriptions.append(
             " | ".join(
                 [
@@ -56,6 +69,7 @@ def _describe_todos(todos: Sequence[TodoItem]) -> list[str]:
                     f"category={todo.category.value}",
                     f"quadrant={todo.quadrant.value}",
                     f"status={status}",
+                    f"milestones={' ; '.join(milestone_descriptions)}" if milestone_descriptions else "milestones=none",
                 ]
             )
         )
@@ -65,19 +79,46 @@ def _describe_todos(todos: Sequence[TodoItem]) -> list[str]:
 def _fallback_alignment(entry_text: str, todos: Iterable[TodoItem]) -> JournalAlignmentSuggestion:
     actions: list[JournalUpdateCandidate] = []
     lowered_entry = entry_text.lower()
+    entry_keywords = {token.strip(".,;:!?") for token in lowered_entry.split() if len(token.strip(".,;:!?")) >= 5}
     for todo in todos:
         if todo.completed:
             continue
         title_lower = todo.title.lower()
-        if not title_lower or title_lower not in lowered_entry:
+        milestones_to_mark_done: list[str] = []
+        progress_delta = 0.0
+
+        if title_lower and (title_lower in lowered_entry or any(keyword in title_lower for keyword in entry_keywords)):
+            progress_delta = 10.0
+
+        for milestone in todo.milestones:
+            if milestone.status is MilestoneStatus.DONE:
+                continue
+            milestone_title = milestone.title.lower()
+            if milestone.title and (
+                milestone_title in lowered_entry
+                or any(fragment in lowered_entry for fragment in milestone_title.split())
+                or any(keyword in milestone_title for keyword in entry_keywords)
+            ):
+                milestones_to_mark_done.append(milestone.id)
+                progress_delta = max(progress_delta, 20.0)
+
+        if progress_delta == 0 and not milestones_to_mark_done:
             continue
+
+        follow_up_note = "Fortschritt erkannt – bitte bestätigen / Progress detected – please confirm."
+        rationale = (
+            "Teilfortschritt über Titel/Unterziel im Tagebuch erkannt / Partial progress "
+            "detected via title or sub-goal match."
+        )
         actions.append(
             JournalUpdateCandidate(
                 target_id=todo.id,
                 target_title=todo.title,
                 suggested_points=10,
-                follow_up=("Bestätige den Fortschritt und plane den nächsten Schritt."),
-                rationale="Titel im Tagebucheintrag erkannt.",
+                follow_up=follow_up_note,
+                rationale=rationale,
+                progress_delta_percent=progress_delta,
+                milestones_to_mark_done=milestones_to_mark_done,
             )
         )
     summary = "Automatische Heuristik: Treffer basierend auf Titeln; bitte manuell prüfen."
@@ -96,6 +137,8 @@ def _parse_ai_alignment(response: JournalAlignmentResponse) -> JournalAlignmentS
                 suggested_points=min(50, max(0, action.suggested_points)),
                 follow_up=action.follow_up,
                 rationale=action.rationale,
+                progress_delta_percent=action.progress_delta_percent,
+                milestones_to_mark_done=action.milestones_to_mark_done,
             )
         )
     return JournalAlignmentSuggestion(actions=actions, summary=response.summary)
@@ -126,7 +169,8 @@ def suggest_journal_alignment(
                         "role": "system",
                         "content": (
                             "Finde im Tagebucheintrag Fortschritte zu bestehenden Zielen oder Aufgaben. "
-                            "Nutze nur sehr plausible Treffer (confidence >= 0.5). "
+                            "Nutze nur sehr plausible Treffer (confidence >= 0.5) inklusive semantischer Synonyme. "
+                            "Erkenne auch Teilfortschritte: Markiere passende Meilensteine als erledigt oder erhöhe den Fortschritt in Prozentpunkten. "
                             "Schlage pro Treffer kurze Folgeaktionen in DE/EN sowie 5-30 Punkte vor."
                         ),
                     },
@@ -142,7 +186,7 @@ def suggest_journal_alignment(
                     },
                     {
                         "role": "user",
-                        "content": "Verfügbare Aufgaben: " + "\n".join(_describe_todos(todos)),
+                        "content": "Verfügbare Aufgaben & Meilensteine: " + "\n".join(_describe_todos(todos)),
                     },
                 ],
                 response_model=JournalAlignmentResponse,
