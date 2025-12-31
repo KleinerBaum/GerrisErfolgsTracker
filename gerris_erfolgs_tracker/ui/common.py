@@ -102,6 +102,9 @@ def _inject_dark_theme_styles() -> None:
                 color: #0b1311;
                 border: 1px solid var(--gerris-border);
                 font-weight: 600;
+                line-height: 1.2;
+                padding: 0.55rem 0.9rem;
+                white-space: normal;
             }
 
             .stButton > button:hover,
