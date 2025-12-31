@@ -82,7 +82,7 @@ from gerris_erfolgs_tracker.kpi import (
     count_new_tasks_last_7_days,
     last_7_days_completions_by_category,
 )
-from gerris_erfolgs_tracker.kpis import get_kpi_stats
+from gerris_erfolgs_tracker.kpis import get_kpi_stats, update_goal_daily
 from gerris_erfolgs_tracker.llm import get_openai_client
 from gerris_erfolgs_tracker.models import (
     Category,
@@ -706,6 +706,22 @@ def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> d
     return settings
 
 
+def _coerce_goal_value(raw_value: object | None, fallback: int) -> int:
+    try:
+        coerced = int(cast(int, raw_value))
+    except (TypeError, ValueError):
+        return fallback
+    return max(1, coerced)
+
+
+def _resolve_goal_input_value(*, settings: Mapping[str, Any], stats: KpiStats) -> int:
+    fallback_goal = _coerce_goal_value(settings.get("goal_daily"), stats.goal_daily)
+    existing_value = st.session_state.get(SETTINGS_GOAL_DAILY_KEY)
+    if existing_value is None:
+        return fallback_goal
+    return _coerce_goal_value(existing_value, fallback_goal)
+
+
 def _panel_section(panel: Any, label: str) -> Any:
     expander = getattr(panel, "expander", None)
     if callable(expander):
@@ -719,6 +735,36 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
     settings = _ensure_settings_defaults(client=client, stats=stats)
     ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
     goal_profile: GoalProfile = settings.get("goal_profile", _default_goal_profile())
+
+    panel.subheader("Tagesziel / Daily goal")
+    goal_input_value = _resolve_goal_input_value(settings=settings, stats=stats)
+    goal_value = panel.number_input(
+        translate_text(("Ziel pro Tag", "Daily target")),
+        min_value=1,
+        step=1,
+        value=goal_input_value,
+        key=SETTINGS_GOAL_DAILY_KEY,
+        help=translate_text(
+            (
+                "Setzt dein Tagesziel für erledigte Aufgaben. Der Wert bleibt stabil, bis du ihn änderst.",
+                "Sets your daily completion target. The value stays stable until you change it.",
+            )
+        ),
+    )
+    settings["goal_daily"] = int(goal_value)
+
+    if panel.button(
+        translate_text(("Tagesziel speichern", "Save daily goal")),
+        key="settings_save_goal_daily",
+        help=translate_text(
+            (
+                "Aktualisiert das Tagesziel und speichert es in deinen KPIs.",
+                "Updates the daily goal and stores it in your KPIs.",
+            )
+        ),
+    ):
+        update_goal_daily(int(goal_value))
+        panel.success(translate_text(("Tagesziel aktualisiert", "Daily goal updated")))
 
     if not st.session_state.get(GOAL_CREATION_VISIBLE_KEY, False):
         return ai_enabled

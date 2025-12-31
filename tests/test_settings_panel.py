@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import pytest
 
-from app import AI_ENABLED_KEY, GOAL_CREATION_VISIBLE_KEY, render_settings_panel
+from app import (
+    AI_ENABLED_KEY,
+    GOAL_CREATION_VISIBLE_KEY,
+    SETTINGS_GOAL_DAILY_KEY,
+    _resolve_goal_input_value,
+    render_settings_panel,
+)
 from gerris_erfolgs_tracker.constants import SS_SETTINGS
 from gerris_erfolgs_tracker.models import KpiStats
 
@@ -189,7 +195,9 @@ def test_settings_panel_runs_without_daily_goal_controls(
 
     assert ai_enabled is True
     assert SS_SETTINGS in session_state
-    assert "settings_goal_daily" not in session_state
+    assert session_state[SETTINGS_GOAL_DAILY_KEY] == 3
+    settings = cast(Dict[str, object], session_state[SS_SETTINGS])
+    assert settings["goal_daily"] == 3
     assert plan.responses == {}
 
 
@@ -210,3 +218,49 @@ def test_settings_panel_uses_two_column_canvas(
     render_settings_panel(stats, client=None, panel=panel_stub)
 
     assert 2 in panel_stub.columns_calls
+
+
+def test_settings_panel_respects_existing_goal_input_value(
+    session_state: Dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stats = KpiStats(goal_daily=2)
+    plan = _ButtonPlan(responses={})
+    st_stub = _StreamlitStub(session_state, plan)
+    panel_stub = _PanelStub(session_state, plan)
+
+    monkeypatch.setattr("app.st", st_stub)
+
+    session_state[GOAL_CREATION_VISIBLE_KEY] = True
+    session_state[AI_ENABLED_KEY] = True
+    session_state[SETTINGS_GOAL_DAILY_KEY] = 7
+    session_state[SS_SETTINGS] = {AI_ENABLED_KEY: True}
+
+    render_settings_panel(stats, client=None, panel=panel_stub)
+
+    assert panel_stub.number_inputs[SETTINGS_GOAL_DAILY_KEY] == 7
+    settings = cast(Dict[str, object], session_state[SS_SETTINGS])
+    assert settings["goal_daily"] == 7
+
+
+def test_resolve_goal_input_value_does_not_seed_session_state(
+    session_state: Dict[str, object]
+) -> None:
+    stats = KpiStats(goal_daily=5)
+    settings: Dict[str, object] = {"goal_daily": 4}
+
+    resolved = _resolve_goal_input_value(settings=settings, stats=stats)
+
+    assert resolved == 4
+    assert SETTINGS_GOAL_DAILY_KEY not in session_state
+
+
+def test_resolve_goal_input_value_prefers_existing_widget_value(
+    session_state: Dict[str, object]
+) -> None:
+    stats = KpiStats(goal_daily=1)
+    settings: Dict[str, object] = {"goal_daily": 3}
+    session_state[SETTINGS_GOAL_DAILY_KEY] = 6
+
+    resolved = _resolve_goal_input_value(settings=settings, stats=stats)
+
+    assert resolved == 6
