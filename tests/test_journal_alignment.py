@@ -82,3 +82,18 @@ def test_award_journal_points_deduplicates() -> None:
 
     assert repeated_state.points == initial_state.points
     assert "Haus streichen" in get_gamification_state().history[-1]
+
+
+def test_fallback_alignment_creates_completed_task_suggestion() -> None:
+    entry = JournalEntry(
+        date=date(2024, 9, 3),
+        mood_notes="Heute spontan die Garage aufgeräumt und den Müll entsorgt.",
+    )
+
+    suggestion = suggest_journal_alignment(entry=entry, todos=[], client=None)
+
+    assert suggestion.payload.actions
+    created = suggestion.payload.actions[0]
+    assert created.create_new_todo is True
+    assert created.target_id is None
+    assert "garage" in created.target_title.lower()
