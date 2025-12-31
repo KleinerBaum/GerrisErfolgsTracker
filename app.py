@@ -1440,11 +1440,13 @@ def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, categor
                 )
 
     weekly_data = last_7_days_completions_by_category(todos)
-    st.plotly_chart(
-        build_category_weekly_completion_figure(weekly_data),
-        width="stretch",
-        config={"displaylogo": False, "responsive": True},
-    )
+    weekly_label = translate_text(("Wöchentliche Trends je Kategorie", "Weekly trends per category"))
+    with st.expander(weekly_label, expanded=False):
+        st.plotly_chart(
+            build_category_weekly_completion_figure(weekly_data),
+            width="stretch",
+            config={"displaylogo": False, "responsive": True},
+        )
 
 
 def render_shared_calendar() -> None:
@@ -1491,39 +1493,58 @@ def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
 
     new_tasks_count = count_new_tasks_last_7_days(todos)
     st.markdown("#### " + translate_text(("Neue Aufgaben (7 Tage)", "New tasks (7 days)")))
-    gauge_column, info_column = st.columns([2, 1])
-    with gauge_column:
-        st.plotly_chart(
-            _build_new_tasks_gauge(new_tasks_count),
-            width="stretch",
-            config={"displaylogo": False, "responsive": True},
-        )
-    with info_column:
-        total_points = new_tasks_count * POINTS_PER_NEW_TASK
-        info_column.metric(
-            translate_text(("Punkte aus neuen Aufgaben", "Points from new tasks")),
-            f"{total_points}",
-            delta=translate_text(
-                (
-                    f"{new_tasks_count} von {NEW_TASK_WEEKLY_GOAL}",
-                    f"{new_tasks_count} of {NEW_TASK_WEEKLY_GOAL}",
-                )
-            ),
-            help=translate_text(
-                (
-                    f"{POINTS_PER_NEW_TASK} Punkte pro neuer Aufgabe",
-                    f"{POINTS_PER_NEW_TASK} points per new task",
-                )
-            ),
-        )
-        info_column.caption(
-            translate_text(
-                (
-                    f"Ziel: {NEW_TASK_WEEKLY_GOAL} neue Aufgaben pro Woche",
-                    f"Target: {NEW_TASK_WEEKLY_GOAL} new tasks per week",
-                )
+    st.caption(
+        translate_text(
+            (
+                "Kurzer Überblick – Details bei Bedarf aufklappen.",
+                "Quick glance – expand for details when needed.",
             )
         )
+    )
+    summary_columns = st.columns([1, 1])
+    summary_columns[0].metric(
+        translate_text(("Neu angelegt", "Created")),
+        f"{new_tasks_count}",
+    )
+    summary_columns[1].metric(
+        translate_text(("Wochenziel", "Weekly target")),
+        f"{NEW_TASK_WEEKLY_GOAL}",
+    )
+
+    with st.expander(translate_text(("Wochenstatistik öffnen", "Open weekly stats")), expanded=False):
+        gauge_column, info_column = st.columns([2, 1])
+        with gauge_column:
+            st.plotly_chart(
+                _build_new_tasks_gauge(new_tasks_count),
+                width="stretch",
+                config={"displaylogo": False, "responsive": True},
+            )
+        with info_column:
+            total_points = new_tasks_count * POINTS_PER_NEW_TASK
+            info_column.metric(
+                translate_text(("Punkte aus neuen Aufgaben", "Points from new tasks")),
+                f"{total_points}",
+                delta=translate_text(
+                    (
+                        f"{new_tasks_count} von {NEW_TASK_WEEKLY_GOAL}",
+                        f"{new_tasks_count} of {NEW_TASK_WEEKLY_GOAL}",
+                    )
+                ),
+                help=translate_text(
+                    (
+                        f"{POINTS_PER_NEW_TASK} Punkte pro neuer Aufgabe",
+                        f"{POINTS_PER_NEW_TASK} points per new task",
+                    )
+                ),
+            )
+            info_column.caption(
+                translate_text(
+                    (
+                        f"Ziel: {NEW_TASK_WEEKLY_GOAL} neue Aufgaben pro Woche",
+                        f"Target: {NEW_TASK_WEEKLY_GOAL} new tasks per week",
+                    )
+                )
+            )
 
     flow_header = translate_text(("Flow & Backlog", "Flow & backlog"))
     st.markdown(f"#### {flow_header}")
@@ -1669,7 +1690,16 @@ def render_sidebar_sections(
     settings: Mapping[str, Any],
 ) -> bool:
     render_coach_sidebar()
-    gamification_panel = st.sidebar.expander("Gamification", expanded=True)
+    gamification_state = get_gamification_state()
+    st.sidebar.caption(
+        translate_text(
+            (
+                f"🎮 Level {gamification_state.level} · Punkte: {gamification_state.points}",
+                f"🎮 Level {gamification_state.level} · Points: {gamification_state.points}",
+            )
+        )
+    )
+    gamification_panel = st.sidebar.expander("Gamification", expanded=False)
     with gamification_panel:
         render_gamification_panel(
             stats,
