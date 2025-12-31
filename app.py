@@ -1715,8 +1715,10 @@ def render_workload_overview(*, todos: list[TodoItem], stats: KpiStats) -> None:
 
 
 def render_dashboard_header(*, settings: dict[str, Any]) -> None:
-    header = st.container()
-    header_columns = header.columns([2, 1, 1, 1])
+    """Render the dashboard header with aligned quick-add actions."""
+
+    header_container = st.container()
+    header_columns = header_container.columns([2, 1, 1, 1])
     with header_columns[0]:
         st.markdown("## Gerris ErfolgsTracker")
     with header_columns[1]:
