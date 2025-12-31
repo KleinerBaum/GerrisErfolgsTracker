@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
@@ -12,7 +13,7 @@ from gerris_erfolgs_tracker.llm import (
     get_openai_client,
     request_structured_response,
 )
-from gerris_erfolgs_tracker.llm_schemas import JournalAlignmentResponse
+from gerris_erfolgs_tracker.llm_schemas import JournalAlignmentResponse, QuadrantName
 from gerris_erfolgs_tracker.models import JournalEntry, MilestoneStatus, TodoItem
 
 
@@ -25,6 +26,9 @@ class JournalUpdateCandidate:
     rationale: str
     progress_delta_percent: float | None
     milestones_to_mark_done: list[str]
+    create_new_todo: bool = False
+    suggested_quadrant: QuadrantName | None = None
+    suggested_category: str | None = None
 
 
 @dataclass(frozen=True)
@@ -76,10 +80,79 @@ def _describe_todos(todos: Sequence[TodoItem]) -> list[str]:
     return descriptions
 
 
+_UNTRACKED_ACTIVITY_KEYWORDS: tuple[str, ...] = (
+    "aufgeräumt",
+    "aufgeraeumt",
+    "erledigt",
+    "fertig",
+    "geschafft",
+    "geputzt",
+    "organisiert",
+    "ausgemistet",
+    "trainiert",
+    "geübt",
+    "gelernt",
+    "gekocht",
+    "gebaut",
+)
+
+
+def _detect_untracked_activities(entry_text: str, existing_titles: set[str]) -> list[JournalUpdateCandidate]:
+    actions: list[JournalUpdateCandidate] = []
+    normalized_existing = {title.lower() for title in existing_titles if title}
+
+    for sentence in re.split(r"[\n\.!?]+", entry_text):
+        cleaned = sentence.strip(" •-\t")
+        if len(cleaned) < 12:
+            continue
+
+        lowered = cleaned.lower()
+        if not any(keyword in lowered for keyword in _UNTRACKED_ACTIVITY_KEYWORDS):
+            continue
+
+        title = cleaned[:80].strip()
+        if not title:
+            continue
+
+        normalized_title = title.lower()
+        if any(
+            normalized_title in existing_title or existing_title in normalized_title
+            for existing_title in normalized_existing
+        ):
+            continue
+
+        follow_up_note = (
+            "Neue Aktivität erkannt – als erledigte Aufgabe speichern? / "
+            "New activity detected – save as completed task?"
+        )
+        rationale = (
+            "Kein passender Task gefunden, aber abgeschlossene Aktivität im Tagebuch beschrieben. / "
+            "No matching task found, but the journal text describes a completed activity."
+        )
+        actions.append(
+            JournalUpdateCandidate(
+                target_id=None,
+                target_title=title,
+                suggested_points=12,
+                follow_up=follow_up_note,
+                rationale=rationale,
+                progress_delta_percent=None,
+                milestones_to_mark_done=[],
+                create_new_todo=True,
+                suggested_quadrant=QuadrantName.NOT_URGENT_IMPORTANT,
+            )
+        )
+        if len(actions) >= 2:
+            break
+
+    return actions
+
+
 def _fallback_alignment(entry_text: str, todos: Iterable[TodoItem]) -> JournalAlignmentSuggestion:
     actions: list[JournalUpdateCandidate] = []
     lowered_entry = entry_text.lower()
     entry_keywords = {token.strip(".,;:!?") for token in lowered_entry.split() if len(token.strip(".,;:!?")) >= 5}
+    existing_titles = {todo.title for todo in todos}
     for todo in todos:
         if todo.completed:
             continue
@@ -121,7 +194,16 @@ def _fallback_alignment(entry_text: str, todos: Iterable[TodoItem]) -> JournalAl
                 milestones_to_mark_done=milestones_to_mark_done,
             )
         )
-    summary = "Automatische Heuristik: Treffer basierend auf Titeln; bitte manuell prüfen."
+    if entry_text and not actions:
+        actions.extend(_detect_untracked_activities(entry_text, existing_titles))
+
+    if actions:
+        if any(action.create_new_todo for action in actions):
+            summary = "Automatische Heuristik: Neue Aktivität erkannt; bitte bestätigen."
+        else:
+            summary = "Automatische Heuristik: Treffer basierend auf Titeln; bitte manuell prüfen."
+    else:
+        summary = "Automatische Heuristik: Keine eindeutigen Hinweise gefunden."
     return JournalAlignmentSuggestion(actions=actions, summary=summary)
 
 
@@ -139,6 +221,9 @@ def _parse_ai_alignment(response: JournalAlignmentResponse) -> JournalAlignmentS
                 rationale=action.rationale,
                 progress_delta_percent=action.progress_delta_percent,
                 milestones_to_mark_done=action.milestones_to_mark_done,
+                create_new_todo=bool(action.create_new_todo),
+                suggested_quadrant=action.suggested_quadrant,
+                suggested_category=action.suggested_category,
             )
         )
     return JournalAlignmentSuggestion(actions=actions, summary=response.summary)
@@ -171,7 +256,9 @@ def suggest_journal_alignment(
                             "Finde im Tagebucheintrag Fortschritte zu bestehenden Zielen oder Aufgaben. "
                             "Nutze nur sehr plausible Treffer (confidence >= 0.5) inklusive semantischer Synonyme. "
                             "Erkenne auch Teilfortschritte: Markiere passende Meilensteine als erledigt oder erhöhe den Fortschritt in Prozentpunkten. "
-                            "Schlage pro Treffer kurze Folgeaktionen in DE/EN sowie 5-30 Punkte vor."
+                            "Schlage pro Treffer kurze Folgeaktionen in DE/EN sowie 5-30 Punkte vor. "
+                            "Wenn der Eintrag eine abgeschlossene Aktivität ohne passende Aufgabe beschreibt, darfst du eine neue erledigte Aufgabe vorschlagen (create_new_todo=true)"
+                            " inklusive Quadrant/Kategorie, damit nichts verloren geht."
                         ),
                     },
                     {

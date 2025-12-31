@@ -49,7 +49,7 @@ from gerris_erfolgs_tracker.constants import (
     SHOW_STORAGE_NOTICE_KEY,
     SS_SETTINGS,
 )
-from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
+from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, ensure_quadrant
 from gerris_erfolgs_tracker.gamification import (
     award_journal_points,
     calculate_progress_to_next_level,
@@ -399,6 +399,9 @@ def _serialize_journal_candidate(candidate: JournalUpdateCandidate) -> dict[str,
         "rationale": candidate.rationale,
         "progress_delta_percent": candidate.progress_delta_percent,
         "milestones_to_mark_done": candidate.milestones_to_mark_done,
+        "create_new_todo": candidate.create_new_todo,
+        "suggested_quadrant": candidate.suggested_quadrant,
+        "suggested_category": candidate.suggested_category,
     }
 
 
@@ -438,6 +441,25 @@ def _render_journal_alignment_review() -> None:
             st.info(f"{badge} {summary}")
         return
 
+    def _safe_quadrant(raw: object | None) -> EisenhowerQuadrant:
+        try:
+            return ensure_quadrant(str(raw)) if raw is not None else EisenhowerQuadrant.NOT_URGENT_IMPORTANT
+        except Exception:
+            return EisenhowerQuadrant.NOT_URGENT_IMPORTANT
+
+    def _coerce_category(raw: object | None) -> Category:
+        if raw is None:
+            return Category.DAILY_STRUCTURE
+        candidate = str(raw)
+        try:
+            return Category(candidate)
+        except Exception:
+            lowered = candidate.strip().lower()
+            for category in Category:
+                if lowered == category.label.lower():
+                    return category
+        return Category.DAILY_STRUCTURE
+
     st.markdown("#### Vorgeschlagene Updates")
     if summary:
         st.caption(f"{badge} {summary}")
@@ -461,14 +483,26 @@ def _render_journal_alignment_review() -> None:
         progress_delta_percent = float(action.get("progress_delta_percent") or 0.0)
         milestone_ids_raw = action.get("milestones_to_mark_done", [])
         milestone_ids = [str(value) for value in milestone_ids_raw if str(value).strip()]
+        create_new_todo = bool(action.get("create_new_todo"))
+        suggested_quadrant = action.get("suggested_quadrant")
+        suggested_category = action.get("suggested_category")
+        display_quadrant = _safe_quadrant(suggested_quadrant) if suggested_quadrant else None
+        display_category = _coerce_category(suggested_category) if suggested_category else None
 
         checkbox_key = f"{JOURNAL_PENDING_SELECTION_PREFIX}{index}"
-        label = f"{title} (+{suggested_points} Punkte)"
+        label_prefix = "Neue Aufgabe anlegen: " if create_new_todo else ""
+        label = f"{label_prefix}{title} (+{suggested_points} Punkte)"
         confirmed = st.checkbox(label, key=checkbox_key)
         if follow_up:
             st.caption(follow_up)
         if rationale:
             st.caption(f"Grund: {rationale}")
+        if create_new_todo:
+            st.caption("Wird als erledigter Task gespeichert / Will be saved as a completed task.")
+        if display_quadrant:
+            st.caption(f"Quadrant: {display_quadrant.label}")
+        if display_category:
+            st.caption(f"Kategorie / Category: {display_category.label}")
         if progress_delta_percent > 0:
             st.caption(f"Fortschritt / Progress: +{progress_delta_percent:.1f}%")
         if milestone_ids:
@@ -484,6 +518,7 @@ def _render_journal_alignment_review() -> None:
         type="primary",
         disabled=apply_disabled,
     ):
+        created_todo_ids: list[str] = []
         for index in selected_indices:
             if index >= len(actions):
                 continue
@@ -497,12 +532,28 @@ def _render_journal_alignment_review() -> None:
             progress_delta_percent = float(action.get("progress_delta_percent") or 0.0)
             milestone_ids_raw = action.get("milestones_to_mark_done", [])
             milestone_ids = [str(value) for value in milestone_ids_raw if str(value).strip()]
+            create_new_todo = bool(action.get("create_new_todo"))
+            quadrant = _safe_quadrant(action.get("suggested_quadrant"))
+            category = _coerce_category(action.get("suggested_category"))
             award_journal_points(
                 entry_date=entry_date,
                 target_title=title,
                 points=points,
                 rationale=rationale,
             )
+
+            if create_new_todo:
+                new_todo = add_todo(
+                    title=title,
+                    quadrant=quadrant,
+                    due_date=entry_date,
+                    category=category,
+                    description_md=rationale,
+                )
+                toggled = toggle_complete(new_todo.id)
+                created_record = toggled or new_todo
+                created_todo_ids.append(created_record.id)
+                todos_by_id[created_record.id] = created_record
 
             if target_id and progress_delta_percent > 0:
                 target_todo = todos_by_id.get(target_id)
@@ -525,6 +576,13 @@ def _render_journal_alignment_review() -> None:
                         milestone_id=milestone_id,
                         status=MilestoneStatus.DONE,
                     )
+
+        if created_todo_ids:
+            journal_entries = get_journal_entries()
+            entry = journal_entries.get(entry_date)
+            if entry:
+                updated_entry = append_journal_links(entry, created_todo_ids)
+                upsert_journal_entry(updated_entry)
 
         st.success("Updates gespeichert.")
         st.session_state.pop(JOURNAL_PENDING_UPDATES_KEY, None)

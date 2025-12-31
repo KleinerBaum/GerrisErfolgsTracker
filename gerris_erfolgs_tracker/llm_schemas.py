@@ -125,6 +125,24 @@ class JournalAlignmentAction(BaseModel):
         default_factory=list,
         description="IDs der Meilensteine, die als erledigt markiert werden sollen",
     )
+    create_new_todo: bool = Field(
+        default=False,
+        description=(
+            "True, wenn der Tagebucheintrag eine neue erledigte Aktivität beschreibt, "
+            "die als Aufgabe nachgetragen werden soll"
+        ),
+    )
+    suggested_quadrant: QuadrantName | None = Field(
+        default=None,
+        description="Empfohlener Quadrant für neu anzulegende Aufgaben",
+    )
+    suggested_category: str | None = Field(
+        default=None,
+        description=(
+            "Optionale Kategorie (Bezeichner oder Label), falls die neue Aufgabe"
+            " einem Lebensbereich zugeordnet werden soll"
+        ),
+    )
 
 
 class JournalAlignmentResponse(BaseModel):

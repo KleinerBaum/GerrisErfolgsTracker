@@ -4,6 +4,7 @@
 - Neues KI-Planungs-Panel auf der Aufgaben-Seite: analysiert Quadrant, Priorität, Fälligkeit, Streak und jüngste Stimmung, um tägliche Fokusaufgaben samt Puffertipp vorzuschlagen (Fallback aktiv ohne API-Key).
 - Wochenrückblick berücksichtigt jetzt Journal-Stimmungen und hebt dominante Mood-Tags bzw. letzte Notizen in den KI-Zusammenfassungen hervor.
 - Bidirektionale Verknüpfung von Aufgaben und Tagebuch: gespeicherte Alignment-Vorschläge hinterlegen jetzt die referenzierten Ziele/Aufgaben direkt im Tagebucheintrag, und die Aufgabenansicht zeigt die Tage mit Journal-Mentions als Hinweis.
+- KI erkennt jetzt spontane, nicht geplante Aktivitäten im Tagebuch (z. B. „Garage aufgeräumt“), schlägt dafür erledigte Aufgaben inklusive Punktevergütung vor und legt sie nach Bestätigung samt Verknüpfung zum Eintrag an.
 - Optionales Reflexions-Prompt nach dem Abschluss einer Aufgabe: ein kurzer Notiz-Dialog legt auf Wunsch einen Eintrag für den aktuellen Tag an und verknüpft ihn automatisch mit der erledigten Aufgabe.
 - Optionaler OpenAI-ScriptComposer erzeugt Wochenrückblicke über strukturierte Outputs; ohne API-Key oder bei Fehlern greifen automatisch die erweiterten Fallback-Templates.
 - Neues TaskAnalyzer-Modell `TaskAIProposal` mit Validierungen (Datenbereich, Milestone-Reihenfolge) und UI-Button **AI: Plan & Komplexität vorschlagen** inklusive Bearbeitung und expliziter Übernahme-Checkbox im ToDo-Formular.
