@@ -1107,46 +1107,48 @@ def render_task_list_view(todos: list[TodoItem], *, journal_links: Mapping[str, 
         unsafe_allow_html=True,
     )
 
-    filter_columns = st.columns(3)
-    with filter_columns[0]:
-        show_done = st.checkbox(
-            "Erledigte anzeigen",
-            value=st.session_state.get(FILTER_SHOW_DONE_KEY, True),
-            key=FILTER_SHOW_DONE_KEY,
-        )
+    filter_label = translate_text(("Filter & Sortierung", "Filters & sorting"))
+    with st.expander(filter_label, expanded=False):
+        filter_columns = st.columns(3)
+        with filter_columns[0]:
+            show_done = st.checkbox(
+                "Erledigte anzeigen",
+                value=st.session_state.get(FILTER_SHOW_DONE_KEY, True),
+                key=FILTER_SHOW_DONE_KEY,
+            )
 
-    with filter_columns[1]:
-        default_categories = st.session_state.get(FILTER_SELECTED_CATEGORIES_KEY) or list(Category)
-        selected_categories = st.multiselect(
-            "Kategorien",
-            options=list(Category),
-            default=default_categories,
-            format_func=lambda option: option.label,
-            key=FILTER_SELECTED_CATEGORIES_KEY,
-        )
-        if not selected_categories:
-            selected_categories = list(Category)
+        with filter_columns[1]:
+            default_categories = st.session_state.get(FILTER_SELECTED_CATEGORIES_KEY) or list(Category)
+            selected_categories = st.multiselect(
+                "Kategorien",
+                options=list(Category),
+                default=default_categories,
+                format_func=lambda option: option.label,
+                key=FILTER_SELECTED_CATEGORIES_KEY,
+            )
+            if not selected_categories:
+                selected_categories = list(Category)
 
-    with filter_columns[2]:
-        sort_labels: dict[SortOverride, str] = {
-            "priority": "Priorität, dann Fälligkeit",
-            "due_date": "Fälligkeitsdatum zuerst",
-            "created_at": "Erstellungsdatum zuerst",
-        }
-        current_sort_value = st.session_state.get(FILTER_SORT_OVERRIDE_KEY, "priority")
-        current_sort: SortOverride = (
-            cast(SortOverride, current_sort_value)
-            if isinstance(current_sort_value, str) and current_sort_value in sort_labels
-            else "priority"
-        )
-        sort_override_options: list[SortOverride] = list(sort_labels.keys())
-        sort_override: SortOverride = st.selectbox(
-            "Sortierung",
-            options=sort_override_options,
-            format_func=lambda key: sort_labels[key],
-            index=sort_override_options.index(current_sort),
-            key=FILTER_SORT_OVERRIDE_KEY,
-        )
+        with filter_columns[2]:
+            sort_labels: dict[SortOverride, str] = {
+                "priority": "Priorität, dann Fälligkeit",
+                "due_date": "Fälligkeitsdatum zuerst",
+                "created_at": "Erstellungsdatum zuerst",
+            }
+            current_sort_value = st.session_state.get(FILTER_SORT_OVERRIDE_KEY, "priority")
+            current_sort: SortOverride = (
+                cast(SortOverride, current_sort_value)
+                if isinstance(current_sort_value, str) and current_sort_value in sort_labels
+                else "priority"
+            )
+            sort_override_options: list[SortOverride] = list(sort_labels.keys())
+            sort_override: SortOverride = st.selectbox(
+                "Sortierung",
+                options=sort_override_options,
+                format_func=lambda key: sort_labels[key],
+                index=sort_override_options.index(current_sort),
+                key=FILTER_SORT_OVERRIDE_KEY,
+            )
 
     visible_todos = [
         todo for todo in todos if (show_done or not todo.completed) and todo.category in selected_categories
@@ -1169,8 +1171,23 @@ def render_task_list_view(todos: list[TodoItem], *, journal_links: Mapping[str, 
                 continue
 
             st.markdown(f"### {category.label}")
-            for todo in sorted(category_todos, key=lambda item: _task_sort_key(item, sort_override)):
+            sorted_todos = sorted(category_todos, key=lambda item: _task_sort_key(item, sort_override))
+            preview_tasks = sorted_todos[:3]
+            remaining_tasks = sorted_todos[3:]
+
+            for todo in preview_tasks:
                 render_task_row(todo, parent=task_list_container, journal_links=journal_links)
+
+            if remaining_tasks:
+                more_label = translate_text(
+                    (
+                        f"Mehr anzeigen ({len(remaining_tasks)})",
+                        f"Show more ({len(remaining_tasks)})",
+                    )
+                )
+                with st.expander(more_label, expanded=False):
+                    for todo in remaining_tasks:
+                        render_task_row(todo, parent=task_list_container, journal_links=journal_links)
         st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -1187,11 +1204,16 @@ def render_todo_section(
     journal_links = journal_links or get_journal_links_by_todo()
     quadrant_options = list(EisenhowerQuadrant)
 
-    _render_daily_plan_panel(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
+    hero_left, hero_right = st.columns([0.6, 0.4])
+    with hero_left:
+        _render_daily_plan_panel(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
+
+    with hero_right:
+        _render_completion_journal_prompt(todos)
+
     divider = getattr(st, "divider", None)
     if callable(divider):
         divider()
-    _render_completion_journal_prompt(todos)
     st.subheader("ToDo hinzufügen")
 
     if st.session_state.pop(NEW_TODO_RESET_TRIGGER_KEY, False):

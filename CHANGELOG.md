@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- UI-Redesign mit kompakteren Expandern: Wochenstatistiken im KPI- und Kategorie-Dashboard sowie die Sidebar-Gamification öffnen sich nur bei Bedarf, während eine Kurzzeile Level und Punkte direkt in der Navigation zeigt.
+- Aufgaben-Tab mit zweispaltigem Hero-Bereich, eingeklappten Filtern und Top-3-Vorschau pro Kategorie; weitere ToDos lassen sich per „Mehr anzeigen / Show more“-Expander aufklappen, um lange Listen zu entschlacken.
 - Neues KI-Planungs-Panel auf der Aufgaben-Seite: analysiert Quadrant, Priorität, Fälligkeit, Streak und jüngste Stimmung, um tägliche Fokusaufgaben samt Puffertipp vorzuschlagen (Fallback aktiv ohne API-Key).
 - Wochenrückblick berücksichtigt jetzt Journal-Stimmungen und hebt dominante Mood-Tags bzw. letzte Notizen in den KI-Zusammenfassungen hervor.
 - Bidirektionale Verknüpfung von Aufgaben und Tagebuch: gespeicherte Alignment-Vorschläge hinterlegen jetzt die referenzierten Ziele/Aufgaben direkt im Tagebucheintrag, und die Aufgabenansicht zeigt die Tage mit Journal-Mentions als Hinweis.
