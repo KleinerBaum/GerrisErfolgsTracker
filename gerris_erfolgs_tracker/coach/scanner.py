@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Iterable
+from collections import Counter
+from datetime import date, datetime, timedelta, timezone
+from typing import Iterable, Mapping
 
 from gerris_erfolgs_tracker.coach.engine import process_event
 from gerris_erfolgs_tracker.coach.events import CoachEvent, CoachTrigger
@@ -57,6 +58,31 @@ def _build_weekly_event(now: datetime, *, context: dict[str, object]) -> CoachEv
     )
 
 
+def _summarize_weekly_moods(entries: Mapping[date, object]) -> dict[str, object]:
+    if not entries:
+        return {}
+
+    window_start = _event_timestamp().date() - timedelta(days=6)
+    recent_entries = {entry_date: entry for entry_date, entry in entries.items() if entry_date >= window_start}
+    if not recent_entries:
+        return {}
+
+    tag_counter: Counter[str] = Counter()
+    for entry in recent_entries.values():
+        moods = getattr(entry, "moods", []) or []
+        tag_counter.update(tag.strip().lower() for tag in moods if tag and tag.strip())
+
+    latest_date = max(recent_entries.keys())
+    latest_entry = recent_entries[latest_date]
+    latest_note = getattr(latest_entry, "mood_notes", "")
+
+    return {
+        "top_tags": [tag for tag, _ in tag_counter.most_common(3)],
+        "latest_date": latest_date.isoformat(),
+        "latest_note": latest_note.strip(),
+    }
+
+
 def run_daily_coach_scan(todos: Iterable[TodoItem]) -> None:
     now = _event_timestamp()
     today = now.date().isoformat()
@@ -77,6 +103,9 @@ def run_daily_coach_scan(todos: Iterable[TodoItem]) -> None:
 def schedule_weekly_review(*, todos: Iterable[TodoItem] | None = None, stats: KpiStats | None = None) -> None:
     now = _event_timestamp()
     open_tasks = [task for task in todos or [] if not task.completed]
+    from gerris_erfolgs_tracker.journal import get_journal_entries
+
+    mood_summary = _summarize_weekly_moods(get_journal_entries())
     overdue_sorted = [task for task in open_tasks if task.due_date and task.due_date < now]
     overdue_sorted = sorted(overdue_sorted, key=lambda todo: todo.due_date or now)[:5]
     soon_threshold = now + timedelta(hours=72)
@@ -114,6 +143,7 @@ def schedule_weekly_review(*, todos: Iterable[TodoItem] | None = None, stats: Kp
             for task in due_soon_sorted
         ],
         "categories": category_summary,
+        "mood_summary": mood_summary,
     }
 
     event = _build_weekly_event(now, context=event_context)

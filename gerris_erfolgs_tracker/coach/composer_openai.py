@@ -57,6 +57,25 @@ def _format_categories(categories: list[Mapping[str, Any]]) -> str:
     return " | ".join(entries)
 
 
+def _format_mood_summary(summary: Mapping[str, Any] | None) -> str:
+    if not summary:
+        return "Keine Stimmungseinträge"
+
+    tags = summary.get("top_tags") or []
+    latest_note = summary.get("latest_note") or ""
+    latest_date = summary.get("latest_date") or ""
+
+    parts: list[str] = []
+    if tags:
+        parts.append(f"Häufige Stimmung: {', '.join(tags)}")
+    if latest_note:
+        parts.append(f"Letzte Notiz: {latest_note}")
+    if latest_date:
+        parts.append(f"Zuletzt erfasst: {latest_date}")
+
+    return " | ".join(parts) if parts else "Keine Stimmungseinträge"
+
+
 def _prepare_weekly_prompt(event: CoachEvent) -> list[dict[str, object]]:
     context = event.context
     done_today = context.get("done_today", 0)
@@ -65,6 +84,7 @@ def _prepare_weekly_prompt(event: CoachEvent) -> list[dict[str, object]]:
     overdue = _format_tasks(context.get("overdue_tasks", []))
     due_soon = _format_tasks(context.get("due_soon_tasks", []))
     categories = _format_categories(context.get("categories", []))
+    mood_summary = _format_mood_summary(context.get("mood_summary"))
     trigger_info = f"Trigger: {event.trigger.value}"
 
     system_prompt = (
@@ -82,6 +102,7 @@ def _prepare_weekly_prompt(event: CoachEvent) -> list[dict[str, object]]:
         f"- Überfällig:\n{overdue}\n"
         f"- Bald fällig:\n{due_soon}\n"
         f"- Kategorien: {categories}\n"
+        f"- Stimmung: {mood_summary}\n"
         f"- {trigger_info}\n"
         "Verfasse einen kurzen Wochenrückblick auf Deutsch/Englisch, max. 4 Sätze, "
         "binde Aufgabenbeispiele ein und motiviere zu klaren nächsten Schritten."
