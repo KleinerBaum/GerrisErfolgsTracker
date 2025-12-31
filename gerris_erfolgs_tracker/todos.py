@@ -21,8 +21,8 @@ from gerris_erfolgs_tracker.models import (
     TodoKanban,
 )
 from gerris_erfolgs_tracker.notifications.reminders import calculate_reminder_at
-from gerris_erfolgs_tracker.storage import AttachmentPayload, store_attachments
 from gerris_erfolgs_tracker.state import get_todos, save_todos
+from gerris_erfolgs_tracker.storage import AttachmentPayload, store_attachments
 
 _UNSET: Final = object()
 _RECURRENCE_SPAWN_NAMESPACE = UUID("c1c4db05-050c-4b1a-9c8a-2f2b5756fa0c")

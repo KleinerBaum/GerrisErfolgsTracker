@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Ziele-Dashboard neu strukturiert: dreizeiliger Kopf mit Titel plus Quick-Actions, klickbare Tachometer mit Detail-Ansichten je Kategorie, neue Dreispalten-Übersicht (Überfällig/Nächste 3 Tage, Wochenkalender, Misc-KPIs) sowie Coach- und Gamification-Panels im Hauptbereich unterhalb des Kalenders. / Restructured goals dashboard with a three-row hero (title and quick actions), clickable gauges opening per-category details, a new three-column overview (overdue/next 3 days, weekly calendar, misc KPIs), and coach plus gamification panels in the main area below the calendar.
 - UI-Redesign mit kompakteren Expandern: Wochenstatistiken im KPI- und Kategorie-Dashboard sowie die Sidebar-Gamification öffnen sich nur bei Bedarf, während eine Kurzzeile Level und Punkte direkt in der Navigation zeigt.
 - Aufgaben-Tab mit zweispaltigem Hero-Bereich, eingeklappten Filtern und Top-3-Vorschau pro Kategorie; weitere ToDos lassen sich per „Mehr anzeigen / Show more“-Expander aufklappen, um lange Listen zu entschlacken.
 - Neues KI-Planungs-Panel auf der Aufgaben-Seite: analysiert Quadrant, Priorität, Fälligkeit, Streak und jüngste Stimmung, um tägliche Fokusaufgaben samt Puffertipp vorzuschlagen (Fallback aktiv ohne API-Key).

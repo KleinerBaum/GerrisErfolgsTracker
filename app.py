@@ -201,6 +201,8 @@ GOAL_CHECKIN_OPTIONS: tuple[tuple[GoalCheckInCadence, tuple[str, str]], ...] = (
     ("monthly", ("Monatlich", "Monatlich")),
 )
 
+GOAL_OVERVIEW_SELECTED_CATEGORY_KEY = "goal_overview_selected_category"
+
 
 def _goal_option_label(value: str, options: tuple[tuple[str, tuple[str, str]], ...]) -> str:
     for option_value, label in options:
@@ -346,6 +348,7 @@ QUICK_GOAL_JOURNAL_MOODS_KEY = "quick_goal_journal_moods"
 QUICK_GOAL_JOURNAL_NOTES_KEY = "quick_goal_journal_notes"
 QUICK_GOAL_JOURNAL_CATEGORIES_KEY = "quick_goal_journal_categories"
 QUICK_GOAL_JOURNAL_GRATITUDE_KEY = "quick_goal_journal_gratitude"
+QUICK_GOAL_PROFILE_FORM_KEY = "quick_goal_profile_form"
 
 
 def _is_streamlit_cloud() -> bool:
@@ -1125,7 +1128,77 @@ def _render_goal_quick_todo_popover() -> None:
                             )
                         )
                     )
-                    st.rerun()
+            st.rerun()
+
+
+def _render_goal_quick_goal_popover(*, settings: dict[str, Any]) -> None:
+    default_profile = settings.get("goal_profile", _default_goal_profile())
+    with st.popover(
+        translate_text(("Ziel hinzufügen", "Add goal")),
+        use_container_width=True,
+    ):
+        st.markdown("**Ziel hinzufügen / Add goal**")
+        with st.form(QUICK_GOAL_PROFILE_FORM_KEY):
+            title = st.text_input(
+                translate_text(("Zielname", "Goal name")),
+                value=str(default_profile.get("title", "")),
+                placeholder=translate_text(
+                    ("z. B. 10.000 Schritte täglich", "e.g., 10k steps per day"),
+                ),
+            )
+            focus_categories = st.multiselect(
+                translate_text(("Fokus-Kategorien", "Focus categories")),
+                options=list(Category),
+                default=[
+                    category for category in Category if category.value in default_profile.get("focus_categories", [])
+                ],
+                format_func=lambda option: option.label,
+                help=translate_text(
+                    (
+                        "Wähle die Lebensbereiche, die du stärken willst.",
+                        "Pick the life areas you want to strengthen.",
+                    )
+                ),
+            )
+            target_date = st.date_input(
+                translate_text(("Zieldatum", "Target date")),
+                value=cast(date | None, default_profile.get("target_date")) or date.today() + timedelta(days=30),
+                format="YYYY-MM-DD",
+            )
+            metric_unit = st.text_input(
+                translate_text(("Mess-Einheit", "Metric unit")),
+                value=str(default_profile.get("metric_unit", "")),
+                placeholder=translate_text(("z. B. km, Sessions", "e.g., km, sessions")),
+            )
+
+            submitted = st.form_submit_button(
+                translate_text(("Ziel speichern", "Save goal")),
+                type="primary",
+            )
+            if submitted:
+                goal_profile: GoalProfile = _default_goal_profile()
+                goal_profile.update(default_profile)
+                goal_profile.update(
+                    {
+                        "title": title.strip(),
+                        "focus_categories": [category.value for category in focus_categories],
+                        "target_date": target_date,
+                        "metric_unit": metric_unit.strip(),
+                    }
+                )
+                settings["goal_profile"] = goal_profile
+                st.session_state[SS_SETTINGS] = settings
+                st.session_state[GOAL_CREATION_VISIBLE_KEY] = True
+                persist_state()
+                st.success(
+                    translate_text(
+                        (
+                            "Zielvorlage gespeichert – passe Details im Canvas an.",
+                            "Goal template saved — adjust details in the canvas.",
+                        )
+                    )
+                )
+                st.rerun()
 
 
 def _render_goal_quick_journal_popover() -> None:
@@ -1389,16 +1462,96 @@ def render_goal_overview(
         fallback_streak=stats.streak,
     )
 
+    selected_category_value = st.session_state.get(
+        GOAL_OVERVIEW_SELECTED_CATEGORY_KEY,
+        Category.FRIENDS_FAMILY.value,
+    )
+
     for category_index, category in enumerate(Category):
         snapshot = snapshots[category]
         with overview_columns[category_index]:
+            detail_clicked = st.button(
+                translate_text((f"{category.label} Details", f"{category.label} details")),
+                key=f"category_detail_{category.value}",
+                use_container_width=True,
+            )
+            if detail_clicked:
+                selected_category_value = category.value
+                st.session_state[GOAL_OVERVIEW_SELECTED_CATEGORY_KEY] = category.value
+
             st.plotly_chart(
                 _build_category_gauge(snapshot),
                 width="stretch",
                 config={"displaylogo": False, "responsive": True},
             )
 
+    selected_category = Category(selected_category_value)
+    _render_goal_overview_details(
+        category=selected_category,
+        snapshot=snapshots[selected_category],
+        todos=filtered_todos,
+    )
+
     return show_kpi_dashboard, show_category_trends
+
+
+def _render_goal_overview_details(*, category: Category, snapshot: CategoryKpi, todos: Sequence[TodoItem]) -> None:
+    detail_container = st.container(border=True)
+    detail_container.markdown(
+        translate_text(
+            (
+                f"### {category.label}: Aufgaben & Ziele",
+                f"### {category.label}: Tasks & goals",
+            )
+        )
+    )
+    summary_columns = detail_container.columns([1, 1, 1])
+    with summary_columns[0]:
+        st.metric(
+            translate_text(("Heute erledigt", "Done today")),
+            f"{snapshot.done_today}/{snapshot.daily_goal}",
+        )
+    with summary_columns[1]:
+        st.metric(
+            translate_text(("Offene Aufgaben", "Open tasks")),
+            snapshot.open_count,
+        )
+    with summary_columns[2]:
+        st.metric(
+            translate_text(("Streak", "Streak")),
+            translate_text((f"{snapshot.streak} Tage", f"{snapshot.streak} days")),
+        )
+
+    category_todos = [todo for todo in todos if todo.category is category]
+    if not category_todos:
+        detail_container.info(
+            translate_text(
+                (
+                    "Keine Aufgaben in dieser Kategorie – füge eine neue hinzu.",
+                    "No tasks in this category — add a new one to get started.",
+                )
+            )
+        )
+        return
+
+    for todo in category_todos:
+        status_label = translate_text(("Offen", "Open")) if not todo.completed else translate_text(("Erledigt", "Done"))
+        header = f"{todo.title} · {status_label}"
+        with detail_container.expander(header, expanded=False):
+            due_date = (
+                todo.due_date.astimezone().date().strftime("%Y-%m-%d")
+                if todo.due_date is not None
+                else translate_text(("Kein Fälligkeitsdatum", "No due date"))
+            )
+            st.caption(
+                translate_text(
+                    (
+                        f"Fällig: {due_date} · Priorität: {todo.priority}",
+                        f"Due: {due_date} · Priority: {todo.priority}",
+                    )
+                )
+            )
+            st.write(todo.description_md or translate_text(("Keine Beschreibung", "No description")))
 
 
 def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, category_goals: Mapping[str, int]) -> None:
@@ -1449,8 +1602,165 @@ def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, categor
         )
 
 
+def _collect_timeboxed_tasks(todos: Sequence[TodoItem], *, days_ahead: int = 3) -> list[TodoItem]:
+    today = datetime.now().date()
+    horizon = today + timedelta(days=days_ahead)
+    relevant: list[TodoItem] = []
+    for todo in todos:
+        if todo.completed or todo.due_date is None:
+            continue
+        due_date = todo.due_date.astimezone().date()
+        if due_date <= horizon:
+            relevant.append(todo)
+    return sorted(relevant, key=lambda todo: todo.due_date or datetime.max)
+
+
+def _render_calendar_week(todos: Sequence[TodoItem]) -> None:
+    today = datetime.now().date()
+    start_of_week = today - timedelta(days=today.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
+    week_tasks = [
+        todo
+        for todo in todos
+        if todo.due_date is not None
+        and start_of_week <= todo.due_date.astimezone().date() <= end_of_week
+        and not todo.completed
+    ]
+    if not week_tasks:
+        st.info(
+            translate_text(
+                (
+                    "Keine Fälligkeiten in dieser Woche.",
+                    "No due dates in the current week.",
+                )
+            )
+        )
+        return
+
+    calendar_rows: list[Mapping[str, str]] = []
+    for todo in week_tasks:
+        if todo.due_date is None:
+            continue
+        due_day = todo.due_date.astimezone().date()
+        calendar_rows.append(
+            {
+                translate_text(("Tag", "Day")): due_day.strftime("%A"),
+                translate_text(("Datum", "Date")): due_day.isoformat(),
+                translate_text(("Aufgabe", "Task")): todo.title,
+            }
+        )
+    st.dataframe(calendar_rows, hide_index=True, use_container_width=True)
+
+
+def _render_misc_metrics(*, stats: KpiStats, todos: Sequence[TodoItem]) -> None:
+    backlog_health = calculate_backlog_health(list(todos))
+    cycle_time = calculate_cycle_time(list(todos))
+    upcoming = _collect_timeboxed_tasks(todos, days_ahead=3)
+    misc_columns = st.columns(2)
+    with misc_columns[0]:
+        st.metric(
+            translate_text(("Ø Cycle Time", "Avg cycle time")),
+            _format_duration_short(cycle_time.average),
+        )
+        st.metric(
+            translate_text(("Überfällig-Quote", "Overdue ratio")),
+            f"{backlog_health.overdue_ratio:.0%}",
+        )
+        st.metric(
+            translate_text(("Offene Aufgaben", "Open tasks")),
+            backlog_health.open_count,
+        )
+    with misc_columns[1]:
+        st.metric(
+            translate_text(("In Arbeit", "In progress")),
+            sum(1 for todo in todos if not todo.completed and todo.progress_current > 0),
+        )
+        st.metric(
+            translate_text(("Fällige Nächste 3 Tage", "Due next 3 days")),
+            len(upcoming),
+        )
+        st.metric(
+            translate_text(("Streak gesamt", "Overall streak")),
+            translate_text((f"{stats.streak} Tage", f"{stats.streak} days")),
+        )
+
+
+def render_workload_overview(*, todos: list[TodoItem], stats: KpiStats) -> None:
+    st.markdown(
+        translate_text(
+            ("### Fokus: Nächste Schritte", "### Focus: Next steps"),
+        )
+    )
+    overdue_and_upcoming, calendar_column, misc_column = st.columns([1.2, 1, 1])
+    with overdue_and_upcoming:
+        st.markdown("**Überfällig & Nächste 3 Tage / Overdue & next 3 days**")
+        for todo in _collect_timeboxed_tasks(todos):
+            due_date = todo.due_date.astimezone().date() if todo.due_date else None
+            with st.expander(f"{todo.title} · {due_date or translate_text(('Kein Datum', 'No date'))}"):
+                st.caption(
+                    translate_text(
+                        (
+                            f"Quadrant: {todo.quadrant.label} · Priorität {todo.priority}",
+                            f"Quadrant: {todo.quadrant.label} · Priority {todo.priority}",
+                        )
+                    )
+                )
+                st.write(todo.description_md or translate_text(("Keine Beschreibung", "No description")))
+    with calendar_column:
+        st.markdown("**Kalender – aktuelle Woche / Calendar – current week**")
+        _render_calendar_week(todos)
+    with misc_column:
+        st.markdown("**Misc KPIs**")
+        _render_misc_metrics(stats=stats, todos=todos)
+
+
+def render_dashboard_header(*, settings: dict[str, Any]) -> None:
+    header = st.container()
+    first_row = header.columns([2, 1, 1])
+    with first_row[0]:
+        st.markdown("## Gerris ErfolgsTracker")
+        st.caption(
+            translate_text(
+                (
+                    "Schnellzugriff für Aufgaben, Ziele und Journal – alles linksbündig in drei Zeilen.",
+                    "Quick access for tasks, goals, and journal — aligned left in three rows.",
+                )
+            )
+        )
+    with first_row[1]:
+        _render_goal_quick_todo_popover()
+    with first_row[2]:
+        _render_goal_quick_goal_popover(settings=settings)
+
+    second_row = header.columns([2, 1, 1])
+    with second_row[0]:
+        st.write("")
+    with second_row[1]:
+        st.write("")
+    with second_row[2]:
+        st.write("")
+
+    third_row = header.columns([2, 1, 1])
+    with third_row[0]:
+        st.write("")
+    with third_row[1]:
+        _render_goal_quick_journal_popover()
+    with third_row[2]:
+        st.write("")
+
+
+def render_shared_calendar_header() -> None:
+    st.markdown(
+        translate_text(
+            (
+                "### 2025 von Carla, Miri & Gerrit · Google Kalender",
+                "### 2025 by Carla, Miri & Gerrit · Google Calendar",
+            )
+        )
+    )
+
+
 def render_shared_calendar() -> None:
-    st.caption("2025 von Carla, Miri & Gerrit · Google Kalender — 2025 by Carla, Miri & Gerrit · Google Calendar")
     calendar_iframe = """
     <iframe src="https://calendar.google.com/calendar/embed?height=600&wkst=1&ctz=Europe%2FAmsterdam&showPrint=0&src=e2a52f862c8088c82d9f74825b8c39f6069965fdc652472fbf5ec28e891c077e%40group.calendar.google.com&color=%23616161" style="border:solid 1px #777" width="800" height="600" frameborder="0" scrolling="no"></iframe>
     """
@@ -1647,39 +1957,77 @@ def render_navigation() -> str:
     return selection
 
 
-def render_coach_sidebar() -> None:
+def render_gamification_mode_selector(settings: dict[str, Any]) -> GamificationMode:
+    try:
+        current_mode = GamificationMode(settings.get("gamification_mode", GamificationMode.POINTS.value))
+    except ValueError:
+        current_mode = GamificationMode.POINTS
+    mode_options = list(GamificationMode)
+    selection_index = mode_options.index(current_mode)
+    selected_mode = st.sidebar.selectbox(
+        translate_text(("Gamification-Variante", "Gamification mode")),
+        options=mode_options,
+        format_func=lambda option: option.label,
+        index=selection_index,
+        help=translate_text(
+            (
+                "Wähle Punkte, Abzeichen oder motivierende Botschaften; Inhalte erscheinen im Dashboard.",
+                "Choose points, badges, or motivational messages; content is shown on the dashboard.",
+            )
+        ),
+    )
+    if selected_mode is not current_mode:
+        settings["gamification_mode"] = selected_mode.value
+        st.session_state[SS_SETTINGS] = settings
+        persist_state()
+    st.sidebar.caption(selected_mode.label)
+    st.sidebar.divider()
+    return selected_mode
+
+
+def _render_coach_messages(panel: Any) -> None:
     coach_state = get_coach_state()
+    if not coach_state.messages:
+        panel.caption(
+            translate_text(
+                (
+                    "Noch keine Coach-Nachrichten – erledige eine Aufgabe, um einen Tipp zu erhalten.",
+                    "No coach messages yet — complete a task to unlock a tip.",
+                )
+            )
+        )
+        return
+
+    for message in reversed(coach_state.messages[-3:]):
+        if message.severity == "weekly":
+            with panel.expander(translate_text(("Wochenrückblick", "Weekly review")), expanded=True):
+                panel.markdown(f"**{translate_text(message.title)}**")
+                panel.write(translate_text(message.body))
+        else:
+            panel.markdown(f"**{translate_text(message.title)}**")
+            panel.write(translate_text(message.body))
+
+        panel.caption(
+            translate_text(
+                (
+                    f"Zuletzt aktualisiert: {message.created_at.strftime('%d.%m %H:%M')} Uhr",
+                    f"Last updated: {message.created_at.strftime('%Y-%m-%d %H:%M')} UTC",
+                )
+            )
+        )
+        panel.divider()
+
+
+def render_coach_sidebar() -> None:
     coach_panel = st.sidebar.expander(translate_text(("Coach", "Coach")), expanded=True)
     with coach_panel:
-        if not coach_state.messages:
-            st.caption(
-                translate_text(
-                    (
-                        "Noch keine Coach-Nachrichten – erledige eine Aufgabe, um einen Tipp zu erhalten.",
-                        "No coach messages yet — complete a task to unlock a tip.",
-                    )
-                )
-            )
-            return
+        _render_coach_messages(coach_panel)
 
-        for message in reversed(coach_state.messages[-3:]):
-            if message.severity == "weekly":
-                with st.expander(translate_text(("Wochenrückblick", "Weekly review")), expanded=True):
-                    st.markdown(f"**{translate_text(message.title)}**")
-                    st.write(translate_text(message.body))
-            else:
-                st.markdown(f"**{translate_text(message.title)}**")
-                st.write(translate_text(message.body))
 
-            st.caption(
-                translate_text(
-                    (
-                        f"Zuletzt aktualisiert: {message.created_at.strftime('%d.%m %H:%M')} Uhr",
-                        f"Last updated: {message.created_at.strftime('%Y-%m-%d %H:%M')} UTC",
-                    )
-                )
-            )
-            st.divider()
+def render_coach_main_panel() -> None:
+    panel = st.container(border=True)
+    panel.markdown("### Coach")
+    _render_coach_messages(panel)
 
 
 def render_sidebar_sections(
@@ -1689,25 +2037,8 @@ def render_sidebar_sections(
     client: Optional[OpenAI],
     settings: Mapping[str, Any],
 ) -> bool:
-    render_coach_sidebar()
-    gamification_state = get_gamification_state()
-    st.sidebar.caption(
-        translate_text(
-            (
-                f"🎮 Level {gamification_state.level} · Punkte: {gamification_state.points}",
-                f"🎮 Level {gamification_state.level} · Points: {gamification_state.points}",
-            )
-        )
-    )
-    gamification_panel = st.sidebar.expander("Gamification", expanded=False)
-    with gamification_panel:
-        render_gamification_panel(
-            stats,
-            ai_enabled=ai_enabled,
-            client=client,
-            panel=gamification_panel,
-            allow_mode_selection=True,
-        )
+    settings_dict = dict(settings)
+    render_gamification_mode_selector(settings_dict)
 
     safety_panel = st.sidebar.expander("Sicherheit & Daten", expanded=False)
     with safety_panel:
@@ -2068,7 +2399,7 @@ def main() -> None:
         settings=settings,
     )
 
-    st.title("Gerris ErfolgsTracker")
+    render_dashboard_header(settings=settings)
     if show_storage_notice:
         _render_storage_notice(storage_backend, is_cloud=is_cloud)
     todos = get_todos()
@@ -2086,13 +2417,29 @@ def main() -> None:
         if not isinstance(settings, dict):
             settings = {}
         category_goals = _sanitize_category_goals(settings)
-        render_goal_completion_logger(todos)
         show_kpi_dashboard, show_category_trends = render_goal_overview(
             todos,
             stats=stats,
             category_goals=category_goals,
             settings=settings,
         )
+
+        render_workload_overview(todos=todos, stats=stats)
+
+        coach_column, gamification_column = st.columns([1, 1])
+        with coach_column:
+            render_coach_main_panel()
+        with gamification_column:
+            render_gamification_panel(
+                stats,
+                ai_enabled=ai_enabled,
+                client=client,
+                panel=gamification_column,
+                allow_mode_selection=False,
+            )
+
+        render_shared_calendar_header()
+        render_shared_calendar()
 
         if show_kpi_dashboard:
             render_kpi_dashboard(stats, todos=todos)
@@ -2103,8 +2450,6 @@ def main() -> None:
                 stats=stats,
                 category_goals=category_goals,
             )
-
-        render_shared_calendar()
 
         settings_container = st.container()
         ai_enabled = render_settings_panel(stats, client, panel=settings_container)
