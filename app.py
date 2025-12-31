@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from contextlib import nullcontext
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any, Literal, Mapping, Optional, Sequence, TypedDict, cast
 
 import plotly.graph_objects as go
@@ -1729,6 +1731,65 @@ def render_dashboard_header(*, settings: dict[str, Any]) -> None:
         _render_goal_quick_journal_popover()
 
 
+def _get_build_metadata() -> dict[str, str | None]:
+    repo_root = Path(__file__).resolve().parent
+    metadata: dict[str, str | None] = {
+        "commit": None,
+        "short_commit": None,
+        "committed_at": None,
+    }
+
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo_root, text=True).strip() or None
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return metadata
+
+    metadata["commit"] = commit
+
+    try:
+        short_commit = (
+            subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=repo_root, text=True).strip() or None
+        )
+        metadata["short_commit"] = short_commit or commit
+    except (FileNotFoundError, subprocess.SubprocessError):
+        metadata["short_commit"] = commit
+
+    try:
+        committed_at = (
+            subprocess.check_output(
+                ["git", "show", "-s", "--format=%cI", "HEAD"],
+                cwd=repo_root,
+                text=True,
+            ).strip()
+            or None
+        )
+        metadata["committed_at"] = committed_at
+    except (FileNotFoundError, subprocess.SubprocessError):
+        metadata["committed_at"] = None
+
+    return metadata
+
+
+def render_build_info_sidebar(*, build_metadata: Mapping[str, str | None]) -> None:
+    commit_label = translate_text(("Build-Info", "Build info"))
+    commit_value = build_metadata.get("short_commit") or build_metadata.get("commit")
+    commit_time = build_metadata.get("committed_at")
+    unknown_label = translate_text(("Unbekannt", "Unknown"))
+
+    sidebar = st.sidebar.container()
+    sidebar.markdown(f"**{commit_label}**")
+    sidebar.caption(translate_text(("Commit", "Commit")) + ": " + (commit_value or unknown_label))
+    sidebar.caption(translate_text(("Commit-Datum", "Commit date")) + ": " + (commit_time or unknown_label))
+    sidebar.caption(
+        translate_text(
+            (
+                "Nutze diese Infos, um den Live-Build zu prüfen.",
+                "Use these details to verify the live build.",
+            )
+        )
+    )
+
+
 def render_shared_calendar_header() -> None:
     st.markdown(
         translate_text(
@@ -2367,9 +2428,11 @@ def main() -> None:
 
     client = get_openai_client()
     stats = get_kpi_stats()
+    build_metadata = _get_build_metadata()
     settings = _ensure_settings_defaults(client=client, stats=stats)
     ai_enabled = render_ai_toggle_sidebar(settings, client=client)
     render_language_toggle()
+    render_build_info_sidebar(build_metadata=build_metadata)
     selection = render_navigation()
 
     show_storage_notice = render_sidebar_sections(
