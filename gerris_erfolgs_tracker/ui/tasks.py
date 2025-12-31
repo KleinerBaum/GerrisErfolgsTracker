@@ -82,6 +82,7 @@ from gerris_erfolgs_tracker.models import (
     RecurrencePattern,
     TodoItem,
 )
+from gerris_erfolgs_tracker.storage import AttachmentPayload, resolve_attachment_path
 from gerris_erfolgs_tracker.state import get_todos
 from gerris_erfolgs_tracker.todos import (
     add_kanban_card,
@@ -867,6 +868,22 @@ def render_task_row(
             else:
                 st.caption("Keine Beschreibung vorhanden.")
 
+            if todo.attachments:
+                st.markdown("#### Anhänge / Attachments")
+                for attachment in todo.attachments:
+                    attachment_path = resolve_attachment_path(attachment)
+                    if attachment_path.exists():
+                        st.image(str(attachment_path), caption=attachment.filename)
+                    else:
+                        st.caption(
+                            translate_text(
+                                (
+                                    f"{attachment.filename} nicht gefunden",
+                                    f"{attachment.filename} not found",
+                                )
+                            )
+                        )
+
             mentions = journal_links.get(todo.id, []) if journal_links else []
             if mentions:
                 mention_dates = ", ".join(entry_date.isoformat() for entry_date in mentions[:3])
@@ -1559,6 +1576,18 @@ def render_todo_section(
                 else:
                     st.caption("Keine Beschreibung vorhanden")
 
+        attachment_col, _ = st.columns([1, 1])
+        with attachment_col:
+            uploaded_files = st.file_uploader(
+                "Anhänge (PNG/JPG) / Attachments (PNG/JPG)",
+                accept_multiple_files=True,
+                type=("png", "jpg", "jpeg"),
+                help=(
+                    "Bilder zur Aufgabe hochladen; Dateien werden im OneDrive-Ordner gespeichert / "
+                    "Upload images; files are stored in the OneDrive folder"
+                ),
+            )
+
         action_cols = st.columns(2)
         with action_cols[0]:
             suggest_quadrant_clicked = st.form_submit_button(
@@ -1587,6 +1616,11 @@ def render_todo_section(
             if not title.strip():
                 st.warning("Bitte Titel angeben")
             else:
+                attachment_payloads = [
+                    AttachmentPayload(filename=file.name, data=file.getvalue())
+                    for file in uploaded_files or []
+                    if file.name
+                ]
                 apply_proposal = bool(st.session_state.get(TASK_AI_PROPOSAL_APPLY_KEY))
                 if apply_proposal and st.session_state.get(TASK_AI_PROPOSAL_KEY):
                     try:
@@ -1628,39 +1662,26 @@ def render_todo_section(
                     for entry in st.session_state.get(NEW_TODO_DRAFT_MILESTONES_KEY, [])
                     if str(entry.get("title", "")).strip()
                 ]
+                common_todo_kwargs = dict(
+                    title=title.strip(),
+                    quadrant=quadrant,
+                    due_date=due_date,
+                    category=category,
+                    priority=priority,
+                    description_md=description_md,
+                    progress_current=current_value,
+                    progress_target=resolved_target,
+                    progress_unit=resolved_unit,
+                    auto_done_when_target_reached=resolved_auto_complete,
+                    completion_criteria_md=resolved_criteria,
+                    recurrence=recurrence,
+                    email_reminder=reminder,
+                    attachment_payloads=attachment_payloads,
+                )
                 if draft_models:
-                    add_todo(
-                        title=title.strip(),
-                        quadrant=quadrant,
-                        due_date=due_date,
-                        category=category,
-                        priority=priority,
-                        description_md=description_md,
-                        progress_current=current_value,
-                        progress_target=resolved_target,
-                        progress_unit=resolved_unit,
-                        auto_done_when_target_reached=resolved_auto_complete,
-                        completion_criteria_md=resolved_criteria,
-                        milestones=draft_models,
-                        recurrence=recurrence,
-                        email_reminder=reminder,
-                    )
+                    add_todo(**common_todo_kwargs, milestones=draft_models)
                 else:
-                    add_todo(
-                        title=title.strip(),
-                        quadrant=quadrant,
-                        due_date=due_date,
-                        category=category,
-                        priority=priority,
-                        description_md=description_md,
-                        progress_current=current_value,
-                        progress_target=resolved_target,
-                        progress_unit=resolved_unit,
-                        auto_done_when_target_reached=resolved_auto_complete,
-                        completion_criteria_md=resolved_criteria,
-                        recurrence=recurrence,
-                        email_reminder=reminder,
-                    )
+                    add_todo(**common_todo_kwargs)
                 st.session_state[NEW_TODO_DRAFT_MILESTONES_KEY] = []
                 suggestion_store["draft"] = []
                 st.session_state[NEW_MILESTONE_SUGGESTIONS_KEY] = suggestion_store

@@ -31,12 +31,12 @@ Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI
 - Python >= 3.11
 - Ein OpenAI API Key, falls du Modellantworten erzeugen möchtest (`OPENAI_API_KEY`).
 - Optional: Modell-Override via `OPENAI_MODEL` (Standard: `gpt-4o-mini`) und benutzerdefinierte Basis-URL z. B. EU-Endpunkt.
-- Optionale Persistenz & Sync: Die App schreibt standardmäßig in einen OneDrive-Sync-Ordner (z. B. `~/OneDrive/GerrisErfolgsTracker/gerris_state.json` oder `C:\\Users\\gerri\\OneDrive\\GerrisErfolgsTracker`). Über `GERRIS_ONEDRIVE_DIR` kannst du den Pfad explizit setzen; das Verzeichnis wird bei Bedarf angelegt.
+- Optionale Persistenz & Sync: Die App schreibt standardmäßig in einen OneDrive-Sync-Ordner (z. B. `~/OneDrive/GerrisErfolgsTracker/gerris_state.json` oder `C:\\Users\\gerri\\OneDrive\\GerrisErfolgsTracker`). Über `GERRIS_ONEDRIVE_DIR` kannst du den Pfad explizit setzen; das Verzeichnis wird bei Bedarf angelegt. Anhänge (PNG/JPG) landen in `attachments/<todo_id>/` unterhalb des gleichen Stammordners, der JSON-State speichert nur Dateireferenzen.
 - Optionale E-Mail-Erinnerungen über Brevo: `BREVO_API_KEY` + `BREVO_SENDER` (und optional `BREVO_SENDER_NAME`) in der Umgebung setzen.
 
 ## Datenhaltung & Backup/Recovery
 
-- Standardpfad: `gerris_state.json` im OneDrive-Sync-Ordner `~/OneDrive/GerrisErfolgsTracker/` bzw. `C:\\Users\\<name>\\OneDrive\\GerrisErfolgsTracker`.
+- Standardpfad: `gerris_state.json` im OneDrive-Sync-Ordner `~/OneDrive/GerrisErfolgsTracker/` bzw. `C:\\Users\\<name>\\OneDrive\\GerrisErfolgsTracker`. Anhänge werden parallel im Unterordner `attachments/<todo_id>/` abgelegt.
 - Fallback: Wenn kein OneDrive-Hinweis gefunden wird, legt die App `.data/gerris_state.json` im Projektverzeichnis an.
 - Override: Über `GERRIS_ONEDRIVE_DIR` kannst du den Pfad explizit setzen; der Ordner wird bei Bedarf erstellt.
 - Backup: Kopiere `gerris_state.json` regelmäßig in einen sicheren Ordner (z. B. OneDrive-Versionierung oder ein manuelles Backup).

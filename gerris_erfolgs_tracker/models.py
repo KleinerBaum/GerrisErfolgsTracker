@@ -186,6 +186,13 @@ class Milestone(BaseModel):
     note: str = ""
 
 
+class AttachmentRef(BaseModel):
+    """Reference to a binary attachment stored on disk."""
+
+    filename: str
+    relative_path: str
+
+
 class TodoItem(BaseModel):
     """Representation of a todo item stored in session state."""
 
@@ -207,6 +214,7 @@ class TodoItem(BaseModel):
     processed_progress_events: list[str] = Field(default_factory=list)
     kanban: TodoKanban = Field(default_factory=TodoKanban)
     milestones: list[Milestone] = Field(default_factory=list)
+    attachments: list[AttachmentRef] = Field(default_factory=list)
     recurrence: RecurrencePattern = RecurrencePattern.ONCE
     email_reminder: EmailReminderOffset = EmailReminderOffset.NONE
     reminder_at: Optional[datetime] = None
