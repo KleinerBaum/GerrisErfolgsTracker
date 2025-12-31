@@ -82,8 +82,8 @@ from gerris_erfolgs_tracker.models import (
     RecurrencePattern,
     TodoItem,
 )
-from gerris_erfolgs_tracker.storage import AttachmentPayload, resolve_attachment_path
 from gerris_erfolgs_tracker.state import get_todos
+from gerris_erfolgs_tracker.storage import AttachmentPayload, resolve_attachment_path
 from gerris_erfolgs_tracker.todos import (
     add_kanban_card,
     add_milestone,
@@ -1576,17 +1576,22 @@ def render_todo_section(
                 else:
                     st.caption("Keine Beschreibung vorhanden")
 
-        attachment_col, _ = st.columns([1, 1])
-        with attachment_col:
-            uploaded_files = st.file_uploader(
-                "Anhänge (PNG/JPG) / Attachments (PNG/JPG)",
-                accept_multiple_files=True,
-                type=("png", "jpg", "jpeg"),
-                help=(
-                    "Bilder zur Aufgabe hochladen; Dateien werden im OneDrive-Ordner gespeichert / "
-                    "Upload images; files are stored in the OneDrive folder"
-                ),
-            )
+            attachment_col, _ = st.columns([1, 1])
+            with attachment_col:
+                file_uploader = getattr(st, "file_uploader", None)
+                uploaded_files = (
+                    file_uploader(
+                        "Anhänge (PNG/JPG) / Attachments (PNG/JPG)",
+                        accept_multiple_files=True,
+                        type=("png", "jpg", "jpeg"),
+                        help=(
+                            "Bilder zur Aufgabe hochladen; Dateien werden im OneDrive-Ordner gespeichert / "
+                            "Upload images; files are stored in the OneDrive folder"
+                        ),
+                    )
+                    if callable(file_uploader)
+                    else []
+                )
 
         action_cols = st.columns(2)
         with action_cols[0]:
@@ -1662,7 +1667,7 @@ def render_todo_section(
                     for entry in st.session_state.get(NEW_TODO_DRAFT_MILESTONES_KEY, [])
                     if str(entry.get("title", "")).strip()
                 ]
-                common_todo_kwargs = dict(
+                common_todo_kwargs: dict[str, Any] = dict(
                     title=title.strip(),
                     quadrant=quadrant,
                     due_date=due_date,
@@ -1676,8 +1681,9 @@ def render_todo_section(
                     completion_criteria_md=resolved_criteria,
                     recurrence=recurrence,
                     email_reminder=reminder,
-                    attachment_payloads=attachment_payloads,
                 )
+                if attachment_payloads:
+                    common_todo_kwargs["attachment_payloads"] = attachment_payloads
                 if draft_models:
                     add_todo(**common_todo_kwargs, milestones=draft_models)
                 else:
