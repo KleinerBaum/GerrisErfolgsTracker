@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from calendar import monthrange
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Callable, Final, Literal, Optional
+from typing import Callable, Final, Literal, Optional, Sequence
 from uuid import UUID, uuid5
 
 from gerris_erfolgs_tracker.constants import PROCESSED_PROGRESS_EVENTS_LIMIT, cap_list_tail
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, ensure_quadrant
 from gerris_erfolgs_tracker.gamification import award_milestone_points, award_progress_points
 from gerris_erfolgs_tracker.models import (
+    AttachmentRef,
     Category,
     EmailReminderOffset,
     KanbanCard,
@@ -20,6 +21,7 @@ from gerris_erfolgs_tracker.models import (
     TodoKanban,
 )
 from gerris_erfolgs_tracker.notifications.reminders import calculate_reminder_at
+from gerris_erfolgs_tracker.storage import AttachmentPayload, store_attachments
 from gerris_erfolgs_tracker.state import get_todos, save_todos
 
 _UNSET: Final = object()
@@ -190,6 +192,8 @@ def add_todo(
     recurrence: RecurrencePattern = RecurrencePattern.ONCE,
     email_reminder: EmailReminderOffset = EmailReminderOffset.NONE,
     milestones: Optional[list[Milestone]] = None,
+    attachments: Optional[list[AttachmentRef]] = None,
+    attachment_payloads: Optional[Sequence[AttachmentPayload]] = None,
 ) -> TodoItem:
     todos: list[TodoItem] = get_todos()
     todo = TodoItem(
@@ -211,7 +215,12 @@ def add_todo(
         recurrence=recurrence,
         email_reminder=email_reminder,
         milestones=milestones or [],
+        attachments=attachments or [],
     )
+    payloads = list(attachment_payloads or [])
+    if payloads:
+        stored = store_attachments(todo.id, payloads)
+        todo = todo.model_copy(update={"attachments": stored})
     todo = _refresh_reminder(todo)
     todos.append(todo)
     index = len(todos) - 1
@@ -271,6 +280,7 @@ def update_todo(
     recurrence: Optional[RecurrencePattern] = None,
     email_reminder: Optional[EmailReminderOffset] = None,
     milestones: Optional[list[Milestone]] = None,
+    attachments: Optional[list[AttachmentRef]] = None,
 ) -> Optional[TodoItem]:
     todos: list[TodoItem] = get_todos()
     updated: Optional[TodoItem] = None
@@ -309,6 +319,8 @@ def update_todo(
             updates["email_reminder"] = email_reminder
         if milestones is not None:
             updates["milestones"] = milestones
+        if attachments is not None:
+            updates["attachments"] = attachments
 
         candidate = todo.model_copy(update=updates)
         todos[index] = _refresh_reminder(candidate, previous=todo)

@@ -91,6 +91,7 @@ def _coerce_todo(raw: Any) -> TodoItem:
         kanban_default_factory = cast(Callable[[], object] | None, TodoItem.model_fields["kanban"].default_factory)
         migrated.setdefault("kanban", (kanban_default_factory or TodoKanban)())
         migrated.setdefault("milestones", [])
+        migrated.setdefault("attachments", [])
         migrated.setdefault("recurrence", RecurrencePattern.ONCE)
         migrated.setdefault("email_reminder", EmailReminderOffset.NONE)
         migrated.setdefault("reminder_at", None)
