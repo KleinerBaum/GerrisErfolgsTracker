@@ -7,7 +7,13 @@ import streamlit as st
 
 from app import _journal_json_export
 from gerris_erfolgs_tracker.constants import SS_JOURNAL
-from gerris_erfolgs_tracker.journal import get_journal_entries, get_journal_entry, upsert_journal_entry
+from gerris_erfolgs_tracker.journal import (
+    append_journal_links,
+    get_journal_entries,
+    get_journal_entry,
+    get_journal_links_by_todo,
+    upsert_journal_entry,
+)
 from gerris_erfolgs_tracker.models import Category, JournalEntry
 from gerris_erfolgs_tracker.state import init_state
 
@@ -100,5 +106,22 @@ def test_journal_json_export_serializes_categories_and_date(session_state) -> No
             "gratitude_2": "",
             "gratitude_3": "",
             "categories": ["admin"],
+            "linked_todo_ids": [],
         }
     }
+
+
+def test_linked_todos_are_persisted(session_state) -> None:
+    entry_date = date(2024, 9, 2)
+    entry = JournalEntry(date=entry_date)
+
+    linked = append_journal_links(entry, ["todo-1", "todo-1", "todo-2"])
+    upsert_journal_entry(linked)
+
+    refreshed = get_journal_entry(entry_date)
+    assert refreshed is not None
+    assert refreshed.linked_todo_ids == ["todo-1", "todo-2"]
+
+    mentions = get_journal_links_by_todo()
+    assert mentions["todo-1"] == [entry_date]
+    assert mentions["todo-2"] == [entry_date]

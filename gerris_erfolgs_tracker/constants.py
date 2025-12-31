@@ -29,6 +29,8 @@ SS_SETTINGS: str = "settings"
 SS_GAMIFICATION: str = "gamification"
 SS_JOURNAL: str = "journal_entries"
 SS_COACH: str = "coach"
+JOURNAL_COMPLETION_PROMPT_KEY: str = "journal_completion_prompt"
+JOURNAL_COMPLETION_NOTE_KEY: str = "journal_completion_note"
 
 AI_ENABLED_KEY: str = "ai_enabled"
 AI_QUADRANT_RATIONALE_KEY: str = "ai_quadrant_rationale"
