@@ -242,9 +242,7 @@ def test_settings_panel_respects_existing_goal_input_value(
     assert settings["goal_daily"] == 7
 
 
-def test_resolve_goal_input_value_does_not_seed_session_state(
-    session_state: Dict[str, object]
-) -> None:
+def test_resolve_goal_input_value_does_not_seed_session_state(session_state: Dict[str, object]) -> None:
     stats = KpiStats(goal_daily=5)
     settings: Dict[str, object] = {"goal_daily": 4}
 
@@ -254,9 +252,7 @@ def test_resolve_goal_input_value_does_not_seed_session_state(
     assert SETTINGS_GOAL_DAILY_KEY not in session_state
 
 
-def test_resolve_goal_input_value_prefers_existing_widget_value(
-    session_state: Dict[str, object]
-) -> None:
+def test_resolve_goal_input_value_prefers_existing_widget_value(session_state: Dict[str, object]) -> None:
     stats = KpiStats(goal_daily=1)
     settings: Dict[str, object] = {"goal_daily": 3}
     session_state[SETTINGS_GOAL_DAILY_KEY] = 6
