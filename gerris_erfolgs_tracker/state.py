@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date, datetime, time, timezone
 from typing import Any, Callable, Iterable, List, Sequence, cast
 
 import streamlit as st
@@ -70,6 +71,33 @@ def _default_coach() -> CoachState:
     return CoachState()
 
 
+def _normalize_timestamp(value: Any, default: datetime | None = None) -> datetime | None:
+    """Convert legacy timestamp inputs to timezone-aware UTC datetimes."""
+
+    if value is None:
+        return default
+
+    try:
+        candidate: datetime | date
+        if isinstance(value, datetime):
+            candidate = value
+        elif isinstance(value, date):
+            candidate = datetime.combine(value, time.min)
+        elif isinstance(value, str):
+            candidate = datetime.fromisoformat(value)
+        else:
+            return default
+
+        if isinstance(candidate, date) and not isinstance(candidate, datetime):
+            candidate = datetime.combine(candidate, time.min)
+
+        if candidate.tzinfo is None:
+            return candidate.replace(tzinfo=timezone.utc)
+        return candidate.astimezone(timezone.utc)
+    except Exception:
+        return default
+
+
 def _coerce_todo(raw: Any) -> TodoItem:
     if isinstance(raw, TodoItem):
         return raw.model_copy(update={"kanban": raw.kanban.ensure_default_columns()})
@@ -96,6 +124,13 @@ def _coerce_todo(raw: Any) -> TodoItem:
         migrated.setdefault("email_reminder", EmailReminderOffset.NONE)
         migrated.setdefault("reminder_at", None)
         migrated.setdefault("reminder_sent_at", None)
+        migrated["created_at"] = _normalize_timestamp(
+            migrated.get("created_at"), default=datetime.now(timezone.utc)
+        )
+        migrated["due_date"] = _normalize_timestamp(migrated.get("due_date"))
+        migrated["completed_at"] = _normalize_timestamp(migrated.get("completed_at"))
+        migrated["reminder_at"] = _normalize_timestamp(migrated.get("reminder_at"))
+        migrated["reminder_sent_at"] = _normalize_timestamp(migrated.get("reminder_sent_at"))
         todo = TodoItem.model_validate(migrated)
         reminder_at = todo.reminder_at or calculate_reminder_at(todo.due_date, todo.email_reminder)
         if todo.email_reminder is EmailReminderOffset.NONE:

@@ -1,7 +1,7 @@
 # Changelog
 
 ## Unreleased
-- Normalisiert ToDo-Zeitstempel (Fälligkeit, Erstellung, Erinnerungen) auf timezone-aware UTC für stabile Sortierung / Normalizes todo timestamps (due/created/reminders) to timezone-aware UTC to keep sorting stable.
+- Normalisiert ToDo-Zeitstempel (Fälligkeit, Erstellung, Erinnerungen) auf timezone-aware UTC und fängt fehlerhafte Legacy-States ab, sodass Sortierung und Imports auch mit Datums-Strings bzw. naiven Zeiten stabil bleiben / Normalizes todo timestamps (due/created/reminders) to timezone-aware UTC and guards against malformed legacy states so sorting and imports stay robust even when dates come as strings or naive times.
 - Ziele-Dashboard neu strukturiert: dreizeiliger Kopf mit Titel plus Quick-Actions, klickbare Tachometer mit Detail-Ansichten je Kategorie, neue Dreispalten-Übersicht (Überfällig/Nächste 3 Tage, Wochenkalender, Misc-KPIs) sowie Coach- und Gamification-Panels im Hauptbereich unterhalb des Kalenders. / Restructured goals dashboard with a three-row hero (title and quick actions), clickable gauges opening per-category details, a new three-column overview (overdue/next 3 days, weekly calendar, misc KPIs), and coach plus gamification panels in the main area below the calendar.
 - UI-Redesign mit kompakteren Expandern: Wochenstatistiken im KPI- und Kategorie-Dashboard sowie die Sidebar-Gamification öffnen sich nur bei Bedarf, während eine Kurzzeile Level und Punkte direkt in der Navigation zeigt.
 - Aufgaben-Tab mit zweispaltigem Hero-Bereich, eingeklappten Filtern und Top-3-Vorschau pro Kategorie; weitere ToDos lassen sich per „Mehr anzeigen / Show more“-Expander aufklappen, um lange Listen zu entschlacken.
