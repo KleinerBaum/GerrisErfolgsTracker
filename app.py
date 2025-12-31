@@ -1545,6 +1545,75 @@ def render_goal_overview(
     return show_kpi_dashboard, show_category_trends
 
 
+def _render_goal_empty_state(*, ai_enabled: bool, settings: dict[str, Any]) -> None:
+    empty_container = st.container(border=True)
+    empty_container.subheader(
+        translate_text(("Los geht's mit deinen Zielen", "Kick off your goals"))
+    )
+    empty_container.info(
+        translate_text(
+            (
+                "Noch keine Aufgaben oder Ziele gespeichert. Lege dein erstes Ziel an oder füge ein ToDo hinzu, "
+                "damit das Dashboard dir Fortschritt anzeigt.",
+                "No tasks or goals yet. Create your first goal or add a task so the dashboard can surface progress.",
+            )
+        ),
+        icon="✨",
+    )
+
+    empty_container.markdown(
+        translate_text(
+            (
+                "1. Zielidee festhalten\n"
+                "2. Erstes ToDo hinzufügen\n"
+                "3. Fortschritt im Dashboard verfolgen",
+                "1. Capture a goal idea\n"
+                "2. Add your first task\n"
+                "3. Track progress in the dashboard",
+            )
+        )
+    )
+
+    action_columns = empty_container.columns(3 if ai_enabled else 2)
+
+    with action_columns[0]:
+        empty_container.markdown("**" + translate_text(("Ziel starten", "Start a goal")) + "**")
+        create_goal_clicked = st.button(
+            translate_text(("Erstes Ziel anlegen", "Create your first goal")),
+            type="primary",
+            key="empty_state_create_goal",
+            help=translate_text(
+                (
+                    "Öffnet die Ziel-Canvas und speichert deine Vorlage.",
+                    "Opens the goal canvas and saves your template.",
+                )
+            ),
+        )
+        _render_goal_quick_goal_popover(settings=settings)
+
+    with action_columns[1]:
+        empty_container.markdown("**" + translate_text(("ToDo hinzufügen", "Add a task")) + "**")
+        _render_goal_quick_todo_popover()
+
+    ai_suggestion_clicked = False
+    if ai_enabled:
+        with action_columns[2]:
+            ai_suggestion_clicked = st.button(
+                translate_text(("AI Vorschlag holen", "Get AI suggestion")),
+                key="empty_state_ai_prompt",
+                help=translate_text(
+                    (
+                        "Lass dir einen Startimpuls von der KI geben und passe ihn danach an.",
+                        "Ask the AI for a starting idea and refine it afterward.",
+                    )
+                ),
+            )
+
+    if create_goal_clicked or ai_suggestion_clicked:
+        st.session_state[GOAL_CREATION_VISIBLE_KEY] = True
+        st.rerun()
+
+
 def _render_goal_overview_details(*, category: Category, snapshot: CategoryKpi, todos: Sequence[TodoItem]) -> None:
     detail_container = st.container(border=True)
     detail_container.markdown(
@@ -2546,6 +2615,11 @@ def main() -> None:
         if not isinstance(settings, dict):
             settings = {}
         category_goals = _sanitize_category_goals(settings)
+        if not todos:
+            _render_goal_empty_state(ai_enabled=ai_enabled, settings=settings)
+            settings_container = st.container()
+            ai_enabled = render_settings_panel(stats, client, panel=settings_container)
+            return
         show_kpi_dashboard, show_category_trends = render_goal_overview(
             todos,
             stats=stats,
