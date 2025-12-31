@@ -284,6 +284,8 @@ class GamificationState(BaseModel):
     history: List[str] = Field(default_factory=list)
     processed_completions: List[str] = Field(default_factory=list)
     processed_journal_events: List[str] = Field(default_factory=list)
+    processed_milestone_events: List[str] = Field(default_factory=list)
+    processed_progress_rewards: List[str] = Field(default_factory=list)
 
 
 class GamificationMode(str, Enum):

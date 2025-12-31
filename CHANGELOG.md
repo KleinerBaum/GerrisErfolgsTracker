@@ -9,6 +9,7 @@
 - Neues TaskAnalyzer-Modell `TaskAIProposal` mit Validierungen (Datenbereich, Milestone-Reihenfolge) und UI-Button **AI: Plan & Komplexität vorschlagen** inklusive Bearbeitung und expliziter Übernahme-Checkbox im ToDo-Formular.
 - Coach-Templates massiv erweitert (~80+ Einträge) mit Kategorie- und Ton-Tags für Task-Completion, Nudges (überfällig/bald fällig), Streak/Daily-Goal-Meilensteine und Weekly-Reviews.
 - Neuer DE-Sidebar-Coach-Template-Pack (30 Einträge) mit Talking-Head-Tonality und CTA-Metadaten in `gerris_erfolgs_tracker/coach/templates_de.py`.
+- Gamification: Teilbelohnungen für Meilensteine und 25/50/75%-Fortschritt mit Deduplikation, neue Streak-/Task-Badges sowie Toast-Hinweise für Zwischenerfolge.
 - E-Mail-Erinnerungen über Brevo mit dediziertem Scheduler/Worker, ENV-gestützter Konfiguration (Sender, Empfänger, Poll-Intervall, Vorlaufzeit) sowie Tests und Dokumentation.
 - Zusätzliche Tests für den Composer-Fallback und die TaskAnalyzer-Validierungen sichern die neuen Flows ab.
 - Neues Coach-Modul: Ereignisse werden per Event-ID dedupliziert, mit 2-Stunden-Cooldown und Tageslimit von drei Nachrichten pro Tag.

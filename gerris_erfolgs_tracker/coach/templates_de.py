@@ -45,7 +45,11 @@ TEMPLATES_DE: list[dict] = [
         "weight": 1,
         "title": "Guter Move. Nicht überdenken.",
         "body_md": "Du hast geliefert. Jetzt: **Wenn** du heute noch 5 Minuten hast, **dann** mache den nächsten Kleinschritt (Kontakt öffnen → 1 Satz schreiben).",
-        "cta": {"label": "Nächste Stellensuche-Aufgabe", "action": "open_tasks", "payload": {"category": "Stellensuche"}},
+        "cta": {
+            "label": "Nächste Stellensuche-Aufgabe",
+            "action": "open_tasks",
+            "payload": {"category": "Stellensuche"},
+        },
     },
     {
         "template_id": "de_task_completed_stellensuche_04",
@@ -60,7 +64,6 @@ TEMPLATES_DE: list[dict] = [
         "body_md": "Erledigt ist erledigt. Mini-Upgrade: Leg dir eine **Standard-Antwort** als Textbaustein an. Einmal Aufwand, danach Rückenwind.",
         "cta": {"label": "Aufgabenliste", "action": "open_tasks", "payload": {"category": "Stellensuche"}},
     },
-
     # -------------------------
     # TASK_COMPLETED (micro) — Administratives (4)
     # -------------------------
@@ -116,7 +119,6 @@ TEMPLATES_DE: list[dict] = [
         "body_md": "Mini-Intervention: Lege **einen** Ablage-Ort fest (digital oder Papier). Ein Ort. Nicht zehn. Gehirn liebt simpel.",
         "cta": {"label": "Ok", "action": "dismiss", "payload": {}},
     },
-
     # -------------------------
     # TASK_COMPLETED (micro) — Tagesstruktur (3)
     # -------------------------
@@ -159,7 +161,6 @@ TEMPLATES_DE: list[dict] = [
         "body_md": "Mini-Intervention: Setz **einen** Timer auf 5 Minuten und beginne. Danach darfst du neu entscheiden. Aber erst danach.",
         "cta": {"label": "Struktur-Aufgaben", "action": "open_tasks", "payload": {"category": "Tagesstruktur"}},
     },
-
     # -------------------------
     # TASK_COMPLETED (micro) — Familie & Freunde (2)
     # -------------------------
@@ -189,7 +190,6 @@ TEMPLATES_DE: list[dict] = [
         "body_md": "Mini-Upgrade: Leg dir eine **„1-Minute-Message“** zurecht – kurz, ehrlich, ohne Roman. Konstanz schlägt Perfektion.",
         "cta": {"label": "Familie & Freunde", "action": "open_tasks", "payload": {"category": "Familie & Freunde"}},
     },
-
     # -------------------------
     # TASK_COMPLETED (micro) — Drogen (1)  [safe, motivational, no instructions for wrongdoing]
     # -------------------------
@@ -206,7 +206,6 @@ TEMPLATES_DE: list[dict] = [
         "body_md": "Mini-Intervention: Notier **einen** Trigger und **eine** Alternative (z. B. Wasser + kurzer Spaziergang). Plan schlägt Impuls.",
         "cta": {"label": "Notiz öffnen", "action": "open_journal", "payload": {}},
     },
-
     # -------------------------
     # CHECK_IN_SAVED (micro) — general + category flavored (5)
     # -------------------------
@@ -275,7 +274,6 @@ TEMPLATES_DE: list[dict] = [
         "body_md": "Mini-Intervention: Schick **eine** kurze, echte Nachricht an jemanden Safe: *„Dachte gerade an dich.“* Ohne Erwartung. Nur Kontakt.",
         "cta": {"label": "Familie & Freunde", "action": "open_tasks", "payload": {"category": "Familie & Freunde"}},
     },
-
     # -------------------------
     # OVERDUE (nudge) — 4 (category-aware but safe)
     # -------------------------
@@ -349,7 +347,6 @@ TEMPLATES_DE: list[dict] = [
             "payload": {"category": "Tagesstruktur", "filter": "overdue"},
         },
     },
-
     # -------------------------
     # DEADLINE_SOON (nudge) — 3
     # -------------------------
@@ -400,7 +397,6 @@ TEMPLATES_DE: list[dict] = [
             "payload": {"category": "Administratives", "filter": "due_soon"},
         },
     },
-
     # -------------------------
     # STREAK_MILESTONE (milestone) — 2
     # -------------------------
@@ -439,7 +435,6 @@ TEMPLATES_DE: list[dict] = [
         ),
         "cta": {"label": "Ok", "action": "dismiss", "payload": {}},
     },
-
     # -------------------------
     # DAILY_GOAL_REACHED (milestone) — 1
     # -------------------------
@@ -460,7 +455,6 @@ TEMPLATES_DE: list[dict] = [
         ),
         "cta": {"label": "Ok", "action": "dismiss", "payload": {}},
     },
-
     # -------------------------
     # WEEKLY_REVIEW_READY (weekly) — 1 (fallback template)
     # -------------------------

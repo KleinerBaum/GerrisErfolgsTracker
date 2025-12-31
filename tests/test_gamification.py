@@ -6,13 +6,25 @@ from gerris_erfolgs_tracker.constants import SS_GAMIFICATION
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
 from gerris_erfolgs_tracker.gamification import (
     BADGE_CONSISTENCY_3,
+    BADGE_CONSISTENCY_7,
+    BADGE_CONSISTENCY_30,
     BADGE_DOUBLE_DIGITS,
     BADGE_FIRST_STEP,
+    MIN_MILESTONE_POINTS,
     POINTS_PER_QUADRANT,
+    PROGRESS_REWARD_POINTS,
+    award_milestone_points,
+    award_progress_points,
     calculate_progress_to_next_level,
     update_gamification_on_completion,
 )
-from gerris_erfolgs_tracker.models import GamificationState, KpiStats, TodoItem
+from gerris_erfolgs_tracker.models import (
+    GamificationState,
+    KpiStats,
+    Milestone,
+    MilestoneStatus,
+    TodoItem,
+)
 
 
 def _completed_todo(quadrant: EisenhowerQuadrant) -> TodoItem:
@@ -68,3 +80,45 @@ def test_completion_event_is_logged_once(session_state: dict[str, object]) -> No
 
     state_second = update_gamification_on_completion(todo, stats)
     assert len(state_second.history) == 1
+
+
+def test_extended_badges(session_state: dict[str, object]) -> None:
+    todo = _completed_todo(EisenhowerQuadrant.NOT_URGENT_NOT_IMPORTANT)
+    stats = KpiStats(done_total=120, streak=31)
+
+    state = update_gamification_on_completion(todo, stats)
+
+    assert BADGE_CONSISTENCY_7 in state.badges
+    assert BADGE_CONSISTENCY_30 in state.badges
+    assert BADGE_DOUBLE_DIGITS in state.badges
+
+
+def test_progress_rewards_are_granted_once(session_state: dict[str, object]) -> None:
+    todo = TodoItem(
+        title="Progress Task",
+        quadrant=EisenhowerQuadrant.NOT_URGENT_IMPORTANT,
+        progress_current=0,
+        progress_target=100,
+        progress_unit="%",
+    )
+
+    first_state = award_progress_points(todo=todo, previous_progress=0, updated_progress=50)
+    assert first_state.points == PROGRESS_REWARD_POINTS * 2
+    assert len(first_state.processed_progress_rewards) == 2
+
+    repeated_state = award_progress_points(todo=todo, previous_progress=10, updated_progress=60)
+    assert repeated_state.points == first_state.points
+    assert len(repeated_state.processed_progress_rewards) == 2
+
+
+def test_milestone_points_awarded_once(session_state: dict[str, object]) -> None:
+    milestone = Milestone(title="Teilziel", points=0, status=MilestoneStatus.DONE)
+    todo = TodoItem(title="Mit Milestone", quadrant=EisenhowerQuadrant.URGENT_IMPORTANT)
+
+    state = award_milestone_points(todo=todo, milestone=milestone)
+    assert state.points == MIN_MILESTONE_POINTS
+    assert len(state.processed_milestone_events) == 1
+
+    repeated = award_milestone_points(todo=todo, milestone=milestone)
+    assert repeated.points == state.points
+    assert len(repeated.processed_milestone_events) == 1

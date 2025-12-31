@@ -7,6 +7,7 @@ from uuid import UUID, uuid5
 
 from gerris_erfolgs_tracker.constants import PROCESSED_PROGRESS_EVENTS_LIMIT, cap_list_tail
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, ensure_quadrant
+from gerris_erfolgs_tracker.gamification import award_milestone_points, award_progress_points
 from gerris_erfolgs_tracker.models import (
     Category,
     EmailReminderOffset,
@@ -389,6 +390,10 @@ def update_milestone(
     status: Optional[MilestoneStatus] = None,
     note: Optional[str] = None,
 ) -> Optional[Milestone]:
+    todos = get_todos()
+    previous_todo = next((item for item in todos if item.id == todo_id), None)
+    previous_lookup = {milestone.id: milestone for milestone in previous_todo.milestones} if previous_todo else {}
+
     def _update(existing: list[Milestone]) -> list[Milestone]:
         updated_items: list[Milestone] = []
         for item in existing:
@@ -415,6 +420,14 @@ def update_milestone(
         return None
     for item in updated_collection:
         if item.id == milestone_id:
+            previous_state = previous_lookup.get(milestone_id)
+            if (
+                previous_state is not None
+                and previous_state.status is not MilestoneStatus.DONE
+                and item.status is MilestoneStatus.DONE
+                and previous_todo is not None
+            ):
+                award_milestone_points(todo=previous_todo, milestone=item)
             return item
     return None
 
@@ -515,6 +528,7 @@ def update_todo_progress(todo: TodoItem, *, delta: float, source_event_id: str) 
         if source_event_id in existing.processed_progress_events:
             return existing
 
+        previous_progress = existing.progress_current
         updated_progress = existing.progress_current + float(delta)
         updated_events = cap_list_tail(
             [*existing.processed_progress_events, source_event_id], PROCESSED_PROGRESS_EVENTS_LIMIT
@@ -542,6 +556,11 @@ def update_todo_progress(todo: TodoItem, *, delta: float, source_event_id: str) 
         todos[index] = existing.model_copy(update=updates)
         updated = todos[index]
         _update_todo_at_index(todos, index, updated)
+        award_progress_points(
+            todo=updated,
+            previous_progress=previous_progress,
+            updated_progress=updated_progress,
+        )
         _process_completion(updated, was_completed=was_completed)
         return updated
 
