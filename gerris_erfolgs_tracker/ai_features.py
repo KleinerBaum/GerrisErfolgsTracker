@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Generic, Optional, TypeVar
+from datetime import date, datetime, timedelta
+from typing import Generic, Mapping, Optional, Sequence, TypeVar
 
 from openai import OpenAI
 
+from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, ensure_quadrant, sort_todos
 from gerris_erfolgs_tracker.kpis import get_kpi_stats
 from gerris_erfolgs_tracker.llm import (
     LLMError,
@@ -13,6 +15,8 @@ from gerris_erfolgs_tracker.llm import (
     request_structured_response,
 )
 from gerris_erfolgs_tracker.llm_schemas import (
+    DailyFocusRecommendation,
+    DailyPlanningSuggestion,
     GoalSuggestion,
     MilestoneSuggestionItem,
     MilestoneSuggestionList,
@@ -20,7 +24,7 @@ from gerris_erfolgs_tracker.llm_schemas import (
     QuadrantName,
     TodoCategorization,
 )
-from gerris_erfolgs_tracker.models import GamificationMode, KpiStats
+from gerris_erfolgs_tracker.models import GamificationMode, JournalEntry, KpiStats, TodoItem
 
 PayloadT = TypeVar("PayloadT")
 
@@ -135,6 +139,140 @@ def suggest_goals(stats: Optional[KpiStats] = None, client: Optional[OpenAI] = N
     return AISuggestion(_fallback_goals(active_stats), from_ai=False)
 
 
+def _recent_mood_hint(journal_entries: Mapping[date, JournalEntry] | None) -> str:
+    if not journal_entries:
+        return ""
+
+    latest_date = max(journal_entries.keys())
+    latest_entry = journal_entries[latest_date]
+    moods = ", ".join(tag.strip() for tag in latest_entry.moods if tag.strip())
+    note = latest_entry.mood_notes.strip()
+
+    if moods and note:
+        return f"Letzter Stimmungseintrag: {moods} – {note}"
+    if moods:
+        return f"Letzter Stimmungseintrag: {moods}"
+    if note:
+        return f"Letzte Notiz: {note}"
+    return ""
+
+
+def _todo_focus_rank(todo: TodoItem) -> tuple[int, datetime, int, datetime]:
+    quadrant_rank = {
+        EisenhowerQuadrant.URGENT_IMPORTANT: 0,
+        EisenhowerQuadrant.NOT_URGENT_IMPORTANT: 1,
+        EisenhowerQuadrant.URGENT_NOT_IMPORTANT: 2,
+        EisenhowerQuadrant.NOT_URGENT_NOT_IMPORTANT: 3,
+    }
+    due_date = todo.due_date or datetime.max
+    return (
+        quadrant_rank.get(ensure_quadrant(todo.quadrant), 3),
+        due_date,
+        todo.priority,
+        todo.created_at,
+    )
+
+
+def _fallback_daily_plan(
+    *, todos: Sequence[TodoItem], stats: KpiStats, journal_entries: Mapping[date, JournalEntry] | None
+) -> DailyPlanningSuggestion:
+    open_tasks = [task for task in todos if not task.completed]
+    ranked = sorted(open_tasks, key=_todo_focus_rank)[:3]
+    mood_note = _recent_mood_hint(journal_entries)
+    streak_info = f"Streak: {stats.streak}" if stats.streak else "Neue Woche, neuer Start"
+    focus_items: list[DailyFocusRecommendation] = []
+
+    for task in ranked:
+        due_label = task.due_date.date().isoformat() if task.due_date else None
+        recommendation = (
+            "Starte mit diesem Fokusblock (Quadrant II), dann dringende Punkte einsammeln. / "
+            "Start with this Quadrant II focus block, then sweep urgent items."
+        )
+        priority_hint = f"Priorität {task.priority}"
+        focus_items.append(
+            DailyFocusRecommendation(
+                title=task.title,
+                quadrant=QuadrantName(task.quadrant.value),
+                due_date=due_label,
+                recommendation=recommendation,
+                priority_hint=priority_hint,
+            )
+        )
+
+    headline = "Heute: mindestens eine wichtige, nicht dringende Aufgabe einplanen. / Today: schedule one important, non-urgent task."
+    buffer_tip = (
+        "Plane einen 30-Minuten-Puffer nach jedem Block ein, besonders wenn gestern Stress da war. / "
+        "Add a 30-minute buffer after each block, especially if yesterday felt stressful."
+    )
+    mood_advice = mood_note or "Kurzer Check-in: Energie und Stimmung notieren. / Quick check-in: note energy and mood."
+
+    return DailyPlanningSuggestion(
+        headline=f"{headline} {streak_info}",
+        mood_advice=mood_advice,
+        focus_items=focus_items,
+        buffer_tip=buffer_tip,
+    )
+
+
+def suggest_daily_plan(
+    *,
+    todos: Sequence[TodoItem],
+    stats: Optional[KpiStats],
+    journal_entries: Mapping[date, JournalEntry] | None,
+    client: Optional[OpenAI] = None,
+) -> AISuggestion[DailyPlanningSuggestion]:
+    active_stats = stats or get_kpi_stats()
+    open_tasks = [task for task in todos if not task.completed]
+    task_snapshot = [
+        {
+            "title": task.title,
+            "quadrant": task.quadrant.value,
+            "priority": task.priority,
+            "due_date": task.due_date.isoformat() if task.due_date else None,
+        }
+        for task in sort_todos(open_tasks, by="due_date")[:6]
+    ]
+    mood_note = _recent_mood_hint(journal_entries)
+
+    client_to_use = client or get_openai_client()
+    model = get_default_model(reasoning=True)
+
+    if client_to_use and open_tasks:
+        try:
+            suggestion = request_structured_response(
+                client=client_to_use,
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Du bist ein Tagesplan-Coach. Analysiere Aufgaben (Quadrant, Priorität, Fälligkeit) "
+                            "und die aktuelle Streak. Baue Hinweise aus den letzten Stimmungsnotizen ein. "
+                            "Antwort stets zweisprachig (DE/EN) im vorgegebenen Schema. Keine Diagnosen."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            "Kontext: "
+                            f"Streak={active_stats.streak}, Tagesziel={active_stats.goal_daily}. "
+                            f"Aufgaben: {task_snapshot}. "
+                            f"Stimmung: {mood_note or 'keine Angabe'}."
+                        ),
+                    },
+                ],
+                response_model=DailyPlanningSuggestion,
+            )
+            return AISuggestion(suggestion, from_ai=True)
+        except LLMError:
+            pass
+
+    return AISuggestion(
+        _fallback_daily_plan(todos=todos, stats=active_stats, journal_entries=journal_entries),
+        from_ai=False,
+    )
+
+
 def _fallback_milestones(todo_title: str) -> MilestoneSuggestionList:
     base = todo_title.strip() or "Aufgabe"
     items = [
@@ -245,6 +383,7 @@ def generate_motivation(stats: Optional[KpiStats] = None, client: Optional[OpenA
 __all__ = [
     "AISuggestion",
     "generate_motivation",
+    "suggest_daily_plan",
     "suggest_milestones",
     "suggest_goals",
     "suggest_quadrant",

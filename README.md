@@ -18,6 +18,8 @@ Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI
 
 **Neu (optional, AI):**
 
+- Tagesplaner in der Aufgaben-Seite: KI prüft morgens Quadrant, Priorität, Fälligkeit, Streak und die letzte Stimmung und schlägt 2–3 Fokusaufgaben plus Pufferhinweis vor (Fallback aktiv ohne API-Key).
+- Wochenrückblick blendet erkannte Stimmungs-Tags aus dem Tagebuch ein, damit Muster und Energie-Dips sichtbar werden.
 - Wochenrückblicke können per OpenAI ScriptComposer mit strukturierten Outputs generiert werden (inkl. Sicherheits-Prompts, automatisches Fallback auf Templates).
 - Im Formular **ToDo hinzufügen** liefert der Button **AI: Plan & Komplexität vorschlagen** einen editierbaren Vorschlag (Aufwand, Priorität, Milestone-Plan) mit expliziter Checkbox zur Übernahme.
 - Tagebuch-Einträge werden semantisch gegen Ziele abgeglichen; erkannte Teilfortschritte (Meilensteine, Fortschritt in %) erscheinen als zweisprachige Vorschläge zur Bestätigung.

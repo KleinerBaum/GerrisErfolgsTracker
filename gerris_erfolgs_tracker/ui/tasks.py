@@ -7,7 +7,12 @@ from typing import Any, Literal, Mapping, Optional, Sequence, cast
 import streamlit as st
 from openai import OpenAI
 
-from gerris_erfolgs_tracker.ai_features import AISuggestion, suggest_milestones, suggest_quadrant
+from gerris_erfolgs_tracker.ai_features import (
+    AISuggestion,
+    suggest_daily_plan,
+    suggest_milestones,
+    suggest_quadrant,
+)
 from gerris_erfolgs_tracker.calendar_view import render_calendar_view
 from gerris_erfolgs_tracker.coach.engine import process_event
 from gerris_erfolgs_tracker.coach.factory import build_completion_event
@@ -54,12 +59,17 @@ from gerris_erfolgs_tracker.gamification import GamificationState, get_gamificat
 from gerris_erfolgs_tracker.i18n import translate_text
 from gerris_erfolgs_tracker.journal import (
     append_journal_links,
+    get_journal_entries,
     get_journal_entry,
     get_journal_links_by_todo,
     upsert_journal_entry,
 )
 from gerris_erfolgs_tracker.llm import LLMError, get_default_model, get_openai_client, request_structured_response
-from gerris_erfolgs_tracker.llm_schemas import MilestoneSuggestionItem, MilestoneSuggestionList
+from gerris_erfolgs_tracker.llm_schemas import (
+    DailyPlanningSuggestion,
+    MilestoneSuggestionItem,
+    MilestoneSuggestionList,
+)
 from gerris_erfolgs_tracker.models import (
     Category,
     EmailReminderOffset,
@@ -1177,6 +1187,10 @@ def render_todo_section(
     journal_links = journal_links or get_journal_links_by_todo()
     quadrant_options = list(EisenhowerQuadrant)
 
+    _render_daily_plan_panel(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
+    divider = getattr(st, "divider", None)
+    if callable(divider):
+        divider()
     _render_completion_journal_prompt(todos)
     st.subheader("ToDo hinzufügen")
 
@@ -1719,6 +1733,71 @@ def render_quadrant_board(
 
         for todo in todos:
             render_todo_card(todo, journal_links=journal_links)
+
+
+def _render_daily_plan_panel(
+    *, ai_enabled: bool, client: Optional[OpenAI], todos: list[TodoItem], stats: Optional[KpiStats]
+) -> None:
+    container_factory = getattr(st, "container", None)
+    if container_factory is None:
+        return
+
+    plan_container = container_factory()
+    if not hasattr(plan_container, "markdown"):
+        return
+    plan_container.markdown("### KI-Planung heute / AI planning today")
+    plan_container.caption(
+        translate_text(
+            (
+                "Morgendliche Empfehlung nach Quadrant, Priorität, Fälligkeit und Stimmung.",
+                "Morning suggestion based on quadrant, priority, due date, and mood.",
+            )
+        )
+    )
+
+    journal_entries = get_journal_entries()
+    plan = suggest_daily_plan(
+        todos=todos,
+        stats=stats,
+        journal_entries=journal_entries,
+        client=client if ai_enabled else None,
+    )
+    payload: DailyPlanningSuggestion = cast(DailyPlanningSuggestion, plan.payload)
+
+    with plan_container.container(border=True):
+        source_label = translate_text(("Quelle", "Source"))
+        plan_container.caption(f"{source_label}: {'KI' if plan.from_ai else 'Fallback'}")
+        plan_container.markdown(f"**{payload.headline}**")
+        if payload.mood_advice:
+            plan_container.info(payload.mood_advice)
+
+        if payload.focus_items:
+            due_label = translate_text(("Fällig", "Due"))
+            for item in payload.focus_items:
+                try:
+                    quadrant = EisenhowerQuadrant(item.quadrant)
+                except ValueError:
+                    quadrant = EisenhowerQuadrant.NOT_URGENT_IMPORTANT
+
+                due_value = item.due_date or translate_text(("Kein Datum", "No date"))
+                recommendation = item.recommendation.strip() or translate_text(
+                    ("Fokus-Block einplanen", "Schedule one focus block")
+                )
+                priority_hint = f" · {item.priority_hint}" if item.priority_hint else ""
+                plan_container.markdown(
+                    (
+                        f"- {quadrant_badge(quadrant, include_full_label=True)} — **{item.title}**<br>"
+                        f"  {recommendation} ({due_label}: {due_value}){priority_hint}"
+                    ),
+                    unsafe_allow_html=True,
+                )
+        else:
+            plan_container.caption(
+                translate_text(("Keine offenen Empfehlungen", "No open recommendations"))
+            )
+
+        if payload.buffer_tip:
+            plan_container.success(payload.buffer_tip)
 
 
 def render_todo_card(todo: TodoItem, *, journal_links: Mapping[str, list[date]] | None = None) -> None:

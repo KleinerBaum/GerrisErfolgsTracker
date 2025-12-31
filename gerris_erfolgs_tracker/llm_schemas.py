@@ -41,6 +41,33 @@ class Motivation(BaseModel):
     )
 
 
+class DailyFocusRecommendation(BaseModel):
+    title: str = Field(description="Aufgabentitel")
+    quadrant: QuadrantName = Field(description="Quadrant der Aufgabe")
+    due_date: str | None = Field(
+        default=None,
+        description="Fälligkeitsdatum oder None",
+    )
+    recommendation: str = Field(description="Fokus-Empfehlung")
+    priority_hint: str = Field(
+        default="",
+        description="Zusätzlicher Prioritätshinweis",
+    )
+
+
+class DailyPlanningSuggestion(BaseModel):
+    headline: str = Field(description="Kurzer Planungs-Header")
+    mood_advice: str = Field(description="Hinweis basierend auf Stimmung")
+    focus_items: list[DailyFocusRecommendation] = Field(
+        default_factory=list,
+        description="Empfohlene Aufgaben für heute",
+    )
+    buffer_tip: str = Field(
+        default="",
+        description="Hinweis zu Pufferzeiten und Energie",
+    )
+
+
 class MilestoneSuggestionItem(BaseModel):
     title: str = Field(
         description="Kurzer Titel des Meilensteins",
@@ -109,6 +136,8 @@ class JournalAlignmentResponse(BaseModel):
 
 
 __all__ = [
+    "DailyFocusRecommendation",
+    "DailyPlanningSuggestion",
     "GoalSuggestion",
     "JournalAlignmentAction",
     "JournalAlignmentResponse",
