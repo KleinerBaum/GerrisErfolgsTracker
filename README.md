@@ -216,6 +216,7 @@ OPENAI_API_KEY = "sk-..."
 ## KPI-Dashboard
 
 - Sofort sichtbare KPIs: **Erledigt gesamt / Done total**, **Heute erledigt / Done today**, **Kontinuität / Streak**, sowie **Zielerreichung / Goal progress** mit Tagesziel (Standard: 3 Abschlüsse pro Tag).
+- Tagesziel-Eingabe im Einstellungs-Panel belässt den Widget-State bei Streamlit, sodass manuell gesetzte Werte auch nach einem Rerun unverändert bleiben / The daily goal input in the settings panel leaves widget state to Streamlit so manually set values stay unchanged after a rerun.
 - KPI-Dashboard liegt direkt unter dem Seitentitel und ist ohne Tabs sichtbar, um Fortschritt sofort zu erkennen / KPI dashboard sits right below the page title (outside tabs) for instant visibility.
 - Neues Top-Dashboard direkt unter dem Titel mit fünf Karten (eine pro Kategorie) inklusive Tagesfortschritt, Streak und offen vs. erledigt / New top-of-page dashboard with five category cards showing daily progress, streak, open vs. done.
 - Tachometer für neu erfasste Aufgaben mit Wochenziel 7 (je 10 Punkte pro Aufgabe) direkt im KPI-Block / Tachometer inside the KPI block tracks newly added tasks with a weekly target of 7 and awards 10 points per task.

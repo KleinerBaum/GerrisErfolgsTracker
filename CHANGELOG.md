@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Tagesziel-Eingabe nutzt nur den initialen Fallback und überlässt den Widget-State Streamlit, damit manuelle Werte auch nach Reruns erhalten bleiben / Daily goal input now uses fallback only on first render and lets Streamlit own the widget state, so manual values survive reruns.
 - Header-Komponenten im Ziele-Dashboard mit reduzierten Abständen, breiteren Quick-Action-Spalten und kompakten Popover-Labels, damit Titel und Schnellaktionen ohne Leerräume und Clipping sichtbar bleiben / Goal dashboard header tightened with reduced spacing, wider quick-action columns, and compact popover labels so the title and quick actions stay visible without blank gaps or clipping.
 - Sidebar blendet die Build-Info mit Commit-Hash und Datum ein, damit der Live-Stand einfach mit `main` abgeglichen werden kann / Sidebar now surfaces build info with commit hash and date to quickly compare the live deployment with `main`.
 - Quick-Actions-Bedienelemente nutzen wieder die Standard-Zeilenhöhe und flexible Zeilenumbrüche, sodass Popover-Trigger auf breiten und schmaleren Viewports nicht mehr abgeschnitten werden / Quick-action controls now use default line height and allow wrapping so popover triggers stay readable on wide and narrower viewports.
