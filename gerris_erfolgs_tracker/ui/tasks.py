@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any, Literal, Mapping, Optional, cast
+from typing import Any, Literal, Mapping, Optional, Sequence, cast
 
 import streamlit as st
 from openai import OpenAI
@@ -18,6 +18,8 @@ from gerris_erfolgs_tracker.constants import (
     FILTER_SELECTED_CATEGORIES_KEY,
     FILTER_SHOW_DONE_KEY,
     FILTER_SORT_OVERRIDE_KEY,
+    JOURNAL_COMPLETION_NOTE_KEY,
+    JOURNAL_COMPLETION_PROMPT_KEY,
     NEW_MILESTONE_COMPLEXITY_KEY,
     NEW_MILESTONE_NOTE_KEY,
     NEW_MILESTONE_POINTS_KEY,
@@ -50,12 +52,19 @@ from gerris_erfolgs_tracker.constants import (
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, group_by_quadrant, sort_todos
 from gerris_erfolgs_tracker.gamification import GamificationState, get_gamification_state
 from gerris_erfolgs_tracker.i18n import translate_text
+from gerris_erfolgs_tracker.journal import (
+    append_journal_links,
+    get_journal_entry,
+    get_journal_links_by_todo,
+    upsert_journal_entry,
+)
 from gerris_erfolgs_tracker.llm import LLMError, get_default_model, get_openai_client, request_structured_response
 from gerris_erfolgs_tracker.llm_schemas import MilestoneSuggestionItem, MilestoneSuggestionList
 from gerris_erfolgs_tracker.models import (
     Category,
     EmailReminderOffset,
     GamificationMode,
+    JournalEntry,
     KpiStats,
     Milestone,
     MilestoneComplexity,
@@ -436,7 +445,90 @@ def _toggle_todo_completion(todo: TodoItem) -> None:
     if updated and updated.completed:
         handle_completion_success(updated, previous_state=previous_state)
         process_event(build_completion_event(updated))
+        st.session_state[JOURNAL_COMPLETION_PROMPT_KEY] = {
+            "todo_id": updated.id,
+            "title": updated.title,
+            "category": updated.category.value,
+        }
     st.rerun()
+
+
+def _render_completion_journal_prompt(todos: Sequence[TodoItem]) -> None:
+    prompt_data = st.session_state.get(JOURNAL_COMPLETION_PROMPT_KEY)
+    if not isinstance(prompt_data, Mapping):
+        return
+
+    todo_lookup = {todo.id: todo for todo in todos}
+    todo_id = str(prompt_data.get("todo_id", ""))
+    target = todo_lookup.get(todo_id)
+    if not target:
+        st.session_state.pop(JOURNAL_COMPLETION_PROMPT_KEY, None)
+        st.session_state.pop(JOURNAL_COMPLETION_NOTE_KEY, None)
+        return
+
+    reflection_note = st.session_state.get(JOURNAL_COMPLETION_NOTE_KEY, "")
+    with st.expander(translate_text(("Reflexion zum Abschluss", "Reflect on completion")), expanded=True):
+        st.info(
+            translate_text(
+                (
+                    "Kurze Notiz zum Abschluss im heutigen Tagebuch speichern.",
+                    "Capture a short note for today's journal entry.",
+                )
+            ),
+            icon="📝",
+        )
+        note_value = st.text_area(
+            translate_text(("Reflexion oder Lerneffekt", "Reflection or takeaway")),
+            value=str(reflection_note),
+            key=JOURNAL_COMPLETION_NOTE_KEY,
+            placeholder=translate_text(("Was hat gut funktioniert?", "What went well?")),
+        )
+        action_cols = st.columns([1, 1])
+        with action_cols[0]:
+            save_clicked = st.button(
+                translate_text(("Notiz im Tagebuch speichern", "Save note to journal")),
+                type="primary",
+                key=f"save_completion_note_{todo_id}",
+            )
+        with action_cols[1]:
+            skip_clicked = st.button(
+                translate_text(("Später", "Later")),
+                key=f"skip_completion_note_{todo_id}",
+            )
+
+        if save_clicked:
+            today = date.today()
+            entry = get_journal_entry(today) or JournalEntry(date=today)
+            completion_text = translate_text(
+                (
+                    f"Aufgabe abgeschlossen: {target.title}",
+                    f"Task completed: {target.title}",
+                )
+            )
+            if note_value.strip():
+                completion_text = f"{completion_text} – {note_value.strip()}"
+            triggers = entry.triggers_and_reactions.strip()
+            updated_triggers = f"{triggers}\n- {completion_text}" if triggers else f"- {completion_text}"
+            categories = list(entry.categories)
+            if target.category not in categories:
+                categories.append(target.category)
+            updated_entry = entry.model_copy(
+                update={
+                    "triggers_and_reactions": updated_triggers,
+                    "categories": categories,
+                }
+            )
+            updated_entry = append_journal_links(updated_entry, [target.id])
+            upsert_journal_entry(updated_entry)
+            st.success(translate_text(("Notiz im Tagebuch gespeichert.", "Saved note to journal.")))
+            st.session_state.pop(JOURNAL_COMPLETION_PROMPT_KEY, None)
+            st.session_state.pop(JOURNAL_COMPLETION_NOTE_KEY, None)
+            st.rerun()
+
+        if skip_clicked:
+            st.session_state.pop(JOURNAL_COMPLETION_PROMPT_KEY, None)
+            st.session_state.pop(JOURNAL_COMPLETION_NOTE_KEY, None)
+            st.rerun()
 
 
 def _task_sort_key(todo: TodoItem, sort_override: SortOverride) -> tuple[object, ...]:
@@ -711,7 +803,12 @@ def _render_milestone_board(todo: TodoItem, *, gamification_mode: GamificationMo
     _render_milestone_suggestions(todo=todo, gamification_mode=gamification_mode, ai_enabled=ai_enabled)
 
 
-def render_task_row(todo: TodoItem, *, parent: Any | None = None) -> None:
+def render_task_row(
+    todo: TodoItem,
+    *,
+    parent: Any | None = None,
+    journal_links: Mapping[str, list[date]] | None = None,
+) -> None:
     container = (parent or st).container(border=True)
     gamification_mode = _current_gamification_mode()
     with container:
@@ -759,6 +856,18 @@ def render_task_row(todo: TodoItem, *, parent: Any | None = None) -> None:
                 st.markdown(todo.description_md)
             else:
                 st.caption("Keine Beschreibung vorhanden.")
+
+            mentions = journal_links.get(todo.id, []) if journal_links else []
+            if mentions:
+                mention_dates = ", ".join(entry_date.isoformat() for entry_date in mentions[:3])
+                st.caption(
+                    translate_text(
+                        (
+                            f"Journal-Notizen am: {mention_dates}",
+                            f"Journal mentions on: {mention_dates}",
+                        )
+                    )
+                )
 
             st.markdown("#### Terminierung")
             st.caption(f"Wiederholung: {todo.recurrence.label}")
@@ -937,7 +1046,7 @@ def render_task_row(todo: TodoItem, *, parent: Any | None = None) -> None:
                 st.rerun()
 
 
-def render_task_list_view(todos: list[TodoItem]) -> None:
+def render_task_list_view(todos: list[TodoItem], *, journal_links: Mapping[str, list[date]] | None = None) -> None:
     st.subheader("Aufgabenliste")
     st.caption("Gruppiert nach Kategorie mit Priorität, Fälligkeit und Erstellungsdatum.")
 
@@ -1051,7 +1160,7 @@ def render_task_list_view(todos: list[TodoItem]) -> None:
 
             st.markdown(f"### {category.label}")
             for todo in sorted(category_todos, key=lambda item: _task_sort_key(item, sort_override)):
-                render_task_row(todo, parent=task_list_container)
+                render_task_row(todo, parent=task_list_container, journal_links=journal_links)
         st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -1061,11 +1170,14 @@ def render_todo_section(
     *,
     todos: Optional[list[TodoItem]] = None,
     stats: Optional[KpiStats] = None,
+    journal_links: Optional[Mapping[str, list[date]]] = None,
 ) -> None:
     template_state_key = TODO_TEMPLATE_LAST_APPLIED_KEY
     todos = todos or get_todos()
+    journal_links = journal_links or get_journal_links_by_todo()
     quadrant_options = list(EisenhowerQuadrant)
 
+    _render_completion_journal_prompt(todos)
     st.subheader("ToDo hinzufügen")
 
     if st.session_state.pop(NEW_TODO_RESET_TRIGGER_KEY, False):
@@ -1534,14 +1646,14 @@ def render_todo_section(
     )
 
     with list_tab:
-        render_task_list_view(todos)
+        render_task_list_view(todos, journal_links=journal_links)
 
     with board_tab:
         st.subheader("Eisenhower-Matrix")
         grouped = group_by_quadrant(sort_todos(todos, by="due_date"))
         quadrant_columns = st.columns(4)
         for quadrant, column in zip(EisenhowerQuadrant, quadrant_columns, strict=True):
-            render_quadrant_board(column, quadrant, grouped.get(quadrant, []))
+            render_quadrant_board(column, quadrant, grouped.get(quadrant, []), journal_links=journal_links)
 
     with calendar_tab:
         render_calendar_view()
@@ -1593,6 +1705,8 @@ def render_quadrant_board(
     container: st.delta_generator.DeltaGenerator,
     quadrant: EisenhowerQuadrant,
     todos: list[TodoItem],
+    *,
+    journal_links: Mapping[str, list[date]] | None = None,
 ) -> None:
     with container:
         st.markdown(
@@ -1604,10 +1718,10 @@ def render_quadrant_board(
             return
 
         for todo in todos:
-            render_todo_card(todo)
+            render_todo_card(todo, journal_links=journal_links)
 
 
-def render_todo_card(todo: TodoItem) -> None:
+def render_todo_card(todo: TodoItem, *, journal_links: Mapping[str, list[date]] | None = None) -> None:
     with st.container(border=True):
         status = ("Erledigt", "Done") if todo.completed else ("Offen", "Open")
         due_text = todo.due_date.date().isoformat() if todo.due_date is not None else "—"
@@ -1629,6 +1743,18 @@ def render_todo_card(todo: TodoItem) -> None:
         )
         if todo.description_md:
             st.markdown(todo.description_md)
+
+        mentions = journal_links.get(todo.id, []) if journal_links else []
+        if mentions:
+            mention_dates = ", ".join(entry_date.isoformat() for entry_date in mentions[:3])
+            st.caption(
+                translate_text(
+                    (
+                        f"Im Tagebuch erwähnt am: {mention_dates}",
+                        f"Mentioned in the journal on: {mention_dates}",
+                    )
+                )
+            )
 
         action_cols = st.columns([1, 1, 1])
         if action_cols[0].button(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 import streamlit as st
 
@@ -48,6 +48,7 @@ def _coerce_entry(entry_date: date, raw: Any) -> JournalEntry:
     migrated.setdefault("gratitude_1", "")
     migrated.setdefault("gratitude_2", "")
     migrated.setdefault("gratitude_3", "")
+    migrated.setdefault("linked_todo_ids", [])
     migrated["categories"] = _coerce_categories(migrated.get("categories", []))
     migrated["date"] = entry_date
 
@@ -93,6 +94,28 @@ def upsert_journal_entry(entry: JournalEntry) -> None:
     persisted[entry.date.isoformat()] = entry.model_dump()
     st.session_state[SS_JOURNAL] = persisted
     persist_state()
+
+
+def append_journal_links(entry: JournalEntry, linked_todo_ids: Iterable[str]) -> JournalEntry:
+    existing = list(entry.linked_todo_ids)
+    for todo_id in linked_todo_ids:
+        value = str(todo_id).strip()
+        if value and value not in existing:
+            existing.append(value)
+    return entry.model_copy(update={"linked_todo_ids": existing})
+
+
+def get_journal_links_by_todo(entries: Mapping[date, JournalEntry] | None = None) -> dict[str, list[date]]:
+    records = entries or get_journal_entries()
+    mentions: dict[str, list[date]] = {}
+
+    for entry_date, entry in records.items():
+        for todo_id in entry.linked_todo_ids:
+            mentions.setdefault(todo_id, [])
+            if entry_date not in mentions[todo_id]:
+                mentions[todo_id].append(entry_date)
+
+    return {todo_id: sorted(dates, reverse=True) for todo_id, dates in mentions.items()}
 
 
 def journal_gratitude_suggestions(*, exclude_date: date | None = None) -> list[str]:

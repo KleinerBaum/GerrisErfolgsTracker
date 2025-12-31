@@ -63,6 +63,7 @@ from gerris_erfolgs_tracker.i18n import (
     translate_text,
 )
 from gerris_erfolgs_tracker.journal import (
+    append_journal_links,
     ensure_journal_state,
     get_journal_entries,
     journal_gratitude_suggestions,
@@ -148,9 +149,16 @@ def render_todo_section(
     *,
     todos: Optional[list[TodoItem]] = None,
     stats: Optional[KpiStats] = None,
+    journal_links: Optional[Mapping[str, list[date]]] = None,
 ) -> None:
     _sync_tasks_streamlit()
-    _render_todo_section(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
+    _render_todo_section(
+        ai_enabled=ai_enabled,
+        client=client,
+        todos=todos,
+        stats=stats,
+        journal_links=journal_links,
+    )
 
 
 def render_tasks_page(
@@ -1805,6 +1813,23 @@ def render_journal_section(*, ai_enabled: bool, client: Optional[OpenAI], todos:
     else:
         entry = JournalEntry(date=selected_date, moods=list(MOOD_PRESETS[:2]))
 
+    todo_lookup = {todo.id: todo for todo in todos}
+    if entry.linked_todo_ids:
+        labels: list[str] = []
+        for todo_id in entry.linked_todo_ids:
+            todo_match = todo_lookup.get(todo_id)
+            title = todo_match.title if todo_match else None
+            labels.append(title or todo_id)
+        if labels:
+            st.info(
+                translate_text(
+                    (
+                        f"Verknüpfte Ziele/Aufgaben: {', '.join(labels)}",
+                        f"Linked goals/tasks: {', '.join(labels)}",
+                    )
+                )
+            )
+
     gratitude_suggestions = journal_gratitude_suggestions(exclude_date=selected_date)
     _prefill_journal_form(entry)
 
@@ -1903,6 +1928,14 @@ def render_journal_section(*, ai_enabled: bool, client: Optional[OpenAI], todos:
                     todos=todos,
                     client=client if ai_enabled else None,
                 )
+            linked_target_ids = [
+                candidate.target_id
+                for candidate in getattr(alignment.payload, "actions", [])
+                if getattr(candidate, "target_id", None)
+            ]
+            if linked_target_ids:
+                journal_entry = append_journal_links(journal_entry, linked_target_ids)
+                upsert_journal_entry(journal_entry)
             _store_journal_alignment(journal_entry.date, alignment)
             st.success("Eintrag gespeichert.")
             st.session_state[JOURNAL_FORM_SEED_KEY] = journal_entry.date

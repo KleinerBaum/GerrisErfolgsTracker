@@ -229,6 +229,7 @@ class JournalEntry(BaseModel):
     gratitude_2: str = ""
     gratitude_3: str = ""
     categories: list[Category] = Field(default_factory=list)
+    linked_todo_ids: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _sync_gratitudes(self) -> "JournalEntry":
@@ -243,6 +244,13 @@ class JournalEntry(BaseModel):
         padded = (cleaned_gratitudes + ["", "", ""])[:3]
         self.gratitudes = cleaned_gratitudes
         self.gratitude_1, self.gratitude_2, self.gratitude_3 = padded
+
+        cleaned_links: list[str] = []
+        for todo_id in self.linked_todo_ids:
+            value = str(todo_id).strip()
+            if value and value not in cleaned_links:
+                cleaned_links.append(value)
+        self.linked_todo_ids = cleaned_links
         return self
 
 

@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Bidirektionale Verknüpfung von Aufgaben und Tagebuch: gespeicherte Alignment-Vorschläge hinterlegen jetzt die referenzierten Ziele/Aufgaben direkt im Tagebucheintrag, und die Aufgabenansicht zeigt die Tage mit Journal-Mentions als Hinweis.
+- Optionales Reflexions-Prompt nach dem Abschluss einer Aufgabe: ein kurzer Notiz-Dialog legt auf Wunsch einen Eintrag für den aktuellen Tag an und verknüpft ihn automatisch mit der erledigten Aufgabe.
 - Optionaler OpenAI-ScriptComposer erzeugt Wochenrückblicke über strukturierte Outputs; ohne API-Key oder bei Fehlern greifen automatisch die erweiterten Fallback-Templates.
 - Neues TaskAnalyzer-Modell `TaskAIProposal` mit Validierungen (Datenbereich, Milestone-Reihenfolge) und UI-Button **AI: Plan & Komplexität vorschlagen** inklusive Bearbeitung und expliziter Übernahme-Checkbox im ToDo-Formular.
 - Coach-Templates massiv erweitert (~80+ Einträge) mit Kategorie- und Ton-Tags für Task-Completion, Nudges (überfällig/bald fällig), Streak/Daily-Goal-Meilensteine und Weekly-Reviews.

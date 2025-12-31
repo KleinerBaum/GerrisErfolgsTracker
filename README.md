@@ -21,6 +21,7 @@ Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI
 - Wochenrückblicke können per OpenAI ScriptComposer mit strukturierten Outputs generiert werden (inkl. Sicherheits-Prompts, automatisches Fallback auf Templates).
 - Im Formular **ToDo hinzufügen** liefert der Button **AI: Plan & Komplexität vorschlagen** einen editierbaren Vorschlag (Aufwand, Priorität, Milestone-Plan) mit expliziter Checkbox zur Übernahme.
 - Tagebuch-Einträge werden semantisch gegen Ziele abgeglichen; erkannte Teilfortschritte (Meilensteine, Fortschritt in %) erscheinen als zweisprachige Vorschläge zur Bestätigung.
+- Tagebuch und Aufgaben verlinken sich gegenseitig: Tages-Einträge listen die verknüpften Ziele/Tasks und die Aufgaben-Detailansicht zeigt, wann sie im Journal erwähnt wurden; beim Abschließen einer Aufgabe kannst du direkt eine kurze Reflexion für das heutige Journal notieren / Journal and tasks are now linked both ways: daily entries show their connected goals/tasks and task details highlight the journal dates mentioning them; completing a task optionally opens a short reflection box for today's journal entry.
 
 ## Voraussetzungen
 
