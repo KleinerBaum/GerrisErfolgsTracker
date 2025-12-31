@@ -1716,37 +1716,15 @@ def render_workload_overview(*, todos: list[TodoItem], stats: KpiStats) -> None:
 
 def render_dashboard_header(*, settings: dict[str, Any]) -> None:
     header = st.container()
-    first_row = header.columns([2, 1, 1])
-    with first_row[0]:
+    header_columns = header.columns([2, 1, 1, 1])
+    with header_columns[0]:
         st.markdown("## Gerris ErfolgsTracker")
-        st.caption(
-            translate_text(
-                (
-                    "Schnellzugriff für Aufgaben, Ziele und Journal – alles linksbündig in drei Zeilen.",
-                    "Quick access for tasks, goals, and journal — aligned left in three rows.",
-                )
-            )
-        )
-    with first_row[1]:
+    with header_columns[1]:
         _render_goal_quick_todo_popover()
-    with first_row[2]:
+    with header_columns[2]:
         _render_goal_quick_goal_popover(settings=settings)
-
-    second_row = header.columns([2, 1, 1])
-    with second_row[0]:
-        st.write("")
-    with second_row[1]:
-        st.write("")
-    with second_row[2]:
-        st.write("")
-
-    third_row = header.columns([2, 1, 1])
-    with third_row[0]:
-        st.write("")
-    with third_row[1]:
+    with header_columns[3]:
         _render_goal_quick_journal_popover()
-    with third_row[2]:
-        st.write("")
 
 
 def render_shared_calendar_header() -> None:
