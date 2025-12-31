@@ -124,9 +124,7 @@ def _coerce_todo(raw: Any) -> TodoItem:
         migrated.setdefault("email_reminder", EmailReminderOffset.NONE)
         migrated.setdefault("reminder_at", None)
         migrated.setdefault("reminder_sent_at", None)
-        migrated["created_at"] = _normalize_timestamp(
-            migrated.get("created_at"), default=datetime.now(timezone.utc)
-        )
+        migrated["created_at"] = _normalize_timestamp(migrated.get("created_at"), default=datetime.now(timezone.utc))
         migrated["due_date"] = _normalize_timestamp(migrated.get("due_date"))
         migrated["completed_at"] = _normalize_timestamp(migrated.get("completed_at"))
         migrated["reminder_at"] = _normalize_timestamp(migrated.get("reminder_at"))

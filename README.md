@@ -79,6 +79,9 @@ Hinweise:
   App schreibt ebenfalls in den OneDrive-Pfad (über `GERRIS_ONEDRIVE_DIR` konfigurierbar); auf der Community Cloud kann die
   Datei dennoch flüchtig sein und nach einem Neustart verschwinden. Sichere Daten durch OneDrive-Versionierung oder manuelle
   Backups.
+- **Build-Info in der Sidebar:** Die App zeigt den aktuellen Commit (Kurz-Hash + Datum) in der Sidebar an, damit Deployments
+  sofort mit dem erwarteten `main`-Stand abgeglichen werden können / The app surfaces the current commit (short hash + commit
+  date) in the sidebar so deployments can be compared against the expected `main` revision at a glance.
 
 ## Secrets, AI & Datenschutz
 
