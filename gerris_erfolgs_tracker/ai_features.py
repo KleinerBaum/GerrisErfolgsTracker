@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Generic, Mapping, Optional, Sequence, TypeVar
 
 from openai import OpenAI
@@ -158,18 +158,24 @@ def _recent_mood_hint(journal_entries: Mapping[date, JournalEntry] | None) -> st
 
 
 def _todo_focus_rank(todo: TodoItem) -> tuple[int, datetime, int, datetime]:
+    def _as_utc(value: datetime | None) -> datetime:
+        if value is None:
+            return datetime.max.replace(tzinfo=timezone.utc)
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
     quadrant_rank = {
         EisenhowerQuadrant.URGENT_IMPORTANT: 0,
         EisenhowerQuadrant.NOT_URGENT_IMPORTANT: 1,
         EisenhowerQuadrant.URGENT_NOT_IMPORTANT: 2,
         EisenhowerQuadrant.NOT_URGENT_NOT_IMPORTANT: 3,
     }
-    due_date = todo.due_date or datetime.max
     return (
         quadrant_rank.get(ensure_quadrant(todo.quadrant), 3),
-        due_date,
+        _as_utc(todo.due_date),
         todo.priority,
-        todo.created_at,
+        _as_utc(todo.created_at),
     )
 
 

@@ -220,6 +220,26 @@ class TodoItem(BaseModel):
     reminder_at: Optional[datetime] = None
     reminder_sent_at: Optional[datetime] = None
 
+    @model_validator(mode="after")
+    def _ensure_timezone_awareness(self) -> "TodoItem":
+        def _as_utc(value: Optional[datetime]) -> Optional[datetime]:
+            if value is None:
+                return None
+            if value.tzinfo is None:
+                return value.replace(tzinfo=timezone.utc)
+            return value.astimezone(timezone.utc)
+
+        updates = {
+            "due_date": _as_utc(self.due_date),
+            "created_at": _as_utc(self.created_at),
+            "completed_at": _as_utc(self.completed_at),
+            "reminder_at": _as_utc(self.reminder_at),
+            "reminder_sent_at": _as_utc(self.reminder_sent_at),
+        }
+        for field, value in updates.items():
+            setattr(self, field, value)
+        return self
+
 
 class JournalEntry(BaseModel):
     """Guided daily journal entry linked to goals and categories."""
