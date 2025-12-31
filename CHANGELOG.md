@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Header-Komponenten im Ziele-Dashboard mit reduzierten Abständen, breiteren Quick-Action-Spalten und kompakten Popover-Labels, damit Titel und Schnellaktionen ohne Leerräume und Clipping sichtbar bleiben / Goal dashboard header tightened with reduced spacing, wider quick-action columns, and compact popover labels so the title and quick actions stay visible without blank gaps or clipping.
 - Sidebar blendet die Build-Info mit Commit-Hash und Datum ein, damit der Live-Stand einfach mit `main` abgeglichen werden kann / Sidebar now surfaces build info with commit hash and date to quickly compare the live deployment with `main`.
 - Quick-Actions-Bedienelemente nutzen wieder die Standard-Zeilenhöhe und flexible Zeilenumbrüche, sodass Popover-Trigger auf breiten und schmaleren Viewports nicht mehr abgeschnitten werden / Quick-action controls now use default line height and allow wrapping so popover triggers stay readable on wide and narrower viewports.
 - Normalisiert ToDo-Zeitstempel (Fälligkeit, Erstellung, Erinnerungen) auf timezone-aware UTC und fängt fehlerhafte Legacy-States ab, sodass Sortierung und Imports auch mit Datums-Strings bzw. naiven Zeiten stabil bleiben / Normalizes todo timestamps (due/created/reminders) to timezone-aware UTC and guards against malformed legacy states so sorting and imports stay robust even when dates come as strings or naive times.

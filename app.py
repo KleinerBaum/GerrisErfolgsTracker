@@ -1043,7 +1043,7 @@ def _build_new_tasks_gauge(new_task_count: int) -> go.Figure:
 
 def _render_goal_quick_todo_popover() -> None:
     with st.popover(
-        translate_text(("Aufgabe erstellen", "Create task")),
+        translate_text(("📝 Aufgabe", "📝 Task")),
         use_container_width=True,
     ):
         st.markdown("**ToDo hinzufügen / Add task**")
@@ -1136,7 +1136,7 @@ def _render_goal_quick_todo_popover() -> None:
 def _render_goal_quick_goal_popover(*, settings: dict[str, Any]) -> None:
     default_profile = settings.get("goal_profile", _default_goal_profile())
     with st.popover(
-        translate_text(("Ziel hinzufügen", "Add goal")),
+        translate_text(("🎯 Ziel", "🎯 Goal")),
         use_container_width=True,
     ):
         st.markdown("**Ziel hinzufügen / Add goal**")
@@ -1205,7 +1205,7 @@ def _render_goal_quick_goal_popover(*, settings: dict[str, Any]) -> None:
 
 def _render_goal_quick_journal_popover() -> None:
     with st.popover(
-        translate_text(("Tagebucheintrag erstellen", "Create journal entry")),
+        translate_text(("📓 Journal", "📓 Journal")),
         use_container_width=True,
     ):
         st.markdown("**Tagebucheintrag / Journal entry**")
@@ -1717,17 +1717,35 @@ def render_workload_overview(*, todos: list[TodoItem], stats: KpiStats) -> None:
 
 
 def render_dashboard_header(*, settings: dict[str, Any]) -> None:
-    """Render the dashboard header with aligned quick-add actions."""
+    """Render a compact dashboard header with aligned quick-add actions."""
+
+    st.markdown(
+        """
+        <style>
+            .dashboard-header h2 {
+                margin-bottom: 0.2rem;
+            }
+            @media (max-width: 768px) {
+                .dashboard-header .stColumn {
+                    flex: 1 1 100% !important;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     header_container = st.container()
-    header_columns = header_container.columns([2, 1, 1, 1])
-    with header_columns[0]:
-        st.markdown("## Gerris ErfolgsTracker")
-    with header_columns[1]:
+    with header_container:
+        title_col, todo_col, goal_col, journal_col = st.columns([3, 2, 2, 2], gap="small")
+
+    with title_col:
+        st.markdown("<div class='dashboard-header'><h2>Gerris ErfolgsTracker</h2></div>", unsafe_allow_html=True)
+    with todo_col:
         _render_goal_quick_todo_popover()
-    with header_columns[2]:
+    with goal_col:
         _render_goal_quick_goal_popover(settings=settings)
-    with header_columns[3]:
+    with journal_col:
         _render_goal_quick_journal_popover()
 
 
