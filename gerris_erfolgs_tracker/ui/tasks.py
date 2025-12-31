@@ -1792,9 +1792,7 @@ def _render_daily_plan_panel(
                     unsafe_allow_html=True,
                 )
         else:
-            plan_container.caption(
-                translate_text(("Keine offenen Empfehlungen", "No open recommendations"))
-            )
+            plan_container.caption(translate_text(("Keine offenen Empfehlungen", "No open recommendations")))
 
         if payload.buffer_tip:
             plan_container.success(payload.buffer_tip)

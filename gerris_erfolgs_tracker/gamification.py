@@ -9,14 +9,19 @@ from gerris_erfolgs_tracker.constants import (
     GAMIFICATION_HISTORY_LIMIT,
     PROCESSED_COMPLETIONS_LIMIT,
     PROCESSED_JOURNAL_EVENTS_LIMIT,
+    PROCESSED_MILESTONE_EVENTS_LIMIT,
+    PROCESSED_PROGRESS_REWARDS_LIMIT,
     SS_GAMIFICATION,
     cap_list_tail,
 )
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
+from gerris_erfolgs_tracker.i18n import translate_text
 from gerris_erfolgs_tracker.models import (
     GamificationMode,
     GamificationState,
     KpiStats,
+    Milestone,
+    MilestoneStatus,
     TodoItem,
 )
 from gerris_erfolgs_tracker.state import persist_state
@@ -30,7 +35,14 @@ POINTS_PER_QUADRANT: Dict[EisenhowerQuadrant, int] = {
 
 BADGE_FIRST_STEP = "Erster Schritt"
 BADGE_CONSISTENCY_3 = "3-Tage-Streak"
+BADGE_CONSISTENCY_7 = "7-Tage-Streak"
+BADGE_CONSISTENCY_30 = "30-Tage-Streak"
 BADGE_DOUBLE_DIGITS = "Zweistellig"
+BADGE_TASK_MASTER = "Task Master (100 erledigte Aufgaben)"
+
+PROGRESS_REWARD_THRESHOLDS: tuple[float, ...] = (0.25, 0.5, 0.75)
+PROGRESS_REWARD_POINTS = 5
+MIN_MILESTONE_POINTS = 5
 
 AVATAR_ROSS_PROMPTS = [
     ("Ich sehe, wie viel Mühe du dir gibst – atme tief durch und mach den nächsten kleinen Schritt."),
@@ -48,6 +60,12 @@ def _coerce_state(raw: object | None) -> GamificationState:
                 "processed_journal_events": cap_list_tail(
                     list(raw.processed_journal_events), PROCESSED_JOURNAL_EVENTS_LIMIT
                 ),
+                "processed_milestone_events": cap_list_tail(
+                    list(raw.processed_milestone_events), PROCESSED_MILESTONE_EVENTS_LIMIT
+                ),
+                "processed_progress_rewards": cap_list_tail(
+                    list(raw.processed_progress_rewards), PROCESSED_PROGRESS_REWARDS_LIMIT
+                ),
             }
         )
     if raw is None:
@@ -56,6 +74,12 @@ def _coerce_state(raw: object | None) -> GamificationState:
     state.history = cap_list_tail(list(state.history), GAMIFICATION_HISTORY_LIMIT)
     state.processed_completions = cap_list_tail(list(state.processed_completions), PROCESSED_COMPLETIONS_LIMIT)
     state.processed_journal_events = cap_list_tail(list(state.processed_journal_events), PROCESSED_JOURNAL_EVENTS_LIMIT)
+    state.processed_milestone_events = cap_list_tail(
+        list(state.processed_milestone_events), PROCESSED_MILESTONE_EVENTS_LIMIT
+    )
+    state.processed_progress_rewards = cap_list_tail(
+        list(state.processed_progress_rewards), PROCESSED_PROGRESS_REWARDS_LIMIT
+    )
     return state
 
 
@@ -89,13 +113,33 @@ def _assign_badges(state: GamificationState, stats: KpiStats) -> None:
         _award_badge(state, BADGE_FIRST_STEP)
     if stats.streak >= 3:
         _award_badge(state, BADGE_CONSISTENCY_3)
+    if stats.streak >= 7:
+        _award_badge(state, BADGE_CONSISTENCY_7)
+    if stats.streak >= 30:
+        _award_badge(state, BADGE_CONSISTENCY_30)
     if stats.done_total >= 10:
         _award_badge(state, BADGE_DOUBLE_DIGITS)
+    if stats.done_total >= 100:
+        _award_badge(state, BADGE_TASK_MASTER)
 
 
 def _journal_event_token(entry_date: date, target_title: str) -> str:
     normalized_title = target_title.strip().lower().replace(" ", "-")
     return f"journal:{entry_date.isoformat()}:{normalized_title}"
+
+
+def _milestone_event_token(todo: TodoItem, milestone: Milestone) -> str:
+    return f"milestone:{todo.id}:{milestone.id}"
+
+
+def _progress_reward_token(todo: TodoItem, threshold: float) -> str:
+    percent = int(threshold * 100)
+    return f"progress:{todo.id}:{percent}"
+
+
+def _log_history(state: GamificationState, message: str) -> None:
+    state.history.append(message)
+    state.history = cap_list_tail(state.history, GAMIFICATION_HISTORY_LIMIT)
 
 
 def award_journal_points(
@@ -117,10 +161,81 @@ def award_journal_points(
     state.processed_journal_events = cap_list_tail(state.processed_journal_events, PROCESSED_JOURNAL_EVENTS_LIMIT)
     state.points += sanitized_points
     state.level = max(1, 1 + state.points // 100)
-    state.history.append(
-        (f"{entry_date.isoformat()} · Journal: +{sanitized_points} Punkte für {target_title} · {rationale}")
+    _log_history(
+        state,
+        f"{entry_date.isoformat()} · Journal: +{sanitized_points} Punkte für {target_title} · {rationale}",
     )
-    state.history = cap_list_tail(state.history, GAMIFICATION_HISTORY_LIMIT)
+    st.session_state[SS_GAMIFICATION] = state.model_dump()
+    persist_state()
+    return state
+
+
+def award_milestone_points(*, todo: TodoItem, milestone: Milestone) -> GamificationState:
+    state = _coerce_state(st.session_state.get(SS_GAMIFICATION))
+    token = _milestone_event_token(todo, milestone)
+    if milestone.status is not MilestoneStatus.DONE or token in state.processed_milestone_events:
+        return state
+
+    points = max(milestone.points, MIN_MILESTONE_POINTS)
+    state.processed_milestone_events.append(token)
+    state.processed_milestone_events = cap_list_tail(state.processed_milestone_events, PROCESSED_MILESTONE_EVENTS_LIMIT)
+    state.points += points
+    state.level = max(1, 1 + state.points // 100)
+    _log_history(
+        state,
+        f"{datetime.now(timezone.utc).isoformat()} · Meilenstein '{milestone.title}' erledigt: +{points} Punkte",
+    )
+    st.toast(
+        translate_text(
+            (
+                f"✅ Meilenstein abgeschlossen: +{points} Punkte",
+                f"✅ Milestone completed: +{points} points",
+            )
+        )
+    )
+    st.session_state[SS_GAMIFICATION] = state.model_dump()
+    persist_state()
+    return state
+
+
+def award_progress_points(*, todo: TodoItem, previous_progress: float, updated_progress: float) -> GamificationState:
+    state = _coerce_state(st.session_state.get(SS_GAMIFICATION))
+    if todo.progress_target is None or todo.progress_target <= 0:
+        return state
+
+    newly_crossed: list[float] = []
+    for threshold in PROGRESS_REWARD_THRESHOLDS:
+        token = _progress_reward_token(todo, threshold)
+        if token in state.processed_progress_rewards:
+            continue
+
+        target_value = todo.progress_target * threshold
+        if previous_progress < target_value <= updated_progress:
+            newly_crossed.append(threshold)
+            state.processed_progress_rewards.append(token)
+
+    if not newly_crossed:
+        return state
+
+    state.processed_progress_rewards = cap_list_tail(state.processed_progress_rewards, PROCESSED_PROGRESS_REWARDS_LIMIT)
+    gained_points = PROGRESS_REWARD_POINTS * len(newly_crossed)
+    state.points += gained_points
+    state.level = max(1, 1 + state.points // 100)
+
+    thresholds_pct = ", ".join(f"{int(threshold * 100)}%" for threshold in newly_crossed)
+    _log_history(
+        state,
+        f"{datetime.now(timezone.utc).isoformat()} · Fortschritt bei '{todo.title}' ({thresholds_pct})"
+        f" · +{gained_points} Punkte",
+    )
+    st.toast(
+        translate_text(
+            (
+                f"💪 Fortschritt erreicht ({thresholds_pct}): +{gained_points} Punkte",
+                f"💪 Progress reached ({thresholds_pct}): +{gained_points} points",
+            )
+        )
+    )
     st.session_state[SS_GAMIFICATION] = state.model_dump()
     persist_state()
     return state
@@ -176,7 +291,12 @@ __all__ = [
     "POINTS_PER_QUADRANT",
     "BADGE_FIRST_STEP",
     "BADGE_CONSISTENCY_3",
+    "BADGE_CONSISTENCY_7",
+    "BADGE_CONSISTENCY_30",
     "BADGE_DOUBLE_DIGITS",
+    "BADGE_TASK_MASTER",
     "AVATAR_ROSS_PROMPTS",
     "GamificationMode",
+    "award_milestone_points",
+    "award_progress_points",
 ]
