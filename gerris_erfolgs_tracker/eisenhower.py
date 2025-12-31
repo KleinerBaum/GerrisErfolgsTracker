@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import StrEnum
 from typing import TYPE_CHECKING, Dict, Iterable, List, Literal, Mapping
 
@@ -135,8 +135,17 @@ def group_by_quadrant(
 
 
 def _due_date_sort_key(todo: "TodoItem") -> tuple[int, datetime]:
-    fallback = datetime.max
-    return (0 if todo.due_date is not None else 1, todo.due_date or fallback)
+    fallback = datetime.max.replace(tzinfo=timezone.utc)
+    due_date = todo.due_date or fallback
+    normalized = due_date if due_date.tzinfo else due_date.replace(tzinfo=timezone.utc)
+    return (0 if todo.due_date is not None else 1, normalized)
+
+
+def _created_at_sort_key(todo: "TodoItem") -> tuple[bool, datetime]:
+    fallback = datetime.max.replace(tzinfo=timezone.utc)
+    created_at = todo.created_at or fallback
+    normalized = created_at if created_at.tzinfo else created_at.replace(tzinfo=timezone.utc)
+    return (todo.created_at is None, normalized)
 
 
 def sort_todos(todos: Iterable["TodoItem"], *, by: SortKey = "due_date") -> List["TodoItem"]:
@@ -144,10 +153,7 @@ def sort_todos(todos: Iterable["TodoItem"], *, by: SortKey = "due_date") -> List
         case "due_date":
             return sorted(todos, key=_due_date_sort_key)
         case "created_at":
-            return sorted(
-                todos,
-                key=lambda todo: (todo.created_at is None, todo.created_at),  # noqa: E731
-            )
+            return sorted(todos, key=_created_at_sort_key)
         case "title":
             return sorted(todos, key=lambda todo: todo.title.casefold())  # noqa: E731
         case _:

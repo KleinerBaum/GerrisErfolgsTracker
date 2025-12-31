@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Literal, Mapping, Optional, Sequence, cast
 
 import streamlit as st
@@ -99,6 +99,19 @@ from gerris_erfolgs_tracker.todos import (
 from gerris_erfolgs_tracker.ui.common import quadrant_badge
 
 SortOverride = Literal["priority", "due_date", "created_at"]
+
+
+def _as_utc_midnight(value: Optional[date | datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        normalized = value
+    else:
+        normalized = datetime.combine(value, time.min)
+
+    if normalized.tzinfo is None:
+        return normalized.replace(tzinfo=timezone.utc)
+    return normalized.astimezone(timezone.utc)
 
 
 def _points_for_complexity(complexity: MilestoneComplexity) -> int:
@@ -947,6 +960,7 @@ def render_task_row(
                         key=f"quick_due_{todo.id}",
                         label_visibility="collapsed",
                     )
+                    new_due_datetime = _as_utc_midnight(new_due)
                     new_quadrant = st.selectbox(
                         "Eisenhower-Quadrant",
                         options=list(EisenhowerQuadrant),
@@ -1046,7 +1060,7 @@ def render_task_row(
                         todo.id,
                         category=new_category,
                         priority=new_priority,
-                        due_date=new_due,
+                        due_date=new_due_datetime,
                         quadrant=new_quadrant,
                         progress_current=edit_progress_current,
                         progress_target=resolved_edit_target,
@@ -1319,12 +1333,13 @@ def render_todo_section(
                 placeholder="Nächstes ToDo eingeben / Enter next task",
             )
 
-            due_date: Optional[date] = st.date_input(
+            due_date_input: Optional[date] = st.date_input(
                 "Fälligkeitsdatum / Due date",
                 value=st.session_state.get(NEW_TODO_DUE_KEY),
                 key=NEW_TODO_DUE_KEY,
                 format="YYYY-MM-DD",
             )
+            due_date_utc = _as_utc_midnight(due_date_input)
 
             recurrence = st.selectbox(
                 "Wiederholung / Recurrence",
@@ -1363,7 +1378,7 @@ def render_todo_section(
                     plan_suggestion = _request_task_proposal(
                         title=title,
                         description=description_text,
-                        due_date=due_date,
+                        due_date=due_date_input,
                         quadrant=quadrant_guess,
                         client=client if ai_enabled else None,
                     )
@@ -1372,7 +1387,7 @@ def render_todo_section(
                     label = "KI-Vorschlag" if plan_suggestion.from_ai else "Fallback"
                     st.info(f"{label}: Plan aktualisiert.")
 
-            _render_task_proposal_editor(due_date=due_date)
+            _render_task_proposal_editor(due_date=due_date_input)
             milestone_title = st.text_input(
                 "Titel des Meilensteins / Milestone title",
                 key=NEW_MILESTONE_TITLE_KEY,
@@ -1630,7 +1645,8 @@ def render_todo_section(
                 if apply_proposal and st.session_state.get(TASK_AI_PROPOSAL_KEY):
                     try:
                         proposal_model = TaskAIProposal.model_validate(
-                            st.session_state[TASK_AI_PROPOSAL_KEY] | {"start_date": date.today(), "due_date": due_date}
+                            st.session_state[TASK_AI_PROPOSAL_KEY]
+                            | {"start_date": date.today(), "due_date": due_date_input}
                         )
                         quadrant = proposal_model.suggested_quadrant
                         priority = proposal_model.suggested_priority
@@ -1670,7 +1686,7 @@ def render_todo_section(
                 common_todo_kwargs: dict[str, Any] = dict(
                     title=title.strip(),
                     quadrant=quadrant,
-                    due_date=due_date,
+                    due_date=due_date_utc,
                     category=category,
                     priority=priority,
                     description_md=description_md,
@@ -1919,6 +1935,7 @@ def render_todo_card(todo: TodoItem, *, journal_links: Mapping[str, list[date]] 
                     format="YYYY-MM-DD",
                     key=f"edit_due_{todo.id}",
                 )
+                new_due_datetime = _as_utc_midnight(new_due)
                 new_quadrant = st.selectbox(
                     "Eisenhower-Quadrant",
                     options=list(EisenhowerQuadrant),
@@ -1958,7 +1975,7 @@ def render_todo_card(todo: TodoItem, *, journal_links: Mapping[str, list[date]] 
                         todo.id,
                         title=new_title.strip(),
                         quadrant=new_quadrant,
-                        due_date=new_due,
+                        due_date=new_due_datetime,
                         category=new_category,
                         priority=new_priority,
                         description_md=new_description,

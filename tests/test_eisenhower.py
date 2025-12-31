@@ -55,3 +55,28 @@ def test_quadrant_parsing_and_invalid_input() -> None:
 
     with pytest.raises(ValueError):
         ensure_quadrant("unknown")
+
+
+def test_sorting_handles_naive_and_aware_datetimes() -> None:
+    todos = [
+        _todo(
+            "Naive due",
+            EisenhowerQuadrant.URGENT_NOT_IMPORTANT,
+            due=datetime(2024, 1, 2),
+            created=datetime(2024, 1, 2),
+        ),
+        _todo(
+            "Aware due",
+            EisenhowerQuadrant.NOT_URGENT_IMPORTANT,
+            due=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            created=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        ),
+    ]
+
+    sorted_by_due = sort_todos(todos, by="due_date")
+    assert [todo.title for todo in sorted_by_due] == ["Aware due", "Naive due"]
+
+    sorted_by_created = sort_todos(todos, by="created_at")
+    assert [todo.title for todo in sorted_by_created] == ["Aware due", "Naive due"]
+
+    assert all(todo.due_date and todo.due_date.tzinfo is not None for todo in sorted_by_due)

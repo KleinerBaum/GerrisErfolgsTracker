@@ -32,6 +32,7 @@ Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI
 - Ein OpenAI API Key, falls du Modellantworten erzeugen möchtest (`OPENAI_API_KEY`).
 - Optional: Modell-Override via `OPENAI_MODEL` (Standard: `gpt-4o-mini`) und benutzerdefinierte Basis-URL z. B. EU-Endpunkt.
 - Optionale Persistenz & Sync: Die App schreibt standardmäßig in einen OneDrive-Sync-Ordner (z. B. `~/OneDrive/GerrisErfolgsTracker/gerris_state.json` oder `C:\\Users\\gerri\\OneDrive\\GerrisErfolgsTracker`). Über `GERRIS_ONEDRIVE_DIR` kannst du den Pfad explizit setzen; das Verzeichnis wird bei Bedarf angelegt. Anhänge (PNG/JPG) landen in `attachments/<todo_id>/` unterhalb des gleichen Stammordners, der JSON-State speichert nur Dateireferenzen.
+- Alle Zeitstempel werden intern als timezone-aware UTC-Datetimes gespeichert, um Sortierungen konsistent zu halten / All timestamps are stored as timezone-aware UTC datetimes to keep sorting consistent.
 - Optionale E-Mail-Erinnerungen über Brevo: `BREVO_API_KEY` + `BREVO_SENDER` (und optional `BREVO_SENDER_NAME`) in der Umgebung setzen.
 
 ## Datenhaltung & Backup/Recovery
