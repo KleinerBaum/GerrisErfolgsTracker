@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Sidebar-Sicherheitshinweise sind standardmäßig eingeklappt und per Toggle **Hinweise anzeigen / Show safety notes** abrufbar, sodass Navigation und Steuerung oben mehr Platz behalten, ohne die Hinweise zu verlieren / Sidebar safety notes now stay collapsed by default behind the **Hinweise anzeigen / Show safety notes** toggle, keeping navigation and controls visible while retaining access to the notices.
 - Tagesziel-Eingabe nutzt nur den initialen Fallback und überlässt den Widget-State Streamlit, damit manuelle Werte auch nach Reruns erhalten bleiben / Daily goal input now uses fallback only on first render and lets Streamlit own the widget state, so manual values survive reruns.
 - Header-Komponenten im Ziele-Dashboard mit reduzierten Abständen, breiteren Quick-Action-Spalten und kompakten Popover-Labels, damit Titel und Schnellaktionen ohne Leerräume und Clipping sichtbar bleiben / Goal dashboard header tightened with reduced spacing, wider quick-action columns, and compact popover labels so the title and quick actions stay visible without blank gaps or clipping.
 - Sidebar blendet die Build-Info mit Commit-Hash und Datum ein, damit der Live-Stand einfach mit `main` abgeglichen werden kann / Sidebar now surfaces build info with commit hash and date to quickly compare the live deployment with `main`.

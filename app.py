@@ -48,6 +48,7 @@ from gerris_erfolgs_tracker.constants import (
     NEW_TODO_RESET_TRIGGER_KEY,
     NEW_TODO_TITLE_KEY,
     SETTINGS_GOAL_DAILY_KEY,
+    SHOW_SAFETY_NOTES_KEY,
     SHOW_STORAGE_NOTICE_KEY,
     SS_SETTINGS,
 )
@@ -696,6 +697,7 @@ def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> d
         settings = {}
 
     settings.setdefault(AI_ENABLED_KEY, bool(client))
+    settings.setdefault(SHOW_SAFETY_NOTES_KEY, False)
     settings.setdefault(SHOW_STORAGE_NOTICE_KEY, False)
     settings.setdefault("goal_daily", stats.goal_daily)
     settings.setdefault("gamification_mode", GamificationMode.POINTS.value)
@@ -2145,7 +2147,7 @@ def render_sidebar_sections(
     settings_dict = dict(settings)
     render_gamification_mode_selector(settings_dict)
 
-    safety_panel = st.sidebar.expander("Sicherheit & Daten", expanded=False)
+    safety_panel = st.sidebar.expander(translate_text(("Sicherheit & Daten", "Safety & data")), expanded=False)
     with safety_panel:
         show_storage_notice = render_safety_panel(panel=safety_panel)
 
@@ -2249,17 +2251,37 @@ def render_gamification_panel(
 
 def render_safety_panel(panel: Any) -> bool:
     settings: dict[str, Any] = st.session_state.get(SS_SETTINGS, {})
-    panel.info(
-        "Optionale lokale Persistenz speichert Daten in .data/gerris_state.json; "
-        "auf Streamlit Community Cloud können Dateien nach einem Neustart verschwinden."
+    show_safety_notes = panel.toggle(
+        ("Hinweise anzeigen", "Show safety notes"),
+        value=bool(settings.get(SHOW_SAFETY_NOTES_KEY, False)),
+        help=(
+            "Blendet Speicher- und Sicherheitshinweise innerhalb des Panels ein oder aus.",
+            "Toggle storage and safety notes inside this panel on or off.",
+        ),
     )
-    panel.warning(
-        "Dieses Tool ersetzt keine Krisenhilfe oder Diagnosen. Bei akuten Notfällen wende dich an lokale Hotlines."
-    )
+    settings[SHOW_SAFETY_NOTES_KEY] = show_safety_notes
+
+    if show_safety_notes:
+        panel.info(
+            (
+                "Optionale lokale Persistenz speichert Daten in .data/gerris_state.json; auf Streamlit Community Cloud können Dateien nach einem Neustart verschwinden.",
+                "Optional local persistence stores data in .data/gerris_state.json; on Streamlit Community Cloud files may disappear after a restart.",
+            )
+        )
+        panel.warning(
+            (
+                "Dieses Tool ersetzt keine Krisenhilfe oder Diagnosen. Bei akuten Notfällen wende dich an lokale Hotlines.",
+                "This tool is not a replacement for crisis support or medical diagnostics. In emergencies, contact your local hotlines.",
+            )
+        )
+
     show_storage_notice = panel.toggle(
-        "Speicherhinweis anzeigen",
+        ("Speicherhinweis anzeigen", "Show storage notice"),
         value=bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False)),
-        help=("Blendet den Hinweis zum aktuellen Speicherpfad oberhalb des Titels ein oder aus"),
+        help=(
+            "Blendet den Hinweis zum aktuellen Speicherpfad oberhalb des Titels ein oder aus.",
+            "Show or hide the storage notice above the sidebar title.",
+        ),
     )
     settings[SHOW_STORAGE_NOTICE_KEY] = show_storage_notice
 
