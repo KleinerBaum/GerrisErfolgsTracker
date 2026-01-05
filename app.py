@@ -744,7 +744,12 @@ def render_settings_panel(
 
     if include_ai_and_safety:
         panel.markdown(translate_text(("#### AI & Sicherheit", "#### AI & safety")))
-        ai_enabled = render_ai_toggle(settings, client=client, container=panel)
+        ai_enabled = render_ai_toggle(
+            settings,
+            client=client,
+            container=panel,
+            key_suffix="panel",
+        )
         with _panel_section(panel, translate_text(("Sicherheit & Daten", "Safety & data"))) as safety_panel:
             render_safety_panel(panel=safety_panel or panel)
         panel.divider()
@@ -1879,7 +1884,12 @@ def render_settings_popover(
     show_storage_notice = bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False))
     with st.popover(translate_text(("⚙️ Einstellungen", "⚙️ Settings")), use_container_width=True):
         st.markdown("**Schnelleinstellungen / Quick settings**")
-        ai_enabled = render_ai_toggle(settings, client=client, container=st)
+        ai_enabled = render_ai_toggle(
+            settings,
+            client=client,
+            container=st,
+            key_suffix="popover",
+        )
         render_gamification_mode_selector(settings, container=st, show_divider=False)
 
         safety_expander = st.expander(translate_text(("Sicherheit & Daten", "Safety & data")), expanded=False)
@@ -2287,14 +2297,23 @@ def render_language_toggle() -> LanguageCode:
     return get_language()
 
 
-def render_ai_toggle(settings: dict[str, Any], *, client: Optional[OpenAI], container: Any = st.sidebar) -> bool:
+def render_ai_toggle(
+    settings: dict[str, Any],
+    *,
+    client: Optional[OpenAI],
+    container: Any = st.sidebar,
+    key: str | None = None,
+    key_suffix: str | None = None,
+) -> bool:
+    widget_key = key or (f"{AI_ENABLED_KEY}_{key_suffix}" if key_suffix else AI_ENABLED_KEY)
     ai_enabled = container.toggle(
         "AI aktiv",
-        key=AI_ENABLED_KEY,
+        key=widget_key,
         value=bool(settings.get(AI_ENABLED_KEY, bool(client))),
         help=("Aktiviere KI-gestützte Vorschläge. Ohne Schlüssel werden Fallback-Texte genutzt"),
     )
     settings[AI_ENABLED_KEY] = ai_enabled
+    st.session_state[AI_ENABLED_KEY] = ai_enabled
     st.session_state[SS_SETTINGS] = settings
     persist_state()
     return ai_enabled
