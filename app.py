@@ -34,7 +34,7 @@ from gerris_erfolgs_tracker.constants import (
     AI_QUADRANT_RATIONALE_KEY,
     AVATAR_PROMPT_INDEX_KEY,
     GOAL_CREATION_VISIBLE_KEY,
-    GOAL_OVERVIEW_SELECTED_TASKS_KEY,
+    GOAL_OVERVIEW_SELECTED_CATEGORIES_KEY,
     NEW_TODO_CATEGORY_KEY,
     NEW_TODO_DESCRIPTION_KEY,
     NEW_TODO_DUE_KEY,
@@ -298,26 +298,28 @@ def _sanitize_category_goals(settings: Mapping[str, object]) -> dict[str, int]:
     return sanitized
 
 
-def _sanitize_goal_overview_tasks(selection: object, todos: Sequence[TodoItem]) -> list[str]:
-    valid_ids = {todo.id for todo in todos}
+def _sanitize_goal_overview_categories(selection: object) -> list[str]:
+    valid_ids = {category.value for category in Category}
     if not isinstance(selection, list):
         return []
 
     sanitized: list[str] = []
     for candidate in selection:
-        candidate_id = str(candidate)
-        if candidate_id in valid_ids:
-            sanitized.append(candidate_id)
+        candidate_value = str(candidate)
+        if candidate_value in valid_ids:
+            sanitized.append(candidate_value)
 
     return sanitized
 
 
-def _filter_goal_overview_todos(todos: Sequence[TodoItem], selected_ids: Sequence[str]) -> list[TodoItem]:
-    if not selected_ids:
+def _filter_goal_overview_todos_by_category(
+    todos: Sequence[TodoItem], selected_categories: Sequence[str]
+) -> list[TodoItem]:
+    if not selected_categories:
         return list(todos)
 
-    selected_lookup = set(selected_ids)
-    filtered = [todo for todo in todos if todo.id in selected_lookup]
+    allowed_categories = set(selected_categories)
+    filtered = [todo for todo in todos if todo.category.value in allowed_categories]
     return filtered or list(todos)
 
 
@@ -1496,33 +1498,41 @@ def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[
                 )
             )
         )
-        if not todos:
-            st.info(translate_text(("Keine Aufgaben vorhanden.", "No tasks available.")))
-            return []
-
-        option_lookup = {
-            todo.id: f"{todo.title} · {translate_text(todo.category.label)} · "
-            f"{translate_text(('Status: offen', 'Status: open')) if not todo.completed else translate_text(('Status: erledigt', 'Status: done'))}"
-            for todo in todos
+        category_labels: dict[Category, tuple[str, str]] = {
+            Category.JOB_SEARCH: ("Stellensuche", "Job search"),
+            Category.ADMIN: ("Administratives", "Administrative"),
+            Category.FRIENDS_FAMILY: ("Familie & Freunde", "Family & friends"),
+            Category.DRUGS: ("Drogen", "Substance use"),
+            Category.DAILY_STRUCTURE: ("Tagesstruktur", "Daily structure"),
         }
-        previous_selection = _sanitize_goal_overview_tasks(settings.get(GOAL_OVERVIEW_SELECTED_TASKS_KEY, []), todos)
-        default_selection = previous_selection or list(option_lookup)
 
-        selection = st.multiselect(
-            "Aufgaben für das Dashboard",
-            options=list(option_lookup),
-            default=default_selection,
-            format_func=lambda value: option_lookup.get(value, value),
-            help=translate_text(
-                (
-                    "Setze ein Häkchen bei den Aufgaben, die in KPI-Zielen und Kategorien berücksichtigt werden sollen.",
-                    "Check the tasks that should count toward KPI goals and category gauges.",
+        previous_selection = _sanitize_goal_overview_categories(settings.get(GOAL_OVERVIEW_SELECTED_CATEGORIES_KEY, []))
+        default_selection = previous_selection or [category.value for category in Category]
+
+        checkbox_columns = st.columns(3)
+        selection_lookup = set(default_selection)
+        for index, category in enumerate(Category):
+            label = translate_text(category_labels.get(category, (category.label, category.label)))
+            with checkbox_columns[index % len(checkbox_columns)]:
+                checked = st.checkbox(
+                    label,
+                    value=category.value in selection_lookup,
+                    key=f"goal_overview_category_{category.value}",
+                    help=translate_text(
+                        (
+                            "Wähle aus, welche Kategorien als Tachometer angezeigt werden.",
+                            "Pick the categories that should be displayed as gauges.",
+                        )
+                    ),
                 )
-            ),
-        )
-        sanitized_selection = _sanitize_goal_overview_tasks(selection, todos)
+                if checked:
+                    selection_lookup.add(category.value)
+                else:
+                    selection_lookup.discard(category.value)
+
+        sanitized_selection = _sanitize_goal_overview_categories(sorted(selection_lookup))
         if sanitized_selection != previous_selection:
-            settings[GOAL_OVERVIEW_SELECTED_TASKS_KEY] = sanitized_selection
+            settings[GOAL_OVERVIEW_SELECTED_CATEGORIES_KEY] = sanitized_selection
             st.session_state[SS_SETTINGS] = settings
             persist_state()
 
@@ -1536,27 +1546,31 @@ def render_goal_overview(
     st.caption(
         translate_text(
             (
-                "Wähle relevante Aufgaben für die Kennzahlen aus und öffne Details pro Kategorie.",
-                "Select the tasks that should drive your metrics and open category details as needed.",
+                "Wähle relevante Kategorien für die Kennzahlen aus und öffne Details pro Kategorie.",
+                "Select the categories that should drive your metrics and open category details as needed.",
             )
         )
     )
 
-    selected_task_ids = _render_goal_overview_settings(settings=settings, todos=todos)
-    filtered_todos = _filter_goal_overview_todos(todos, selected_task_ids)
+    selected_categories = _render_goal_overview_settings(settings=settings, todos=todos)
+    filtered_todos = _filter_goal_overview_todos_by_category(todos, selected_categories)
     snapshots = aggregate_category_kpis(
         filtered_todos,
         category_goals=category_goals,
         fallback_streak=stats.streak,
     )
 
-    selected_category_value = st.session_state.get(
-        GOAL_OVERVIEW_SELECTED_CATEGORY_KEY,
-        Category.FRIENDS_FAMILY.value,
-    )
+    visible_categories = selected_categories or [category.value for category in Category]
+    selected_category_value = st.session_state.get(GOAL_OVERVIEW_SELECTED_CATEGORY_KEY)
+    if selected_category_value not in visible_categories:
+        selected_category_value = visible_categories[0]
+        st.session_state[GOAL_OVERVIEW_SELECTED_CATEGORY_KEY] = selected_category_value
 
     overview_columns = st.columns([1, 1, 1, 1, 1])
+    visible_lookup = set(visible_categories)
     for category_index, category in enumerate(Category):
+        if category.value not in visible_lookup:
+            continue
         snapshot = snapshots[category]
         with overview_columns[category_index]:
             st.markdown(f"**{category.label}**")
