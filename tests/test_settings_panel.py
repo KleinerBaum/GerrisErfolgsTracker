@@ -244,9 +244,7 @@ def test_settings_panel_uses_unique_ai_toggle_key(
     session_state[AI_ENABLED_KEY] = True
     session_state[SS_SETTINGS] = {AI_ENABLED_KEY: True}
 
-    ai_enabled = render_settings_panel(
-        stats, client=None, panel=panel_stub, include_ai_and_safety=True
-    )
+    ai_enabled = render_settings_panel(stats, client=None, panel=panel_stub, include_ai_and_safety=True)
 
     assert ai_enabled is True
     assert f"{AI_ENABLED_KEY}_panel" in panel_stub.toggle_keys
