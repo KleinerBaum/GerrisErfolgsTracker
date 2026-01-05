@@ -751,7 +751,7 @@ def render_settings_panel(
             key_suffix="panel",
         )
         with _panel_section(panel, translate_text(("Sicherheit & Daten", "Safety & data"))) as safety_panel:
-            render_safety_panel(panel=safety_panel or panel)
+            render_safety_panel(panel=safety_panel or panel, key_suffix="panel")
         panel.divider()
 
     panel.subheader(translate_text(("Tagesziele & Planung", "Daily targets & planning")))
@@ -1894,7 +1894,7 @@ def render_settings_popover(
 
         safety_expander = st.expander(translate_text(("Sicherheit & Daten", "Safety & data")), expanded=False)
         with safety_expander:
-            show_storage_notice = render_safety_panel(panel=safety_expander)
+            show_storage_notice = render_safety_panel(panel=safety_expander, key_suffix="popover")
 
         st.divider()
         render_build_info_sidebar(build_metadata=build_metadata, container=st)
@@ -2512,17 +2512,23 @@ def render_gamification_panel(
         panel.caption("Klicke erneut für weitere motivierende Botschaften im Therapiezimmer-Stil")
 
 
-def render_safety_panel(panel: Any) -> bool:
+def render_safety_panel(panel: Any, *, key_suffix: str = "") -> bool:
+    key_prefix = f"{key_suffix}_" if key_suffix else ""
+
     settings: dict[str, Any] = st.session_state.get(SS_SETTINGS, {})
+    show_safety_key = f"{key_prefix}{SHOW_SAFETY_NOTES_KEY}"
+    show_safety_notes_default = bool(settings.get(SHOW_SAFETY_NOTES_KEY, False))
     show_safety_notes = panel.toggle(
         ("Hinweise anzeigen", "Show safety notes"),
-        value=bool(settings.get(SHOW_SAFETY_NOTES_KEY, False)),
+        value=bool(st.session_state.get(show_safety_key, show_safety_notes_default)),
+        key=show_safety_key,
         help=(
             "Blendet Speicher- und Sicherheitshinweise innerhalb des Panels ein oder aus.",
             "Toggle storage and safety notes inside this panel on or off.",
         ),
     )
     settings[SHOW_SAFETY_NOTES_KEY] = show_safety_notes
+    st.session_state[show_safety_key] = show_safety_notes
 
     if show_safety_notes:
         panel.info(
@@ -2538,19 +2544,23 @@ def render_safety_panel(panel: Any) -> bool:
             )
         )
 
+    show_storage_key = f"{key_prefix}{SHOW_STORAGE_NOTICE_KEY}"
+    show_storage_default = bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False))
     show_storage_notice = panel.toggle(
         ("Speicherhinweis anzeigen", "Show storage notice"),
-        value=bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False)),
+        value=bool(st.session_state.get(show_storage_key, show_storage_default)),
+        key=show_storage_key,
         help=(
             "Blendet den Hinweis zum aktuellen Speicherpfad oberhalb des Titels ein oder aus.",
             "Show or hide the storage notice above the sidebar title.",
         ),
     )
     settings[SHOW_STORAGE_NOTICE_KEY] = show_storage_notice
+    st.session_state[show_storage_key] = show_storage_notice
 
     if panel.button(
         "Session zurücksetzen",
-        key="reset_session_btn",
+        key=f"{key_prefix}reset_session_btn",
         help=("Löscht ToDos, KPIs, Gamification und Einstellungen aus dieser Sitzung"),
     ):
         for cleanup_key in (
