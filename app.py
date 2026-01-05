@@ -1181,14 +1181,16 @@ def _render_goal_quick_todo_popover() -> None:
                     st.rerun()
 
 
-def _render_goal_quick_goal_popover(*, settings: dict[str, Any]) -> None:
+def _render_goal_quick_goal_popover(
+    *, settings: dict[str, Any], form_key: str = QUICK_GOAL_PROFILE_FORM_KEY
+) -> None:
     default_profile = settings.get("goal_profile", _default_goal_profile())
     with st.popover(
         translate_text(("🎯 Ziel", "🎯 Goal")),
         use_container_width=True,
     ):
         st.markdown("**Ziel hinzufügen / Add goal**")
-        with st.form(QUICK_GOAL_PROFILE_FORM_KEY):
+        with st.form(form_key):
             title = st.text_input(
                 translate_text(("Zielname", "Goal name")),
                 value=str(default_profile.get("title", "")),
@@ -1585,7 +1587,10 @@ def _render_goal_empty_state(*, ai_enabled: bool, settings: dict[str, Any]) -> N
                 )
             ),
         )
-        _render_goal_quick_goal_popover(settings=settings)
+        _render_goal_quick_goal_popover(
+            settings=settings,
+            form_key=f"{QUICK_GOAL_PROFILE_FORM_KEY}_empty",
+        )
 
     with action_columns[1]:
         empty_container.markdown("**" + translate_text(("ToDo hinzufügen", "Add a task")) + "**")
@@ -1857,7 +1862,10 @@ def render_dashboard_header(*, settings: dict[str, Any]) -> None:
     with todo_col:
         _render_goal_quick_todo_popover()
     with goal_col:
-        _render_goal_quick_goal_popover(settings=settings)
+        _render_goal_quick_goal_popover(
+            settings=settings,
+            form_key=f"{QUICK_GOAL_PROFILE_FORM_KEY}_header",
+        )
     with journal_col:
         _render_goal_quick_journal_popover()
 

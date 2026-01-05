@@ -20,6 +20,7 @@
 - Optionales Reflexions-Prompt nach dem Abschluss einer Aufgabe: ein kurzer Notiz-Dialog legt auf Wunsch einen Eintrag für den aktuellen Tag an und verknüpft ihn automatisch mit der erledigten Aufgabe.
 - Aufgaben-Anhänge: Bild-Uploads (PNG/JPG) werden in `attachments/<todo_id>/` im OneDrive-Stamm gespeichert, während der JSON-State nur Dateireferenzen behält / Task attachments store uploaded PNG/JPG files under `attachments/<todo_id>/` in the OneDrive root while keeping only file references in JSON state.
 - Optionaler OpenAI-ScriptComposer erzeugt Wochenrückblicke über strukturierte Outputs; ohne API-Key oder bei Fehlern greifen automatisch die erweiterten Fallback-Templates.
+- Quick-Goal-Popover nutzen jetzt getrennte Formular-Keys im Header und im Empty-State, damit beide Dialoge parallel ohne StreamlitAPIException angezeigt werden / Quick goal popovers now use separate form keys for the header and empty state so both dialogs render simultaneously without StreamlitAPIException.
 - Neues TaskAnalyzer-Modell `TaskAIProposal` mit Validierungen (Datenbereich, Milestone-Reihenfolge) und UI-Button **AI: Plan & Komplexität vorschlagen** inklusive Bearbeitung und expliziter Übernahme-Checkbox im ToDo-Formular.
 - Coach-Templates massiv erweitert (~80+ Einträge) mit Kategorie- und Ton-Tags für Task-Completion, Nudges (überfällig/bald fällig), Streak/Daily-Goal-Meilensteine und Weekly-Reviews.
 - Neuer DE-Sidebar-Coach-Template-Pack (30 Einträge) mit Talking-Head-Tonality und CTA-Metadaten in `gerris_erfolgs_tracker/coach/templates_de.py`.
