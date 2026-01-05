@@ -10,6 +10,7 @@ from app import (
     GOAL_CREATION_VISIBLE_KEY,
     SETTINGS_GOAL_DAILY_KEY,
     _resolve_goal_input_value,
+    render_ai_toggle,
     render_settings_panel,
 )
 from gerris_erfolgs_tracker.constants import SS_SETTINGS
@@ -52,6 +53,7 @@ class _PanelStub:
         self.number_input_value: Optional[float | int] = None
         self.number_inputs: Dict[str, float | int] = {}
         self.columns_calls: List[int] = []
+        self.toggle_keys: List[str | None] = []
 
     def __enter__(self) -> "_PanelStub":
         return self
@@ -93,8 +95,11 @@ class _PanelStub:
     def date_input(self, *_: Any, value: Any = None, **__: Any) -> Any:  # noqa: ANN401
         return value
 
-    def toggle(self, *_: Any, **__: Any) -> bool:  # noqa: ANN401
-        return True
+    def toggle(self, *_: Any, key: Optional[str] = None, value: bool = True, **__: Any) -> bool:  # noqa: ANN401
+        self.toggle_keys.append(key)
+        if key:
+            self.session_state[key] = value
+        return value
 
     def number_input(self, *_: Any, value: int | float, key: Optional[str] = None, **__: Any) -> int | float:  # noqa: ANN401
         self.number_input_value = value
@@ -177,6 +182,29 @@ class _TabStub:
         return None
 
 
+def test_render_ai_toggle_updates_canonical_state_with_unique_key(
+    session_state: Dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings: Dict[str, object] = {AI_ENABLED_KEY: True}
+    plan = _ButtonPlan(responses={})
+    panel_stub = _PanelStub(session_state, plan)
+
+    monkeypatch.setattr("app.persist_state", lambda: None)
+
+    ai_enabled = render_ai_toggle(
+        settings,
+        client=None,
+        container=panel_stub,
+        key_suffix="panel",
+    )
+
+    assert ai_enabled is True
+    assert panel_stub.toggle_keys == [f"{AI_ENABLED_KEY}_panel"]
+    assert settings[AI_ENABLED_KEY] is True
+    assert session_state[AI_ENABLED_KEY] is True
+    assert session_state[SS_SETTINGS] == settings
+
+
 def test_settings_panel_runs_without_daily_goal_controls(
     session_state: Dict[str, object], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -199,6 +227,30 @@ def test_settings_panel_runs_without_daily_goal_controls(
     settings = cast(Dict[str, object], session_state[SS_SETTINGS])
     assert settings["goal_daily"] == 3
     assert plan.responses == {}
+
+
+def test_settings_panel_uses_unique_ai_toggle_key(
+    session_state: Dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stats = KpiStats(goal_daily=3)
+    plan = _ButtonPlan(responses={})
+    st_stub = _StreamlitStub(session_state, plan)
+    panel_stub = _PanelStub(session_state, plan)
+
+    monkeypatch.setattr("app.st", st_stub)
+    monkeypatch.setattr("app.persist_state", lambda: None)
+
+    session_state[GOAL_CREATION_VISIBLE_KEY] = False
+    session_state[AI_ENABLED_KEY] = True
+    session_state[SS_SETTINGS] = {AI_ENABLED_KEY: True}
+
+    ai_enabled = render_settings_panel(
+        stats, client=None, panel=panel_stub, include_ai_and_safety=True
+    )
+
+    assert ai_enabled is True
+    assert f"{AI_ENABLED_KEY}_panel" in panel_stub.toggle_keys
+    assert session_state[AI_ENABLED_KEY] is True
 
 
 def test_settings_panel_uses_two_column_canvas(
