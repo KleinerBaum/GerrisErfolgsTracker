@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 from contextlib import nullcontext
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal, Mapping, Optional, Sequence, TypedDict, cast
 
@@ -104,6 +104,7 @@ from gerris_erfolgs_tracker.todos import (
     add_todo,
     toggle_complete,
     update_milestone,
+    update_todo,
     update_todo_progress,
 )
 from gerris_erfolgs_tracker.ui.common import _inject_dark_theme_styles
@@ -1864,6 +1865,86 @@ def render_workload_overview(*, todos: list[TodoItem], stats: KpiStats) -> None:
                     )
                 )
                 st.write(todo.description_md or translate_text(("Keine Beschreibung", "No description")))
+
+                st.markdown("---")
+                st.markdown("**" + translate_text(("Aufgabe bearbeiten", "Update task")) + "**")
+                with st.form(f"focus_edit_{todo.id}"):
+                    updated_title = st.text_input(
+                        translate_text(("Titel", "Title")),
+                        value=todo.title,
+                        key=f"focus_edit_title_{todo.id}",
+                    )
+
+                    no_due_date = st.checkbox(
+                        translate_text(("Kein Fälligkeitsdatum", "No due date")),
+                        value=todo.due_date is None,
+                        key=f"focus_edit_no_due_{todo.id}",
+                    )
+                    new_due_value: date | None = None
+                    if not no_due_date:
+                        new_due_value = st.date_input(
+                            translate_text(("Fälligkeitsdatum", "Due date")),
+                            value=todo.due_date.date() if todo.due_date else None,
+                            format="YYYY-MM-DD",
+                            key=f"focus_edit_due_{todo.id}",
+                        )
+                    new_priority = st.selectbox(
+                        translate_text(("Priorität (1=hoch)", "Priority (1=high)")),
+                        options=list(range(1, 6)),
+                        index=list(range(1, 6)).index(todo.priority),
+                        key=f"focus_edit_priority_{todo.id}",
+                    )
+                    new_quadrant = st.selectbox(
+                        translate_text(("Eisenhower-Quadrant", "Eisenhower quadrant")),
+                        options=list(EisenhowerQuadrant),
+                        format_func=lambda option: option.label,
+                        index=list(EisenhowerQuadrant).index(todo.quadrant),
+                        key=f"focus_edit_quadrant_{todo.id}",
+                    )
+                    new_category = st.selectbox(
+                        translate_text(("Kategorie", "Category")),
+                        options=list(Category),
+                        format_func=lambda option: option.label,
+                        index=list(Category).index(todo.category),
+                        key=f"focus_edit_category_{todo.id}",
+                    )
+                    description_tabs = st.tabs(
+                        [
+                            translate_text(("Schreiben", "Write")),
+                            translate_text(("Vorschau", "Preview")),
+                        ]
+                    )
+                    with description_tabs[0]:
+                        new_description = st.text_area(
+                            translate_text(("Beschreibung (Markdown)", "Description (Markdown)")),
+                            value=todo.description_md,
+                            key=f"focus_edit_description_{todo.id}",
+                        )
+                    with description_tabs[1]:
+                        description_preview = st.session_state.get(f"focus_edit_description_{todo.id}", "")
+                        if description_preview.strip():
+                            st.markdown(description_preview)
+                        else:
+                            st.caption(translate_text(("Keine Beschreibung vorhanden", "No description available")))
+
+                    submitted = st.form_submit_button(translate_text(("Aktualisieren", "Update")))
+                    if submitted:
+                        new_due_datetime = (
+                            datetime.combine(new_due_value, datetime.min.time(), tzinfo=timezone.utc)
+                            if new_due_value
+                            else None
+                        )
+                        update_todo(
+                            todo.id,
+                            title=updated_title.strip(),
+                            due_date=new_due_datetime,
+                            priority=new_priority,
+                            quadrant=new_quadrant,
+                            category=new_category,
+                            description_md=new_description,
+                        )
+                        st.success(translate_text(("Aufgabe aktualisiert", "Task updated")))
+                        st.rerun()
     with calendar_column:
         st.markdown("**Kalender – aktuelle Woche / Calendar – current week**")
         _render_calendar_week(todos)
@@ -1966,8 +2047,8 @@ def render_dashboard_page(
     st.caption(
         translate_text(
             (
-                "KPIs, Trends und Coaching gebündelt; Details zu Zielen bleiben im Tab 'Ziele'.",
-                "KPIs, trends, and coaching in one place; goal setup stays in the 'Goals' tab.",
+                "Ziel-Übersicht und KPIs direkt hier; Details und Templates bleiben im Tab 'Ziele'.",
+                "Goal overview and KPIs live here; details and templates remain in the 'Goals' tab.",
             )
         )
     )
@@ -1983,6 +2064,13 @@ def render_dashboard_page(
             icon="✨",
         )
         return
+
+    render_goal_overview(
+        todos,
+        stats=stats,
+        category_goals=category_goals,
+        settings=settings,
+    )
 
     render_workload_overview(todos=todos, stats=stats)
 
@@ -2031,11 +2119,13 @@ def render_goals_page(
     if not todos:
         _render_goal_empty_state(ai_enabled=ai_enabled, settings=settings)
     else:
-        render_goal_overview(
-            todos,
-            stats=stats,
-            category_goals=settings.get("category_goals", {}),
-            settings=settings,
+        st.info(
+            translate_text(
+                (
+                    "Der Block 'Ziele im Überblick' ist jetzt im Dashboard platziert; hier verwaltest du weiterhin Vorlagen und Einstellungen.",
+                    "The 'Goals at a glance' block now lives on the dashboard; manage templates and settings here as before.",
+                )
+            )
         )
 
     settings_container = st.container()
