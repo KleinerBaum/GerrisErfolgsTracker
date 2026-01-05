@@ -1239,6 +1239,7 @@ def _render_goal_quick_goal_popover(*, settings: dict[str, Any]) -> None:
                 settings["goal_profile"] = goal_profile
                 st.session_state[SS_SETTINGS] = settings
                 st.session_state[GOAL_CREATION_VISIBLE_KEY] = True
+                st.session_state[NAVIGATION_SELECTION_KEY] = GOALS_PAGE_KEY
                 persist_state()
                 st.success(
                     translate_text(
@@ -1375,6 +1376,7 @@ def render_goal_completion_logger(todos: list[TodoItem]) -> None:
 
     if create_goal_clicked:
         st.session_state[GOAL_CREATION_VISIBLE_KEY] = True
+        st.session_state[NAVIGATION_SELECTION_KEY] = GOALS_PAGE_KEY
         st.rerun()
 
     if not open_todos:
@@ -1547,9 +1549,7 @@ def render_goal_overview(
 
 def _render_goal_empty_state(*, ai_enabled: bool, settings: dict[str, Any]) -> None:
     empty_container = st.container(border=True)
-    empty_container.subheader(
-        translate_text(("Los geht's mit deinen Zielen", "Kick off your goals"))
-    )
+    empty_container.subheader(translate_text(("Los geht's mit deinen Zielen", "Kick off your goals")))
     empty_container.info(
         translate_text(
             (
@@ -1564,12 +1564,8 @@ def _render_goal_empty_state(*, ai_enabled: bool, settings: dict[str, Any]) -> N
     empty_container.markdown(
         translate_text(
             (
-                "1. Zielidee festhalten\n"
-                "2. Erstes ToDo hinzufügen\n"
-                "3. Fortschritt im Dashboard verfolgen",
-                "1. Capture a goal idea\n"
-                "2. Add your first task\n"
-                "3. Track progress in the dashboard",
+                "1. Zielidee festhalten\n2. Erstes ToDo hinzufügen\n3. Fortschritt im Dashboard verfolgen",
+                "1. Capture a goal idea\n2. Add your first task\n3. Track progress in the dashboard",
             )
         )
     )
@@ -2098,9 +2094,13 @@ def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
     )
 
 
-GOALS_PAGE_LABEL = "Ziele"
-TASKS_PAGE_LABEL = "Aufgaben"
-JOURNAL_PAGE_LABEL = "Tagebuch"
+GOALS_PAGE_KEY = "goals"
+TASKS_PAGE_KEY = "tasks"
+JOURNAL_PAGE_KEY = "journal"
+
+GOALS_PAGE_LABEL = ("Ziele", "Goals")
+TASKS_PAGE_LABEL = ("Aufgaben", "Tasks")
+JOURNAL_PAGE_LABEL = ("Tagebuch", "Journal")
 NAVIGATION_SELECTION_KEY = "active_page"
 
 
@@ -2123,15 +2123,20 @@ def render_ai_toggle_sidebar(settings: dict[str, Any], *, client: Optional[OpenA
 
 def render_navigation() -> str:
     st.sidebar.title("Navigation")
-    navigation_options = [GOALS_PAGE_LABEL, TASKS_PAGE_LABEL, JOURNAL_PAGE_LABEL]
+    page_labels = {
+        GOALS_PAGE_KEY: GOALS_PAGE_LABEL,
+        TASKS_PAGE_KEY: TASKS_PAGE_LABEL,
+        JOURNAL_PAGE_KEY: JOURNAL_PAGE_LABEL,
+    }
+    navigation_options = list(page_labels)
     if NAVIGATION_SELECTION_KEY not in st.session_state:
-        st.session_state[NAVIGATION_SELECTION_KEY] = GOALS_PAGE_LABEL
+        st.session_state[NAVIGATION_SELECTION_KEY] = GOALS_PAGE_KEY
     selection = st.sidebar.radio(
         "Bereich wählen",
         navigation_options,
         key=NAVIGATION_SELECTION_KEY,
         label_visibility="collapsed",
-        format_func=translate_text,
+        format_func=lambda option: translate_text(page_labels[option]),
     )
     st.sidebar.divider()
     return selection
@@ -2614,7 +2619,7 @@ def main() -> None:
             "st.secrets oder der Umgebung hinterlegt ist."
         )
 
-    if selection == GOALS_PAGE_LABEL:
+    if selection == GOALS_PAGE_KEY:
         settings = st.session_state.get(SS_SETTINGS, {})
         if not isinstance(settings, dict):
             settings = {}
@@ -2660,7 +2665,7 @@ def main() -> None:
 
         settings_container = st.container()
         ai_enabled = render_settings_panel(stats, client, panel=settings_container)
-    elif selection == TASKS_PAGE_LABEL:
+    elif selection == TASKS_PAGE_KEY:
         render_tasks_page(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
     else:
         render_journal_section(ai_enabled=ai_enabled, client=client, todos=todos)

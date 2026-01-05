@@ -169,6 +169,7 @@ OPENAI_API_KEY = "sk-..."
 ## Einstellungen & Sicherheit
 
 - Die Seitenleiste bündelt die Navigation zwischen **Ziele / Goals**, **Aufgaben / Tasks** und **Tagebuch / Journal** und enthält nur noch die Auswahl der Gamification-Variante (Punkte, Abzeichen oder Avatar/Avatar-Botschaften); die dazugehörigen Inhalte werden im Hauptbereich angezeigt. Die App startet mit geöffneter Sidebar und lädt standardmäßig die Seite **Ziele / Goals** / The sidebar hosts navigation and a compact mode selector for gamification (points, badges, or avatar/motivation); the corresponding content now lives in the main area. The app starts with the sidebar open and defaults to the **Ziele / Goals** page.
+- Die Navigation verwendet stabile interne Keys für die Seitenauswahl, sodass übersetzte Labels keine leeren Seiten mehr erzeugen / Navigation relies on stable internal keys for page selection so translated labels no longer lead to blank pages.
 - Die Sidebar merkt sich die zuletzt gewählte Seite über den Session State, sodass Reruns nicht ungeplant auf **Ziele / Goals** zurückspringen / The sidebar remembers the last selected page via session state so reruns do not unexpectedly jump back to **Ziele / Goals**.
 - Die Oberfläche ist vollständig auf Deutsch festgelegt; der frühere Sprachumschalter in der Sidebar entfällt, damit keine englischen Begriffe erscheinen.
 - Der Schalter **AI aktiv / AI enabled** sitzt oberhalb des Sprachumschalters in der Sidebar und steuert alle KI-Funktionen zentral.

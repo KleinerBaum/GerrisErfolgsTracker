@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Sidebar-Navigation nutzt stabile interne Page-Keys, sodass die Ziele-Seite auch mit übersetzten Labels wieder zuverlässig Inhalte rendert / Sidebar navigation now relies on stable internal page keys, ensuring the Goals page renders reliably even when labels are translated.
 - Sidebar-Navigation behält die aktive Seite über einen Session-State-Schlüssel und verzichtet auf den Index-Reset, sodass Reruns nicht unerwartet auf **Ziele / Goals** zurückspringen / Sidebar navigation now keeps the active page via a session-state key and removes the index reset so reruns do not unexpectedly jump back to **Ziele / Goals**.
 - Sidebar-Sicherheitshinweise sind standardmäßig eingeklappt und per Toggle **Hinweise anzeigen / Show safety notes** abrufbar, sodass Navigation und Steuerung oben mehr Platz behalten, ohne die Hinweise zu verlieren / Sidebar safety notes now stay collapsed by default behind the **Hinweise anzeigen / Show safety notes** toggle, keeping navigation and controls visible while retaining access to the notices.
 - Empty-State für eine leere Ziele-Seite ergänzt: geführter Hinweis mit CTA zum ersten Ziel bzw. ersten ToDo, optional AI-Nudge, damit der Start nicht leer wirkt / Added an empty state to the Goals page with guidance and CTAs for the first goal or task plus an optional AI nudge so the first load does not feel blank.
