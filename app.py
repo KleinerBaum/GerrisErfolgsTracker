@@ -1538,15 +1538,17 @@ def render_goal_completion_logger(todos: list[TodoItem]) -> None:
 
 
 def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[TodoItem]) -> list[str]:
-    with st.expander("Einstellungen", expanded=False):
-        st.caption(
-            translate_text(
-                (
-                    "Passe die Tachometer nach Wunsch an: Anzahl KPIs, Auswahl und Einrichtung einzelner Kennzahlen sowie Farbe oder Darstellungsart.",
-                    "Customize the gauges to your liking: number of KPIs, selection and setup of individual metrics, plus color or visualization style.",
+    settings_column, _ = st.columns([1, 4])
+    with settings_column:
+        with st.expander(translate_text(("Kategorien", "Categories")), expanded=False):
+            st.caption(
+                translate_text(
+                    (
+                        "Passe die Tachometer nach Wunsch an: Anzahl KPIs, Auswahl und Einrichtung einzelner Kennzahlen sowie Farbe oder Darstellungsart.",
+                        "Customize the gauges to your liking: number of KPIs, selection and setup of individual metrics, plus color or visualization style.",
+                    )
                 )
             )
-        )
         category_labels: dict[Category, tuple[str, str]] = {
             Category.JOB_SEARCH: ("Stellensuche", "Job search"),
             Category.ADMIN: ("Administratives", "Administrative"),
@@ -1615,28 +1617,29 @@ def render_goal_overview(
         selected_category_value = visible_categories[0]
         st.session_state[GOAL_OVERVIEW_SELECTED_CATEGORY_KEY] = selected_category_value
 
-    overview_columns = st.columns([1, 1, 1, 1, 1])
     visible_lookup = set(visible_categories)
-    for category_index, category in enumerate(Category):
-        if category.value not in visible_lookup:
-            continue
-        snapshot = snapshots[category]
-        with overview_columns[category_index]:
-            st.markdown(f"**{category.label}**")
-            detail_clicked = st.button(
-                translate_text((f"{category.label} öffnen", f"Open {category.label}")),
-                key=f"category_detail_{category.value}",
-                use_container_width=True,
-            )
-            if detail_clicked:
-                selected_category_value = category.value
-                st.session_state[GOAL_OVERVIEW_SELECTED_CATEGORY_KEY] = category.value
+    categories_to_render = [category for category in Category if category.value in visible_lookup]
+    for row_start in range(0, len(categories_to_render), 3):
+        row_categories = categories_to_render[row_start : row_start + 3]
+        overview_columns = st.columns(len(row_categories))
+        for column, category in zip(overview_columns, row_categories):
+            snapshot = snapshots[category]
+            with column:
+                st.markdown(f"**{category.label}**")
+                detail_clicked = st.button(
+                    translate_text((f"{category.label} öffnen", f"Open {category.label}")),
+                    key=f"category_detail_{category.value}",
+                    use_container_width=True,
+                )
+                if detail_clicked:
+                    selected_category_value = category.value
+                    st.session_state[GOAL_OVERVIEW_SELECTED_CATEGORY_KEY] = category.value
 
-            st.plotly_chart(
-                _build_category_gauge(snapshot),
-                width="stretch",
-                config={"displaylogo": False, "responsive": True},
-            )
+                st.plotly_chart(
+                    _build_category_gauge(snapshot),
+                    width="stretch",
+                    config={"displaylogo": False, "responsive": True},
+                )
 
     selected_category = Category(selected_category_value)
     _render_goal_overview_details(
