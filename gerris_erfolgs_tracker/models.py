@@ -329,4 +329,4 @@ class GamificationMode(str, Enum):
             return "Punkte & Level"
         if self is GamificationMode.BADGES:
             return "Abzeichen"
-        return "Dipl.-Psych. Roß (Avatar)"
+        return "Dipl.-Psych. Roß"

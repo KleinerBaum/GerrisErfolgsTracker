@@ -7,9 +7,9 @@ from typing import Iterable, Optional
 
 import streamlit as st
 
+from gerris_erfolgs_tracker.i18n import translate_text
 from gerris_erfolgs_tracker.models import TodoItem
 from gerris_erfolgs_tracker.state import get_todos
-from gerris_erfolgs_tracker.i18n import translate_text
 
 
 def _normalize_due_date(due_date: Optional[datetime]) -> Optional[date]:
