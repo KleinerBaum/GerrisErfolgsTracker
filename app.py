@@ -35,8 +35,6 @@ from gerris_erfolgs_tracker.constants import (
     AVATAR_PROMPT_INDEX_KEY,
     GOAL_CREATION_VISIBLE_KEY,
     GOAL_OVERVIEW_SELECTED_TASKS_KEY,
-    GOAL_OVERVIEW_SHOW_CATEGORY_KEY,
-    GOAL_OVERVIEW_SHOW_KPI_KEY,
     NEW_TODO_CATEGORY_KEY,
     NEW_TODO_DESCRIPTION_KEY,
     NEW_TODO_DUE_KEY,
@@ -731,14 +729,27 @@ def _panel_section(panel: Any, label: str) -> Any:
     return nullcontext()
 
 
-def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: Any | None = None) -> bool:
+def render_settings_panel(
+    stats: KpiStats,
+    client: Optional[OpenAI],
+    *,
+    panel: Any | None = None,
+    include_ai_and_safety: bool = False,
+) -> bool:
     panel = panel or st
 
     settings = _ensure_settings_defaults(client=client, stats=stats)
     ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
     goal_profile: GoalProfile = settings.get("goal_profile", _default_goal_profile())
 
-    panel.subheader("Tagesziel / Daily goal")
+    if include_ai_and_safety:
+        panel.markdown(translate_text(("#### AI & Sicherheit", "#### AI & safety")))
+        ai_enabled = render_ai_toggle(settings, client=client, container=panel)
+        with _panel_section(panel, translate_text(("Sicherheit & Daten", "Safety & data"))) as safety_panel:
+            render_safety_panel(panel=safety_panel or panel)
+        panel.divider()
+
+    panel.subheader(translate_text(("Tagesziele & Planung", "Daily targets & planning")))
     goal_input_value = _resolve_goal_input_value(settings=settings, stats=stats)
     goal_value = panel.number_input(
         translate_text(("Ziel pro Tag", "Daily target")),
@@ -748,8 +759,8 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
         key=SETTINGS_GOAL_DAILY_KEY,
         help=translate_text(
             (
-                "Setzt dein Tagesziel für erledigte Aufgaben. Der Wert bleibt stabil, bis du ihn änderst.",
-                "Sets your daily completion target. The value stays stable until you change it.",
+                "Setzt das Tagesziel für erledigte Aufgaben – Grundlage für die KPI-Berechnung.",
+                "Sets the daily completion target that feeds your KPIs.",
             )
         ),
     )
@@ -771,7 +782,7 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
     if not st.session_state.get(GOAL_CREATION_VISIBLE_KEY, False):
         return ai_enabled
 
-    panel.markdown("### Ziel-Canvas")
+    panel.markdown(translate_text(("### Ziel-Canvas", "### Goal canvas")))
     panel.info(
         translate_text(
             (
@@ -957,14 +968,19 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
     settings["goal_profile"] = _sanitize_goal_profile({"goal_profile": goal_profile})
 
     profile_saved = panel.button(
-        "Zielprofil speichern",
+        translate_text(("Zielprofil speichern", "Save goal profile")),
         key="settings_save_goal_profile",
-        help="Sichert Titel, Kriterien, Motivation und Check-ins.",
+        help=translate_text(
+            (
+                "Sichert Titel, Kriterien, Motivation und Check-ins.",
+                "Stores title, criteria, motivation, and check-ins.",
+            )
+        ),
     )
     if profile_saved:
-        panel.success("Zielprofil aktualisiert")
+        panel.success(translate_text(("Zielprofil aktualisiert", "Goal profile updated")))
 
-    with _panel_section(panel, "Kategorienziele"):
+    with _panel_section(panel, translate_text(("Kategorienziele", "Category goals"))):
         category_goals = settings.get("category_goals", {})
         goal_columns = panel.columns(2)
         for index, category in enumerate(Category):
@@ -976,7 +992,12 @@ def render_settings_panel(stats: KpiStats, client: Optional[OpenAI], *, panel: A
                     step=1,
                     value=int(category_goals.get(category.value, 1)),
                     key=f"goal_{category.value}",
-                    help="Tagesziel für diese Kategorie",
+                    help=translate_text(
+                        (
+                            "Tagesziel pro Kategorie – dient als Basis für das Ziel-Dashboard.",
+                            "Daily target per category used by the goal dashboard.",
+                        )
+                    ),
                 )
                 category_goals[category.value] = int(goal_value)
 
@@ -1089,7 +1110,12 @@ def _build_new_tasks_gauge(new_task_count: int) -> go.Figure:
     return figure
 
 
-def _render_goal_quick_todo_popover(*, form_key: str = QUICK_GOAL_TODO_FORM_KEY, key_suffix: str | None = None) -> None:
+def _render_goal_quick_todo_popover(
+    *,
+    form_key: str = QUICK_GOAL_TODO_FORM_KEY,
+    key_suffix: str | None = None,
+    trigger_label: tuple[str, str] = ("📝 Aufgabe", "📝 Task"),
+) -> None:
     def _with_suffix(base_key: str) -> str:
         return f"{base_key}_{key_suffix}" if key_suffix else base_key
 
@@ -1100,10 +1126,7 @@ def _render_goal_quick_todo_popover(*, form_key: str = QUICK_GOAL_TODO_FORM_KEY,
     priority_key = _with_suffix(QUICK_GOAL_TODO_PRIORITY_KEY)
     description_key = _with_suffix(QUICK_GOAL_TODO_DESCRIPTION_KEY)
 
-    with st.popover(
-        translate_text(("📝 Aufgabe", "📝 Task")),
-        use_container_width=True,
-    ):
+    with st.popover(translate_text(trigger_label), use_container_width=True):
         st.markdown("**ToDo hinzufügen / Add task**")
         with st.form(_with_suffix(form_key)):
             title = st.text_input(
@@ -1191,12 +1214,14 @@ def _render_goal_quick_todo_popover(*, form_key: str = QUICK_GOAL_TODO_FORM_KEY,
                     st.rerun()
 
 
-def _render_goal_quick_goal_popover(*, settings: dict[str, Any], form_key: str = QUICK_GOAL_PROFILE_FORM_KEY) -> None:
+def _render_goal_quick_goal_popover(
+    *,
+    settings: dict[str, Any],
+    form_key: str = QUICK_GOAL_PROFILE_FORM_KEY,
+    trigger_label: tuple[str, str] = ("🎯 Ziel", "🎯 Goal"),
+) -> None:
     default_profile = settings.get("goal_profile", _default_goal_profile())
-    with st.popover(
-        translate_text(("🎯 Ziel", "🎯 Goal")),
-        use_container_width=True,
-    ):
+    with st.popover(translate_text(trigger_label), use_container_width=True):
         st.markdown("**Ziel hinzufügen / Add goal**")
         with st.form(form_key):
             title = st.text_input(
@@ -1466,7 +1491,7 @@ def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[
             )
         )
         if not todos:
-            st.info("Keine Aufgaben vorhanden.")
+            st.info(translate_text(("Keine Aufgaben vorhanden.", "No tasks available.")))
             return []
 
         option_lookup = {
@@ -1500,26 +1525,18 @@ def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[
 
 def render_goal_overview(
     todos: list[TodoItem], *, stats: KpiStats, category_goals: Mapping[str, int], settings: dict[str, Any]
-) -> tuple[bool, bool]:
-    st.subheader("Ziele im Überblick")
-    overview_columns = st.columns([1, 1, 1, 1, 1, 0.8])
-
-    with overview_columns[-1]:
-        st.markdown("**Visualisierungen**")
-        show_kpi_dashboard = st.checkbox(
-            "KPI-Dashboard anzeigen",
-            value=st.session_state.get(GOAL_OVERVIEW_SHOW_KPI_KEY, True),
-            key=GOAL_OVERVIEW_SHOW_KPI_KEY,
-            help="Steuerung für die Kennzahlen-Übersicht.",
+) -> None:
+    st.subheader(translate_text(("Ziele im Überblick", "Goals at a glance")))
+    st.caption(
+        translate_text(
+            (
+                "Wähle relevante Aufgaben für die Kennzahlen aus und öffne Details pro Kategorie.",
+                "Select the tasks that should drive your metrics and open category details as needed.",
+            )
         )
-        show_category_trends = st.checkbox(
-            "Kategorie-Trends anzeigen",
-            value=st.session_state.get(GOAL_OVERVIEW_SHOW_CATEGORY_KEY, True),
-            key=GOAL_OVERVIEW_SHOW_CATEGORY_KEY,
-            help=("Blendet die Detailvisualisierungen zu den Kategorien ein."),
-        )
-        selected_task_ids = _render_goal_overview_settings(settings=settings, todos=todos)
+    )
 
+    selected_task_ids = _render_goal_overview_settings(settings=settings, todos=todos)
     filtered_todos = _filter_goal_overview_todos(todos, selected_task_ids)
     snapshots = aggregate_category_kpis(
         filtered_todos,
@@ -1532,11 +1549,13 @@ def render_goal_overview(
         Category.FRIENDS_FAMILY.value,
     )
 
+    overview_columns = st.columns([1, 1, 1, 1, 1])
     for category_index, category in enumerate(Category):
         snapshot = snapshots[category]
         with overview_columns[category_index]:
+            st.markdown(f"**{category.label}**")
             detail_clicked = st.button(
-                translate_text((f"{category.label} Details", f"{category.label} details")),
+                translate_text((f"{category.label} öffnen", f"Open {category.label}")),
                 key=f"category_detail_{category.value}",
                 use_container_width=True,
             )
@@ -1557,8 +1576,6 @@ def render_goal_overview(
         todos=filtered_todos,
     )
 
-    return show_kpi_dashboard, show_category_trends
-
 
 def _render_goal_empty_state(*, ai_enabled: bool, settings: dict[str, Any]) -> None:
     empty_container = st.container(border=True)
@@ -1577,8 +1594,8 @@ def _render_goal_empty_state(*, ai_enabled: bool, settings: dict[str, Any]) -> N
     empty_container.markdown(
         translate_text(
             (
-                "1. Zielidee festhalten\n2. Erstes ToDo hinzufügen\n3. Fortschritt im Dashboard verfolgen",
-                "1. Capture a goal idea\n2. Add your first task\n3. Track progress in the dashboard",
+                "1. Zielidee festhalten\n2. Aufgabe einplanen\n3. Fortschritt im Dashboard verfolgen",
+                "1. Capture a goal idea\n2. Plan a task\n3. Track progress on the dashboard",
             )
         )
     )
@@ -1588,26 +1605,28 @@ def _render_goal_empty_state(*, ai_enabled: bool, settings: dict[str, Any]) -> N
     with action_columns[0]:
         empty_container.markdown("**" + translate_text(("Ziel starten", "Start a goal")) + "**")
         create_goal_clicked = st.button(
-            translate_text(("Erstes Ziel anlegen", "Create your first goal")),
+            translate_text(("Ziel anlegen", "Create goal")),
             type="primary",
             key="empty_state_create_goal",
             help=translate_text(
                 (
-                    "Öffnet die Ziel-Canvas und speichert deine Vorlage.",
-                    "Opens the goal canvas and saves your template.",
+                    "Öffnet die Ziel-Canvas mit allen Pflichtfeldern.",
+                    "Opens the goal canvas with all required fields.",
                 )
             ),
         )
         _render_goal_quick_goal_popover(
             settings=settings,
             form_key=f"{QUICK_GOAL_PROFILE_FORM_KEY}_empty",
+            trigger_label=("✨ Ziel anlegen", "✨ Create goal"),
         )
 
     with action_columns[1]:
-        empty_container.markdown("**" + translate_text(("ToDo hinzufügen", "Add a task")) + "**")
+        empty_container.markdown("**" + translate_text(("Aufgabe planen", "Plan a task")) + "**")
         _render_goal_quick_todo_popover(
             form_key=f"{QUICK_GOAL_TODO_FORM_KEY}_empty",
             key_suffix="empty",
+            trigger_label=("🧭 Aufgabe hinzufügen", "🧭 Add task"),
         )
 
     ai_suggestion_clicked = False
@@ -1944,15 +1963,16 @@ def render_dashboard_page(
     )
 
     if not todos:
-        _render_goal_empty_state(ai_enabled=ai_enabled, settings=settings)
+        st.info(
+            translate_text(
+                (
+                    "Lege ein Ziel oder eine Aufgabe an, um Kennzahlen im Dashboard zu sehen.",
+                    "Create a goal or task to unlock dashboard metrics.",
+                )
+            ),
+            icon="✨",
+        )
         return
-
-    show_kpi_dashboard, show_category_trends = render_goal_overview(
-        todos,
-        stats=stats,
-        category_goals=category_goals,
-        settings=settings,
-    )
 
     render_workload_overview(todos=todos, stats=stats)
 
@@ -1971,15 +1991,13 @@ def render_dashboard_page(
     render_shared_calendar_header()
     render_shared_calendar()
 
-    if show_kpi_dashboard:
-        render_kpi_dashboard(stats, todos=todos)
+    render_kpi_dashboard(stats, todos=todos)
 
-    if show_category_trends:
-        render_category_dashboard(
-            todos,
-            stats=stats,
-            category_goals=category_goals,
-        )
+    render_category_dashboard(
+        todos,
+        stats=stats,
+        category_goals=category_goals,
+    )
 
 
 def render_goals_page(
@@ -1990,11 +2008,12 @@ def render_goals_page(
     ai_enabled: bool,
     client: Optional[OpenAI],
 ) -> bool:
+    st.subheader(translate_text(("Zielmanagement", "Goal management")))
     st.caption(
         translate_text(
             (
-                "Ziele konfigurieren, Tagesziele setzen und Vorlagen pflegen – KPIs sind im Dashboard.",
-                "Configure goals, daily targets, and templates here – KPIs live in the dashboard.",
+                "Hier legst du Ziele, Kategorien und Sicherheitsoptionen fest; Kennzahlen findest du im Dashboard.",
+                "Use this area to manage goals, categories, and safety options; KPIs live on the dashboard.",
             )
         )
     )
@@ -2002,10 +2021,22 @@ def render_goals_page(
     if not todos:
         _render_goal_empty_state(ai_enabled=ai_enabled, settings=settings)
     else:
-        render_goal_completion_logger(todos)
+        render_goal_overview(
+            todos,
+            stats=stats,
+            category_goals=settings.get("category_goals", {}),
+            settings=settings,
+        )
 
     settings_container = st.container()
-    return render_settings_panel(stats, client, panel=settings_container)
+    settings_container.divider()
+    settings_container.markdown(translate_text(("### Einstellungen & Sicherheit", "### Settings & safety")))
+    return render_settings_panel(
+        stats,
+        client,
+        panel=settings_container,
+        include_ai_and_safety=True,
+    )
 
 
 def _get_build_metadata() -> dict[str, str | None]:
