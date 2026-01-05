@@ -2518,6 +2518,8 @@ def render_safety_panel(panel: Any, *, key_suffix: str = "") -> bool:
     settings: dict[str, Any] = st.session_state.get(SS_SETTINGS, {})
     show_safety_key = f"{key_prefix}{SHOW_SAFETY_NOTES_KEY}"
     show_safety_notes_default = bool(settings.get(SHOW_SAFETY_NOTES_KEY, False))
+    if show_safety_key not in st.session_state:
+        st.session_state[show_safety_key] = show_safety_notes_default
     show_safety_notes = panel.toggle(
         ("Hinweise anzeigen", "Show safety notes"),
         value=bool(st.session_state.get(show_safety_key, show_safety_notes_default)),
@@ -2528,7 +2530,6 @@ def render_safety_panel(panel: Any, *, key_suffix: str = "") -> bool:
         ),
     )
     settings[SHOW_SAFETY_NOTES_KEY] = show_safety_notes
-    st.session_state[show_safety_key] = show_safety_notes
 
     if show_safety_notes:
         panel.info(
