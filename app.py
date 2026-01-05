@@ -88,6 +88,8 @@ from gerris_erfolgs_tracker.models import (
     GamificationMode,
     JournalEntry,
     KpiStats,
+    Milestone,
+    MilestoneComplexity,
     MilestoneStatus,
     TodoItem,
 )
@@ -204,6 +206,7 @@ GOAL_CHECKIN_OPTIONS: tuple[tuple[GoalCheckInCadence, tuple[str, str]], ...] = (
 )
 
 GOAL_OVERVIEW_SELECTED_CATEGORY_KEY = "goal_overview_selected_category"
+GOAL_OVERVIEW_FOCUS_MODE_KEY = "goal_overview_focus_mode"
 
 
 def _goal_option_label(value: str, options: tuple[tuple[str, tuple[str, str]], ...]) -> str:
@@ -1537,8 +1540,28 @@ def render_goal_completion_logger(todos: list[TodoItem]) -> None:
                 )
 
 
-def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[TodoItem]) -> list[str]:
-    settings_column, _ = st.columns([1, 4])
+def _milestone_points(milestone: Milestone) -> int:
+    if milestone.points:
+        return milestone.points
+    if milestone.complexity is MilestoneComplexity.SMALL:
+        return 10
+    if milestone.complexity is MilestoneComplexity.MEDIUM:
+        return 25
+    return 50
+
+
+def _milestone_progress(todo: TodoItem) -> tuple[float, int, int]:
+    total_points = sum(_milestone_points(item) for item in todo.milestones)
+    completed_points = sum(_milestone_points(item) for item in todo.milestones if item.status is MilestoneStatus.DONE)
+    if total_points == 0:
+        return (1.0 if todo.completed else 0.0, completed_points, total_points)
+    return (completed_points / total_points, completed_points, total_points)
+
+
+def _render_goal_overview_settings(
+    *, settings: dict[str, Any], todos: Sequence[TodoItem], stats: KpiStats
+) -> list[str]:
+    settings_column, misc_column = st.columns([1, 2])
     with settings_column:
         with st.expander(translate_text(("Kategorien", "Categories")), expanded=False):
             st.caption(
@@ -1549,45 +1572,51 @@ def _render_goal_overview_settings(*, settings: dict[str, Any], todos: Sequence[
                     )
                 )
             )
-        category_labels: dict[Category, tuple[str, str]] = {
-            Category.JOB_SEARCH: ("Stellensuche", "Job search"),
-            Category.ADMIN: ("Administratives", "Administrative"),
-            Category.FRIENDS_FAMILY: ("Familie & Freunde", "Family & friends"),
-            Category.DRUGS: ("Drogen", "Substance use"),
-            Category.DAILY_STRUCTURE: ("Tagesstruktur", "Daily structure"),
-        }
+            category_labels: dict[Category, tuple[str, str]] = {
+                Category.JOB_SEARCH: ("Stellensuche", "Job search"),
+                Category.ADMIN: ("Administratives", "Administrative"),
+                Category.FRIENDS_FAMILY: ("Familie & Freunde", "Family & friends"),
+                Category.DRUGS: ("Drogen", "Substance use"),
+                Category.DAILY_STRUCTURE: ("Tagesstruktur", "Daily structure"),
+            }
 
-        previous_selection = _sanitize_goal_overview_categories(settings.get(GOAL_OVERVIEW_SELECTED_CATEGORIES_KEY, []))
-        default_selection = previous_selection or [category.value for category in Category]
+            previous_selection = _sanitize_goal_overview_categories(
+                settings.get(GOAL_OVERVIEW_SELECTED_CATEGORIES_KEY, [])
+            )
+            default_selection = previous_selection or [category.value for category in Category]
 
-        checkbox_columns = st.columns(3)
-        selection_lookup = set(default_selection)
-        for index, category in enumerate(Category):
-            label = translate_text(category_labels.get(category, (category.label, category.label)))
-            with checkbox_columns[index % len(checkbox_columns)]:
-                checked = st.checkbox(
-                    label,
-                    value=category.value in selection_lookup,
-                    key=f"goal_overview_category_{category.value}",
-                    help=translate_text(
-                        (
-                            "Wähle aus, welche Kategorien als Tachometer angezeigt werden.",
-                            "Pick the categories that should be displayed as gauges.",
-                        )
-                    ),
-                )
-                if checked:
-                    selection_lookup.add(category.value)
-                else:
-                    selection_lookup.discard(category.value)
+            checkbox_columns = st.columns(3)
+            selection_lookup = set(default_selection)
+            for index, category in enumerate(Category):
+                label = translate_text(category_labels.get(category, (category.label, category.label)))
+                with checkbox_columns[index % len(checkbox_columns)]:
+                    checked = st.checkbox(
+                        label,
+                        value=category.value in selection_lookup,
+                        key=f"goal_overview_category_{category.value}",
+                        help=translate_text(
+                            (
+                                "Wähle aus, welche Kategorien als Tachometer angezeigt werden.",
+                                "Pick the categories that should be displayed as gauges.",
+                            )
+                        ),
+                    )
+                    if checked:
+                        selection_lookup.add(category.value)
+                    else:
+                        selection_lookup.discard(category.value)
 
-        sanitized_selection = _sanitize_goal_overview_categories(sorted(selection_lookup))
-        if sanitized_selection != previous_selection:
-            settings[GOAL_OVERVIEW_SELECTED_CATEGORIES_KEY] = sanitized_selection
-            st.session_state[SS_SETTINGS] = settings
-            persist_state()
+            sanitized_selection = _sanitize_goal_overview_categories(sorted(selection_lookup))
+            if sanitized_selection != previous_selection:
+                settings[GOAL_OVERVIEW_SELECTED_CATEGORIES_KEY] = sanitized_selection
+                st.session_state[SS_SETTINGS] = settings
+                persist_state()
 
-        return sanitized_selection
+    with misc_column:
+        misc_column.markdown("**Misc KPIs**")
+        _render_misc_metrics(stats=stats, todos=todos)
+
+    return sanitized_selection
 
 
 def render_goal_overview(
@@ -1603,7 +1632,7 @@ def render_goal_overview(
         )
     )
 
-    selected_categories = _render_goal_overview_settings(settings=settings, todos=todos)
+    selected_categories = _render_goal_overview_settings(settings=settings, todos=todos, stats=stats)
     filtered_todos = _filter_goal_overview_todos_by_category(todos, selected_categories)
     snapshots = aggregate_category_kpis(
         filtered_todos,
@@ -1611,42 +1640,52 @@ def render_goal_overview(
         fallback_streak=stats.streak,
     )
 
+    focus_mode = bool(st.session_state.get(GOAL_OVERVIEW_FOCUS_MODE_KEY, False))
     visible_categories = selected_categories or [category.value for category in Category]
     selected_category_value = st.session_state.get(GOAL_OVERVIEW_SELECTED_CATEGORY_KEY)
     if selected_category_value not in visible_categories:
         selected_category_value = visible_categories[0]
         st.session_state[GOAL_OVERVIEW_SELECTED_CATEGORY_KEY] = selected_category_value
 
-    visible_lookup = set(visible_categories)
-    categories_to_render = [category for category in Category if category.value in visible_lookup]
-    for row_start in range(0, len(categories_to_render), 3):
-        row_categories = categories_to_render[row_start : row_start + 3]
-        overview_columns = st.columns(len(row_categories))
-        for column, category in zip(overview_columns, row_categories):
-            snapshot = snapshots[category]
-            with column:
-                st.markdown(f"**{category.label}**")
-                detail_clicked = st.button(
-                    translate_text((f"{category.label} öffnen", f"Open {category.label}")),
-                    key=f"category_detail_{category.value}",
-                    use_container_width=True,
-                )
-                if detail_clicked:
-                    selected_category_value = category.value
-                    st.session_state[GOAL_OVERVIEW_SELECTED_CATEGORY_KEY] = category.value
+    if focus_mode:
+        reset_label = translate_text(("Zurück zur Übersicht", "Back to overview"))
+        if st.button(reset_label, key="goal_overview_reset_focus"):
+            st.session_state[GOAL_OVERVIEW_FOCUS_MODE_KEY] = False
+            st.rerun()
+    else:
+        visible_lookup = set(visible_categories)
+        categories_to_render = [category for category in Category if category.value in visible_lookup]
+        for row_start in range(0, len(categories_to_render), 3):
+            row_categories = categories_to_render[row_start : row_start + 3]
+            overview_columns = st.columns(len(row_categories))
+            for column, category in zip(overview_columns, row_categories, strict=True):
+                snapshot = snapshots[category]
+                with column:
+                    st.markdown(f"**{category.label}**")
+                    detail_clicked = st.button(
+                        translate_text((f"{category.label} öffnen", f"Open {category.label}")),
+                        key=f"category_detail_{category.value}",
+                        use_container_width=True,
+                    )
+                    if detail_clicked:
+                        selected_category_value = category.value
+                        st.session_state[GOAL_OVERVIEW_SELECTED_CATEGORY_KEY] = category.value
+                        st.session_state[GOAL_OVERVIEW_FOCUS_MODE_KEY] = True
+                        st.rerun()
 
-                st.plotly_chart(
-                    _build_category_gauge(snapshot),
-                    width="stretch",
-                    config={"displaylogo": False, "responsive": True},
-                )
+                    st.plotly_chart(
+                        _build_category_gauge(snapshot),
+                        width="stretch",
+                        config={"displaylogo": False, "responsive": True},
+                    )
 
-    selected_category = Category(selected_category_value)
-    _render_goal_overview_details(
-        category=selected_category,
-        snapshot=snapshots[selected_category],
-        todos=filtered_todos,
-    )
+    if focus_mode:
+        selected_category = Category(selected_category_value)
+        _render_goal_overview_details(
+            category=selected_category,
+            snapshot=snapshots[selected_category],
+            todos=filtered_todos,
+        )
 
 
 def _render_goal_empty_state(*, ai_enabled: bool, settings: dict[str, Any]) -> None:
@@ -1758,6 +1797,42 @@ def _render_goal_overview_details(*, category: Category, snapshot: CategoryKpi, 
             )
         )
         return
+
+    milestone_todos = [todo for todo in category_todos if todo.milestones]
+    if milestone_todos:
+        detail_container.markdown("#### " + translate_text(("Fortschritt pro Aufgabe", "Progress per task")))
+        progress_columns = detail_container.columns(2)
+        for index, todo in enumerate(milestone_todos):
+            progress_ratio, completed_points, total_points = _milestone_progress(todo)
+            ratio = min(1.0, progress_ratio)
+            with progress_columns[index % len(progress_columns)]:
+                st.markdown(f"**{todo.title}**")
+                progress_label = translate_text(
+                    (
+                        f"{completed_points}/{total_points or '—'} Punkte erledigt",
+                        f"{completed_points}/{total_points or '—'} points done",
+                    )
+                )
+                st.progress(ratio, text=progress_label)
+                done_count = sum(1 for milestone in todo.milestones if milestone.status is MilestoneStatus.DONE)
+                st.caption(
+                    translate_text(
+                        (
+                            f"{len(todo.milestones)} Unterziele · {done_count} abgeschlossen",
+                            f"{len(todo.milestones)} milestones · {done_count} completed",
+                        )
+                    )
+                )
+
+    if len(milestone_todos) != len(category_todos):
+        detail_container.caption(
+            translate_text(
+                (
+                    "Aufgaben ohne Unterziele bleiben unten in der Detailansicht aufgelistet.",
+                    "Tasks without milestones stay listed below in the detail view.",
+                )
+            )
+        )
 
     for todo in category_todos:
         status_label = translate_text(("Offen", "Open")) if not todo.completed else translate_text(("Erledigt", "Done"))
