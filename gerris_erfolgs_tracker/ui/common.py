@@ -114,6 +114,12 @@ def _inject_dark_theme_styles() -> None:
                 color: #0b1311;
             }
 
+            [data-testid="stSidebar"] > div:first-child {
+                min-width: 240px;
+                width: 260px;
+                padding: 0.7rem 0.85rem;
+            }
+
             /* Highlight today's date inside Streamlit date pickers without breaking dark mode */
             .stDateInput .flatpickr-day.today:not(.selected) {
                 border: 1.5px solid var(--gerris-primary);

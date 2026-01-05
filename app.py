@@ -1852,7 +1852,32 @@ def render_workload_overview(*, todos: list[TodoItem], stats: KpiStats) -> None:
         _render_misc_metrics(stats=stats, todos=todos)
 
 
-def render_dashboard_header(*, settings: dict[str, Any]) -> None:
+def render_settings_popover(
+    *,
+    stats: KpiStats,
+    client: Optional[OpenAI],
+    settings: dict[str, Any],
+    build_metadata: Mapping[str, str | None],
+) -> tuple[bool, bool]:
+    """Render a compact settings popover to slim down the sidebar."""
+
+    show_storage_notice = bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False))
+    with st.popover(translate_text(("⚙️ Einstellungen", "⚙️ Settings")), use_container_width=True):
+        st.markdown("**Schnelleinstellungen / Quick settings**")
+        ai_enabled = render_ai_toggle(settings, client=client, container=st)
+        render_gamification_mode_selector(settings, container=st, show_divider=False)
+
+        safety_expander = st.expander(translate_text(("Sicherheit & Daten", "Safety & data")), expanded=False)
+        with safety_expander:
+            show_storage_notice = render_safety_panel(panel=safety_expander)
+
+        st.divider()
+        render_build_info_sidebar(build_metadata=build_metadata, container=st)
+
+    return ai_enabled, show_storage_notice
+
+
+def render_dashboard_header(*, settings: dict[str, Any], stats: KpiStats, client: Optional[OpenAI], build_metadata: Mapping[str, str | None]) -> tuple[bool, bool]:
     """Render a compact dashboard header with aligned quick-add actions."""
 
     st.markdown(
@@ -1873,7 +1898,7 @@ def render_dashboard_header(*, settings: dict[str, Any]) -> None:
 
     header_container = st.container()
     with header_container:
-        title_col, todo_col, goal_col, journal_col = st.columns([3, 2, 2, 2], gap="small")
+        title_col, todo_col, goal_col, journal_col, settings_col = st.columns([3, 2, 2, 2, 2], gap="small")
 
     with title_col:
         st.markdown("<div class='dashboard-header'><h2>Gerris ErfolgsTracker</h2></div>", unsafe_allow_html=True)
@@ -1889,6 +1914,16 @@ def render_dashboard_header(*, settings: dict[str, Any]) -> None:
         )
     with journal_col:
         _render_goal_quick_journal_popover()
+
+    with settings_col:
+        ai_enabled, show_storage_notice = render_settings_popover(
+            stats=stats,
+            client=client,
+            settings=settings,
+            build_metadata=build_metadata,
+        )
+
+    return ai_enabled, show_storage_notice
 
 
 def _get_build_metadata() -> dict[str, str | None]:
@@ -1930,13 +1965,13 @@ def _get_build_metadata() -> dict[str, str | None]:
     return metadata
 
 
-def render_build_info_sidebar(*, build_metadata: Mapping[str, str | None]) -> None:
+def render_build_info_sidebar(*, build_metadata: Mapping[str, str | None], container: Any = st.sidebar) -> None:
     commit_label = translate_text(("Build-Info", "Build info"))
     commit_value = build_metadata.get("short_commit") or build_metadata.get("commit")
     commit_time = build_metadata.get("committed_at")
     unknown_label = translate_text(("Unbekannt", "Unknown"))
 
-    sidebar = st.sidebar.container()
+    sidebar = container.container()
     sidebar.markdown(f"**{commit_label}**")
     sidebar.caption(translate_text(("Commit", "Commit")) + ": " + (commit_value or unknown_label))
     sidebar.caption(translate_text(("Commit-Datum", "Commit date")) + ": " + (commit_time or unknown_label))
@@ -2137,8 +2172,8 @@ def render_language_toggle() -> LanguageCode:
     return get_language()
 
 
-def render_ai_toggle_sidebar(settings: dict[str, Any], *, client: Optional[OpenAI]) -> bool:
-    ai_enabled = st.sidebar.toggle(
+def render_ai_toggle(settings: dict[str, Any], *, client: Optional[OpenAI], container: Any = st.sidebar) -> bool:
+    ai_enabled = container.toggle(
         "AI aktiv",
         key=AI_ENABLED_KEY,
         value=bool(settings.get(AI_ENABLED_KEY, bool(client))),
@@ -2171,14 +2206,16 @@ def render_navigation() -> str:
     return selection
 
 
-def render_gamification_mode_selector(settings: dict[str, Any]) -> GamificationMode:
+def render_gamification_mode_selector(
+    settings: dict[str, Any], *, container: Any = st.sidebar, show_divider: bool = True
+) -> GamificationMode:
     try:
         current_mode = GamificationMode(settings.get("gamification_mode", GamificationMode.POINTS.value))
     except ValueError:
         current_mode = GamificationMode.POINTS
     mode_options = list(GamificationMode)
     selection_index = mode_options.index(current_mode)
-    selected_mode = st.sidebar.selectbox(
+    selected_mode = container.selectbox(
         translate_text(("Gamification-Variante", "Gamification mode")),
         options=mode_options,
         format_func=lambda option: option.label,
@@ -2194,8 +2231,9 @@ def render_gamification_mode_selector(settings: dict[str, Any]) -> GamificationM
         settings["gamification_mode"] = selected_mode.value
         st.session_state[SS_SETTINGS] = settings
         persist_state()
-    st.sidebar.caption(selected_mode.label)
-    st.sidebar.divider()
+    container.caption(selected_mode.label)
+    if show_divider:
+        container.divider()
     return selected_mode
 
 
@@ -2242,26 +2280,6 @@ def render_coach_main_panel() -> None:
     panel = st.container(border=True)
     panel.markdown("### Coach")
     _render_coach_messages(panel)
-
-
-def render_sidebar_sections(
-    stats: KpiStats,
-    *,
-    ai_enabled: bool,
-    client: Optional[OpenAI],
-    settings: Mapping[str, Any],
-) -> bool:
-    settings_dict = dict(settings)
-    render_gamification_mode_selector(settings_dict)
-
-    safety_panel = st.sidebar.expander(translate_text(("Sicherheit & Daten", "Safety & data")), expanded=False)
-    with safety_panel:
-        show_storage_notice = render_safety_panel(panel=safety_panel)
-
-    st.sidebar.divider()
-    return (
-        show_storage_notice if show_storage_notice is not None else bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False))
-    )
 
 
 def render_gamification_panel(
@@ -2623,19 +2641,15 @@ def main() -> None:
     stats = get_kpi_stats()
     build_metadata = _get_build_metadata()
     settings = _ensure_settings_defaults(client=client, stats=stats)
-    ai_enabled = render_ai_toggle_sidebar(settings, client=client)
     render_language_toggle()
-    render_build_info_sidebar(build_metadata=build_metadata)
     selection = render_navigation()
 
-    show_storage_notice = render_sidebar_sections(
-        stats,
-        ai_enabled=ai_enabled,
-        client=client,
+    ai_enabled, show_storage_notice = render_dashboard_header(
         settings=settings,
+        stats=stats,
+        client=client,
+        build_metadata=build_metadata,
     )
-
-    render_dashboard_header(settings=settings)
     if show_storage_notice:
         _render_storage_notice(storage_backend, is_cloud=is_cloud)
     todos = get_todos()
