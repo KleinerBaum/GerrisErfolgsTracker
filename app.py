@@ -2547,6 +2547,8 @@ def render_safety_panel(panel: Any, *, key_suffix: str = "") -> bool:
 
     show_storage_key = f"{key_prefix}{SHOW_STORAGE_NOTICE_KEY}"
     show_storage_default = bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False))
+    if show_storage_key not in st.session_state:
+        st.session_state[show_storage_key] = show_storage_default
     show_storage_notice = panel.toggle(
         ("Speicherhinweis anzeigen", "Show storage notice"),
         value=bool(st.session_state.get(show_storage_key, show_storage_default)),
@@ -2557,7 +2559,6 @@ def render_safety_panel(panel: Any, *, key_suffix: str = "") -> bool:
         ),
     )
     settings[SHOW_STORAGE_NOTICE_KEY] = show_storage_notice
-    st.session_state[show_storage_key] = show_storage_notice
 
     if panel.button(
         "Session zurücksetzen",
