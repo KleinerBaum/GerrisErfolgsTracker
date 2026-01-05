@@ -717,12 +717,80 @@ def _coerce_goal_value(raw_value: object | None, fallback: int) -> int:
     return max(1, coerced)
 
 
-def _resolve_goal_input_value(*, settings: Mapping[str, Any], stats: KpiStats) -> int:
+def _settings_widget_key(base_key: str, key_suffix: str) -> str:
+    return f"{base_key}_{key_suffix}" if key_suffix else base_key
+
+
+def _resolve_goal_input_value(*, settings: Mapping[str, Any], stats: KpiStats, key_suffix: str = "") -> int:
     fallback_goal = _coerce_goal_value(settings.get("goal_daily"), stats.goal_daily)
-    existing_value = st.session_state.get(SETTINGS_GOAL_DAILY_KEY)
+    existing_value = st.session_state.get(_settings_widget_key(SETTINGS_GOAL_DAILY_KEY, key_suffix))
     if existing_value is None:
         return fallback_goal
     return _coerce_goal_value(existing_value, fallback_goal)
+
+
+def _render_ai_and_safety_section(
+    *, panel: Any, settings: dict[str, Any], client: Optional[OpenAI], key_suffix: str
+) -> tuple[bool, bool]:
+    panel.markdown(translate_text(("#### AI & Sicherheit", "#### AI & safety")))
+    ai_enabled = render_ai_toggle(
+        settings,
+        client=client,
+        container=panel,
+        key_suffix=key_suffix or "panel",
+    )
+    safety_notice = False
+    with _panel_section(panel, translate_text(("Sicherheit & Daten", "Safety & data"))) as safety_panel:
+        safety_notice = render_safety_panel(panel=safety_panel or panel, key_suffix=key_suffix or "panel")
+    panel.divider()
+    return ai_enabled, safety_notice
+
+
+def _render_daily_goal_section(*, panel: Any, settings: dict[str, Any], stats: KpiStats, key_suffix: str) -> None:
+    panel.subheader(translate_text(("Tagesziele & Planung", "Daily targets & planning")))
+    goal_input_value = _resolve_goal_input_value(settings=settings, stats=stats, key_suffix=key_suffix)
+    daily_goal_key = _settings_widget_key(SETTINGS_GOAL_DAILY_KEY, key_suffix)
+    goal_value = panel.number_input(
+        translate_text(("Ziel pro Tag", "Daily target")),
+        min_value=1,
+        step=1,
+        value=goal_input_value,
+        key=daily_goal_key,
+        help=translate_text(
+            (
+                "Setzt das Tagesziel für erledigte Aufgaben – Grundlage für die KPI-Berechnung.",
+                "Sets the daily completion target that feeds your KPIs.",
+            )
+        ),
+    )
+    settings["goal_daily"] = int(goal_value)
+
+    if panel.button(
+        translate_text(("Tagesziel speichern", "Save daily goal")),
+        key=_settings_widget_key("settings_save_goal_daily", key_suffix),
+        help=translate_text(
+            (
+                "Aktualisiert das Tagesziel und speichert es in deinen KPIs.",
+                "Updates the daily goal and stores it in your KPIs.",
+            )
+        ),
+    ):
+        update_goal_daily(int(goal_value))
+        panel.success(translate_text(("Tagesziel aktualisiert", "Daily goal updated")))
+
+
+def _widget_key(base: str, *, key_suffix: str) -> str | None:
+    return f"{base}_{key_suffix}" if key_suffix else None
+
+
+def _category_goal_key(category_value: str, *, key_suffix: str) -> str:
+    return f"goal_{category_value}_{key_suffix}" if key_suffix else f"goal_{category_value}"
+
+
+def _tabs_with_optional_key(panel: Any, labels: list[str], *, key_suffix: str) -> list[Any]:
+    if key_suffix:
+        labels = [f"{label}\u200b{key_suffix}" for label in labels]
+    return panel.tabs(labels)
 
 
 def _panel_section(panel: Any, label: str) -> Any:
@@ -746,50 +814,21 @@ def render_settings_panel(
     goal_profile: GoalProfile = settings.get("goal_profile", _default_goal_profile())
 
     if include_ai_and_safety:
-        panel.markdown(translate_text(("#### AI & Sicherheit", "#### AI & safety")))
-        ai_enabled = render_ai_toggle(
-            settings,
-            client=client,
-            container=panel,
-            key_suffix="panel",
-        )
-        with _panel_section(panel, translate_text(("Sicherheit & Daten", "Safety & data"))) as safety_panel:
-            render_safety_panel(panel=safety_panel or panel, key_suffix="panel")
-        panel.divider()
+        ai_enabled, _ = _render_ai_and_safety_section(panel=panel, settings=settings, client=client, key_suffix="panel")
 
-    panel.subheader(translate_text(("Tagesziele & Planung", "Daily targets & planning")))
-    goal_input_value = _resolve_goal_input_value(settings=settings, stats=stats)
-    goal_value = panel.number_input(
-        translate_text(("Ziel pro Tag", "Daily target")),
-        min_value=1,
-        step=1,
-        value=goal_input_value,
-        key=SETTINGS_GOAL_DAILY_KEY,
-        help=translate_text(
-            (
-                "Setzt das Tagesziel für erledigte Aufgaben – Grundlage für die KPI-Berechnung.",
-                "Sets the daily completion target that feeds your KPIs.",
-            )
-        ),
-    )
-    settings["goal_daily"] = int(goal_value)
-
-    if panel.button(
-        translate_text(("Tagesziel speichern", "Save daily goal")),
-        key="settings_save_goal_daily",
-        help=translate_text(
-            (
-                "Aktualisiert das Tagesziel und speichert es in deinen KPIs.",
-                "Updates the daily goal and stores it in your KPIs.",
-            )
-        ),
-    ):
-        update_goal_daily(int(goal_value))
-        panel.success(translate_text(("Tagesziel aktualisiert", "Daily goal updated")))
+    _render_daily_goal_section(panel=panel, settings=settings, stats=stats, key_suffix="")
 
     if not st.session_state.get(GOAL_CREATION_VISIBLE_KEY, False):
         return ai_enabled
 
+    _render_goal_canvas(panel=panel, goal_profile=goal_profile, settings=settings, key_suffix="")
+
+    st.session_state[SS_SETTINGS] = settings
+    persist_state()
+    return ai_enabled
+
+
+def _render_goal_canvas(*, panel: Any, goal_profile: GoalProfile, settings: dict[str, Any], key_suffix: str) -> None:
     panel.markdown(translate_text(("### Ziel-Canvas", "### Goal canvas")))
     panel.info(
         translate_text(
@@ -830,6 +869,7 @@ def render_settings_panel(
             value=goal_profile.get("title", ""),
             placeholder="z. B. 3 Bewerbungen pro Woche",
             help="Kurzer, messbarer Titel für dein Ziel",
+            key=_widget_key("goal_profile_title", key_suffix=key_suffix),
         )
         focus_categories = panel.multiselect(
             "Fokus-Kategorien",
@@ -837,6 +877,7 @@ def render_settings_panel(
             default=[category for category in Category if category.value in goal_profile.get("focus_categories", [])],
             format_func=lambda option: option.label,
             help="Welche Lebensbereiche zahlt das Ziel ein?",
+            key=_widget_key("goal_profile_focus", key_suffix=key_suffix),
         )
         horizon = panel.selectbox(
             "Zeithorizont",
@@ -844,18 +885,21 @@ def render_settings_panel(
             index=max(0, horizon_index),
             format_func=lambda value: _goal_option_label(value, GOAL_HORIZON_OPTIONS),
             help="Wähle deinen Planungszeitraum",
+            key=_widget_key("goal_profile_horizon", key_suffix=key_suffix),
         )
         start_date = panel.date_input(
             "Startdatum",
             value=goal_profile.get("start_date"),
             format="YYYY-MM-DD",
             help="Optional: Ab wann zählst du Fortschritt?",
+            key=_widget_key("goal_profile_start", key_suffix=key_suffix),
         )
         target_date = panel.date_input(
             "Zieltermin",
             value=goal_profile.get("target_date"),
             format="YYYY-MM-DD",
             help="Wann soll das Ziel erreicht sein?",
+            key=_widget_key("goal_profile_target", key_suffix=key_suffix),
         )
         check_in_cadence = panel.selectbox(
             "Check-in-Rhythmus",
@@ -863,12 +907,14 @@ def render_settings_panel(
             index=max(0, cadence_index),
             format_func=lambda value: _goal_option_label(value, GOAL_CHECKIN_OPTIONS),
             help="Wie oft reflektierst du Fortschritt?",
+            key=_widget_key("goal_profile_cadence", key_suffix=key_suffix),
         )
     with canvas_columns[1]:
         enable_metric = panel.toggle(
             "Messbar machen",
             value=bool(goal_profile.get("metric_target") is not None or goal_profile.get("metric_unit")),
             help="Zielwert + Einheit pflegen, um Fortschritt klar messbar zu halten.",
+            key=_widget_key("goal_profile_metric_toggle", key_suffix=key_suffix),
         )
         metric_target = panel.number_input(
             "Zielwert",
@@ -877,6 +923,7 @@ def render_settings_panel(
             step=0.5,
             disabled=not enable_metric,
             help="Numerischer Zielwert, z. B. 3.0 oder 10.0",
+            key=_widget_key("goal_profile_metric_target", key_suffix=key_suffix),
         )
         metric_unit = panel.text_input(
             "Einheit",
@@ -884,13 +931,15 @@ def render_settings_panel(
             max_chars=40,
             disabled=not enable_metric,
             help="Einheit für den Zielwert, z. B. Bewerbungen, Minuten.",
+            key=_widget_key("goal_profile_metric_unit", key_suffix=key_suffix),
         )
-        next_step_tabs = panel.tabs(["Nächster Schritt", "Vorschau"])
+        next_step_tabs = _tabs_with_optional_key(panel, ["Nächster Schritt", "Vorschau"], key_suffix=key_suffix)
         with next_step_tabs[0]:
             next_step_md = st.text_area(
                 "Konkreter erster Schritt",
                 value=goal_profile.get("next_step_md", ""),
                 placeholder="Nächster kalendarischer Schritt oder Termin",
+                key=_widget_key("goal_profile_next_step", key_suffix=key_suffix),
             )
         with next_step_tabs[1]:
             next_step_preview = goal_profile.get("next_step_md", "")
@@ -898,12 +947,13 @@ def render_settings_panel(
                 st.markdown(next_step_preview)
             else:
                 st.caption("Noch kein nächster Schritt hinterlegt")
-        celebration_tabs = panel.tabs(["Erfolg feiern", "Vorschau"])
+        celebration_tabs = _tabs_with_optional_key(panel, ["Erfolg feiern", "Vorschau"], key_suffix=key_suffix)
         with celebration_tabs[0]:
             celebration_md = st.text_area(
                 "Belohnung planen",
                 value=goal_profile.get("celebration_md", ""),
                 placeholder="Wie feierst du den Abschluss?",
+                key=_widget_key("goal_profile_celebration", key_suffix=key_suffix),
             )
         with celebration_tabs[1]:
             celebration_preview = goal_profile.get("celebration_md", "")
@@ -915,12 +965,13 @@ def render_settings_panel(
     panel.markdown("#### Erfolg & Motivation")
     success_columns = panel.columns(2)
     with success_columns[0]:
-        criteria_tabs = panel.tabs(["Erfolgskriterien", "Vorschau"])
+        criteria_tabs = _tabs_with_optional_key(panel, ["Erfolgskriterien", "Vorschau"], key_suffix=key_suffix)
         with criteria_tabs[0]:
             success_criteria_md = st.text_area(
                 "Wie erkennst du Erfolg?",
                 value=goal_profile.get("success_criteria_md", ""),
                 placeholder="z. B. 2 Bewerbungen pro Woche mit Feedback",
+                key=_widget_key("goal_profile_success", key_suffix=key_suffix),
             )
         with criteria_tabs[1]:
             criteria_preview = goal_profile.get("success_criteria_md", "")
@@ -928,12 +979,13 @@ def render_settings_panel(
                 st.markdown(criteria_preview)
             else:
                 st.caption("Noch keine Kriterien definiert")
-        risk_tabs = panel.tabs(["Risiken & Sicherungen", "Vorschau"])
+        risk_tabs = _tabs_with_optional_key(panel, ["Risiken & Sicherungen", "Vorschau"], key_suffix=key_suffix)
         with risk_tabs[0]:
             risk_mitigation_md = st.text_area(
                 "Risiken & Sicherungen",
                 value=goal_profile.get("risk_mitigation_md", ""),
                 placeholder="Hindernisse, Plan B, Accountability",
+                key=_widget_key("goal_profile_risks", key_suffix=key_suffix),
             )
         with risk_tabs[1]:
             risk_preview = goal_profile.get("risk_mitigation_md", "")
@@ -942,12 +994,13 @@ def render_settings_panel(
             else:
                 st.caption("Noch keine Risiken notiert")
     with success_columns[1]:
-        motivation_tabs = panel.tabs(["Motivation", "Vorschau"])
+        motivation_tabs = _tabs_with_optional_key(panel, ["Motivation", "Vorschau"], key_suffix=key_suffix)
         with motivation_tabs[0]:
             motivation_md = st.text_area(
                 "Warum ist das Ziel wichtig?",
                 value=goal_profile.get("motivation_md", ""),
                 placeholder="Persönlicher Nutzen, Chancen, Unterstützung",
+                key=_widget_key("goal_profile_motivation", key_suffix=key_suffix),
             )
         with motivation_tabs[1]:
             motivation_preview = goal_profile.get("motivation_md", "")
@@ -977,7 +1030,7 @@ def render_settings_panel(
 
     profile_saved = panel.button(
         translate_text(("Zielprofil speichern", "Save goal profile")),
-        key="settings_save_goal_profile",
+        key=_settings_widget_key("settings_save_goal_profile", key_suffix),
         help=translate_text(
             (
                 "Sichert Titel, Kriterien, Motivation und Check-ins.",
@@ -999,7 +1052,7 @@ def render_settings_panel(
                     max_value=20,
                     step=1,
                     value=int(category_goals.get(category.value, 1)),
-                    key=f"goal_{category.value}",
+                    key=_category_goal_key(category.value, key_suffix=key_suffix),
                     help=translate_text(
                         (
                             "Tagesziel pro Kategorie – dient als Basis für das Ziel-Dashboard.",
@@ -1011,10 +1064,6 @@ def render_settings_panel(
 
         settings["category_goals"] = _sanitize_category_goals(settings)
         settings["category_goals"].update(category_goals)
-
-    st.session_state[SS_SETTINGS] = settings
-    persist_state()
-    return ai_enabled
 
 
 def _build_category_progress(snapshot: CategoryKpi) -> go.Figure:
@@ -1977,22 +2026,39 @@ def render_settings_popover(
     """Render a compact settings popover to slim down the sidebar."""
 
     show_storage_notice = bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False))
+    ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
+
     with st.popover(translate_text(("⚙️ Einstellungen", "⚙️ Settings")), use_container_width=True):
-        st.markdown("**Schnelleinstellungen / Quick settings**")
-        ai_enabled = render_ai_toggle(
-            settings,
-            client=client,
-            container=st,
-            key_suffix="popover",
+        st.markdown("**Einstellungen & Sicherheit / Settings & safety**")
+        safety_label = translate_text(("Sicherheit & KI", "Safety & AI"))
+        goals_label = translate_text(("Ziele & Kategorien", "Goals & categories"))
+        personalization_label = translate_text(("Personalisierung", "Personalization"))
+        safety_tab, goals_tab, personalization_tab = _tabs_with_optional_key(
+            st, [safety_label, goals_label, personalization_label], key_suffix="popover"
         )
-        render_gamification_mode_selector(settings, container=st, show_divider=False)
 
-        safety_expander = st.expander(translate_text(("Sicherheit & Daten", "Safety & data")), expanded=False)
-        with safety_expander:
-            show_storage_notice = render_safety_panel(panel=safety_expander, key_suffix="popover")
+        with safety_tab:
+            ai_enabled, show_storage_notice = _render_ai_and_safety_section(
+                panel=safety_tab, settings=settings, client=client, key_suffix="popover"
+            )
 
-        st.divider()
-        render_build_info_sidebar(build_metadata=build_metadata, container=st)
+        with goals_tab:
+            _render_daily_goal_section(panel=goals_tab, settings=settings, stats=stats, key_suffix="popover")
+            _render_goal_canvas(
+                panel=goals_tab,
+                goal_profile=settings.get("goal_profile", _default_goal_profile()),
+                settings=settings,
+                key_suffix="popover",
+            )
+
+        with personalization_tab:
+            personalization_tab.subheader(translate_text(("Gamification & Motivation", "Gamification & motivation")))
+            render_gamification_mode_selector(settings, container=personalization_tab, show_divider=False)
+            personalization_tab.divider()
+            render_build_info_sidebar(build_metadata=build_metadata, container=personalization_tab)
+
+    st.session_state[SS_SETTINGS] = settings
+    persist_state()
 
     return ai_enabled, show_storage_notice
 
@@ -2473,7 +2539,6 @@ def render_gamification_mode_selector(
         settings["gamification_mode"] = selected_mode.value
         st.session_state[SS_SETTINGS] = settings
         persist_state()
-    container.caption(selected_mode.label)
     if show_divider:
         container.divider()
     return selected_mode
@@ -2547,7 +2612,7 @@ def render_gamification_panel(
             options=gamification_mode_options,
             format_func=lambda option: option.label,
             index=mode_index,
-            help=("Wähle Punkte, Abzeichen oder die motivierende Avatar-Option"),
+            help=("Wähle Punkte, Abzeichen oder die motivierenden Botschaften"),
         )
 
         if selected_mode is not gamification_mode:
@@ -2555,10 +2620,6 @@ def render_gamification_panel(
             settings["gamification_mode"] = selected_mode.value
             st.session_state[SS_SETTINGS] = settings
             persist_state()
-
-        panel.caption(gamification_mode.label)
-    else:
-        panel.caption(gamification_mode.label)
 
     gamification_state = get_gamification_state()
 
