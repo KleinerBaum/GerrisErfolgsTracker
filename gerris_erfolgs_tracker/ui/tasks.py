@@ -21,7 +21,6 @@ from gerris_erfolgs_tracker.constants import (
     AI_ENABLED_KEY,
     AI_QUADRANT_RATIONALE_KEY,
     FILTER_SELECTED_CATEGORIES_KEY,
-    FILTER_SHOW_DONE_KEY,
     FILTER_SORT_OVERRIDE_KEY,
     JOURNAL_COMPLETION_NOTE_KEY,
     JOURNAL_COMPLETION_PROMPT_KEY,
@@ -1140,15 +1139,8 @@ def render_task_list_view(todos: list[TodoItem], *, journal_links: Mapping[str, 
 
     filter_label = translate_text(("Filter & Sortierung", "Filters & sorting"))
     with st.expander(filter_label, expanded=False):
-        filter_columns = st.columns(3)
+        filter_columns = st.columns(2)
         with filter_columns[0]:
-            show_done = st.checkbox(
-                "Erledigte anzeigen",
-                value=st.session_state.get(FILTER_SHOW_DONE_KEY, True),
-                key=FILTER_SHOW_DONE_KEY,
-            )
-
-        with filter_columns[1]:
             default_categories = st.session_state.get(FILTER_SELECTED_CATEGORIES_KEY) or list(Category)
             selected_categories = st.multiselect(
                 "Kategorien",
@@ -1160,7 +1152,7 @@ def render_task_list_view(todos: list[TodoItem], *, journal_links: Mapping[str, 
             if not selected_categories:
                 selected_categories = list(Category)
 
-        with filter_columns[2]:
+        with filter_columns[1]:
             sort_labels: dict[SortOverride, str] = {
                 "priority": "Priorität, dann Fälligkeit",
                 "due_date": "Fälligkeitsdatum zuerst",
@@ -1181,9 +1173,7 @@ def render_task_list_view(todos: list[TodoItem], *, journal_links: Mapping[str, 
                 key=FILTER_SORT_OVERRIDE_KEY,
             )
 
-    visible_todos = [
-        todo for todo in todos if (show_done or not todo.completed) and todo.category in selected_categories
-    ]
+    visible_todos = [todo for todo in todos if todo.category in selected_categories]
 
     if not visible_todos:
         st.info("Keine passenden Aufgaben gefunden")
@@ -1232,15 +1222,17 @@ def render_todo_section(
 ) -> None:
     template_state_key = TODO_TEMPLATE_LAST_APPLIED_KEY
     todos = todos or get_todos()
+    open_todos = [todo for todo in todos if not todo.completed]
+    completed_todos = [todo for todo in todos if todo.completed]
     journal_links = journal_links or get_journal_links_by_todo()
     quadrant_options = list(EisenhowerQuadrant)
 
     hero_left, hero_right = st.columns([0.6, 0.4])
     with hero_left:
-        _render_daily_plan_panel(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
+        _render_daily_plan_panel(ai_enabled=ai_enabled, client=client, todos=open_todos, stats=stats)
 
     with hero_right:
-        _render_completion_journal_prompt(todos)
+        _render_completion_journal_prompt(open_todos)
 
     divider = getattr(st, "divider", None)
     if callable(divider):
@@ -1725,17 +1717,46 @@ def render_todo_section(
     )
 
     with list_tab:
-        render_task_list_view(todos, journal_links=journal_links)
+        render_task_list_view(open_todos, journal_links=journal_links)
 
     with board_tab:
         st.subheader("Eisenhower-Matrix")
-        grouped = group_by_quadrant(sort_todos(todos, by="due_date"))
+        grouped = group_by_quadrant(sort_todos(open_todos, by="due_date"))
         quadrant_columns = st.columns(4)
         for quadrant, column in zip(EisenhowerQuadrant, quadrant_columns, strict=True):
             render_quadrant_board(column, quadrant, grouped.get(quadrant, []), journal_links=journal_links)
 
     with calendar_tab:
-        render_calendar_view()
+        render_calendar_view(open_todos, open_only=True)
+
+    _render_completed_dropdown(completed_todos, journal_links=journal_links)
+
+
+def _render_completed_dropdown(
+    completed_todos: list[TodoItem], *, journal_links: Mapping[str, list[date]] | None = None
+) -> None:
+    label = translate_text(("Erledigte Aufgaben", "Completed tasks"))
+    with st.expander(f"{label} ({len(completed_todos)})", expanded=False):
+        st.caption(
+            translate_text(
+                (
+                    "Abgehakte Aufgaben werden hier gesammelt und sind in den Übersichten ausgeblendet.",
+                    "Checked-off tasks are collected here and hidden from the overview tabs.",
+                )
+            )
+        )
+
+        if not completed_todos:
+            st.info(translate_text(("Keine erledigten Aufgaben vorhanden", "No completed tasks yet")))
+            return
+
+        sorted_completed = sorted(
+            completed_todos,
+            key=lambda item: item.completed_at or item.created_at,
+            reverse=True,
+        )
+        for todo in sorted_completed:
+            render_todo_card(todo, journal_links=journal_links)
 
 
 def render_quadrant_focus_items(todos: list[TodoItem]) -> None:

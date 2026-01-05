@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Aufgaben-Ansichten (Liste, Board, Kalender) blenden erledigte Einträge aus; ein neuer Expander **Erledigte Aufgaben / Completed tasks** am Seitenende bündelt die abgehakten Items übersichtlich.
 - Dashboard: Abschnitt **Ziele im Überblick / Goals at a glance** vom Ziele-Tab in das Dashboard verschoben; im Ziele-Bereich bleibt ein Hinweis auf Vorlagen/Einstellungen bestehen / Dashboard now hosts the **Ziele im Überblick / Goals at a glance** block formerly on the Goals tab, while the Goals page keeps a notice about templates and settings.
 - Fokus-Bereich **Überfällig & Nächste 3 Tage** erlaubt direktes Bearbeiten (Titel, Datum, Priorität, Quadrant, Kategorie, Beschreibung) der aufgeführten Aufgaben inklusive Vorschau und zweisprachiger Labels / The **Overdue & next 3 days** focus area now lets you edit listed tasks inline (title, date, priority, quadrant, category, description) with preview and bilingual labels.
 - Ziele-Seite fokussiert jetzt auf Zielübersicht/Details, prominente CTAs für „Ziel anlegen“/„Aufgabe hinzufügen“ sowie Kategorie- und Safety/AI-Einstellungen; KPI-, Kalender- und Gamification-Module bleiben ausschließlich auf der Dashboard-Seite, doppelte Visualisierungs-Toggles entfallen / Goals tab now focuses on overview/details with prominent “Create goal”/“Add task” CTAs plus category and safety/AI settings; KPI, calendar, and gamification modules live on the Dashboard page only and duplicate visualization toggles were removed.
