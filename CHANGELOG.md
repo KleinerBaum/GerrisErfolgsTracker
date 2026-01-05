@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Neues Dashboard als eigene Standard-Seite bündelt KPI-/Trend-Module (Ziele im Überblick, Workload, Coach, Gamification, Kalender, KPI- & Kategorie-Dashboards), während der Tab **Ziele** sich auf Ziel-Setup und Vorlagen konzentriert / New standalone Dashboard page (default) bundles KPI/trend modules (Goals overview, workload, coach, gamification, calendar, KPI & category dashboards) while the **Goals** tab focuses on goal setup and templates.
 - Header-Einstellungen als Popover rechts neben **Journal** bündeln AI-Schalter, Gamification-Modus, Sicherheitsoptionen und Build-Info; die Sidebar bleibt schlanker und fokussiert sich auf die Navigation / Header settings popover to the right of **Journal** now groups the AI toggle, gamification mode, safety options, and build info so the sidebar stays slimmer and focused on navigation.
 - Sidebar-Navigation nutzt stabile interne Page-Keys, sodass die Ziele-Seite auch mit übersetzten Labels wieder zuverlässig Inhalte rendert / Sidebar navigation now relies on stable internal page keys, ensuring the Goals page renders reliably even when labels are translated.
 - Sidebar-Navigation behält die aktive Seite über einen Session-State-Schlüssel und verzichtet auf den Index-Reset, sodass Reruns nicht unerwartet auf **Ziele / Goals** zurückspringen / Sidebar navigation now keeps the active page via a session-state key and removes the index reset so reruns do not unexpectedly jump back to **Ziele / Goals**.
