@@ -1,4 +1,7 @@
-from app import _filter_goal_overview_todos, _sanitize_goal_overview_tasks
+from app import (
+    _filter_goal_overview_todos_by_category,
+    _sanitize_goal_overview_categories,
+)
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
 from gerris_erfolgs_tracker.models import Category, TodoItem
 
@@ -20,19 +23,17 @@ def _sample_todos() -> list[TodoItem]:
     ]
 
 
-def test_sanitize_goal_overview_tasks_filters_invalid_values() -> None:
+def test_sanitize_goal_overview_categories_filters_invalid_values() -> None:
+    sanitized = _sanitize_goal_overview_categories([Category.ADMIN.value, "missing", 123])
+
+    assert sanitized == [Category.ADMIN.value]
+
+
+def test_filter_goal_overview_todos_by_category_respects_selection_with_fallback() -> None:
     todos = _sample_todos()
 
-    sanitized = _sanitize_goal_overview_tasks(["task-a", "missing", 123], todos)
-
-    assert sanitized == ["task-a"]
-
-
-def test_filter_goal_overview_todos_respects_selection_with_fallback() -> None:
-    todos = _sample_todos()
-
-    filtered_specific = _filter_goal_overview_todos(todos, ["task-b"])
-    filtered_all = _filter_goal_overview_todos(todos, [])
+    filtered_specific = _filter_goal_overview_todos_by_category(todos, [Category.DAILY_STRUCTURE.value])
+    filtered_all = _filter_goal_overview_todos_by_category(todos, [])
 
     assert filtered_specific == [todos[1]]
     assert filtered_all == todos
