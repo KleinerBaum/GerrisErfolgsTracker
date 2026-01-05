@@ -1089,16 +1089,28 @@ def _build_new_tasks_gauge(new_task_count: int) -> go.Figure:
     return figure
 
 
-def _render_goal_quick_todo_popover() -> None:
+def _render_goal_quick_todo_popover(
+    *, form_key: str = QUICK_GOAL_TODO_FORM_KEY, key_suffix: str | None = None
+) -> None:
+    def _with_suffix(base_key: str) -> str:
+        return f"{base_key}_{key_suffix}" if key_suffix else base_key
+
+    title_key = _with_suffix(QUICK_GOAL_TODO_TITLE_KEY)
+    due_key = _with_suffix(QUICK_GOAL_TODO_DUE_KEY)
+    quadrant_key = _with_suffix(QUICK_GOAL_TODO_QUADRANT_KEY)
+    category_key = _with_suffix(QUICK_GOAL_TODO_CATEGORY_KEY)
+    priority_key = _with_suffix(QUICK_GOAL_TODO_PRIORITY_KEY)
+    description_key = _with_suffix(QUICK_GOAL_TODO_DESCRIPTION_KEY)
+
     with st.popover(
         translate_text(("📝 Aufgabe", "📝 Task")),
         use_container_width=True,
     ):
         st.markdown("**ToDo hinzufügen / Add task**")
-        with st.form(QUICK_GOAL_TODO_FORM_KEY):
+        with st.form(_with_suffix(form_key)):
             title = st.text_input(
                 translate_text(("Titel / Title", "Title / Title")),
-                key=QUICK_GOAL_TODO_TITLE_KEY,
+                key=title_key,
                 placeholder=translate_text(
                     (
                         "z. B. Neue Aufgabe anlegen",
@@ -1108,15 +1120,15 @@ def _render_goal_quick_todo_popover() -> None:
             )
             due_date = st.date_input(
                 translate_text(("Fälligkeitsdatum", "Due date")),
-                value=st.session_state.get(QUICK_GOAL_TODO_DUE_KEY, date.today()),
+                value=st.session_state.get(due_key, date.today()),
                 format="YYYY-MM-DD",
-                key=QUICK_GOAL_TODO_DUE_KEY,
+                key=due_key,
             )
             quadrant = st.selectbox(
                 translate_text(("Eisenhower-Quadrant", "Eisenhower quadrant")),
                 options=list(EisenhowerQuadrant),
                 format_func=lambda option: option.label,
-                key=QUICK_GOAL_TODO_QUADRANT_KEY,
+                key=quadrant_key,
             )
             meta_cols = st.columns(2)
             with meta_cols[0]:
@@ -1124,20 +1136,20 @@ def _render_goal_quick_todo_popover() -> None:
                     translate_text(("Kategorie", "Category")),
                     options=list(Category),
                     format_func=lambda option: option.label,
-                    key=QUICK_GOAL_TODO_CATEGORY_KEY,
+                    key=category_key,
                 )
             with meta_cols[1]:
                 priority = st.slider(
                     translate_text(("Priorität", "Priority")),
                     min_value=1,
                     max_value=5,
-                    value=int(st.session_state.get(QUICK_GOAL_TODO_PRIORITY_KEY, 3)),
-                    key=QUICK_GOAL_TODO_PRIORITY_KEY,
+                    value=int(st.session_state.get(priority_key, 3)),
+                    key=priority_key,
                 )
 
             description_md = st.text_area(
                 translate_text(("Beschreibung", "Description")),
-                key=QUICK_GOAL_TODO_DESCRIPTION_KEY,
+                key=description_key,
                 placeholder=translate_text(
                     (
                         "Kurz notieren, worum es geht",
@@ -1372,7 +1384,10 @@ def render_goal_completion_logger(todos: list[TodoItem]) -> None:
             ),
         )
     with action_cols[2]:
-        _render_goal_quick_todo_popover()
+        _render_goal_quick_todo_popover(
+            form_key=f"{QUICK_GOAL_TODO_FORM_KEY}_completion",
+            key_suffix="completion",
+        )
     with action_cols[3]:
         _render_goal_quick_journal_popover()
 
@@ -1594,7 +1609,10 @@ def _render_goal_empty_state(*, ai_enabled: bool, settings: dict[str, Any]) -> N
 
     with action_columns[1]:
         empty_container.markdown("**" + translate_text(("ToDo hinzufügen", "Add a task")) + "**")
-        _render_goal_quick_todo_popover()
+        _render_goal_quick_todo_popover(
+            form_key=f"{QUICK_GOAL_TODO_FORM_KEY}_empty",
+            key_suffix="empty",
+        )
 
     ai_suggestion_clicked = False
     if ai_enabled:
@@ -1860,7 +1878,10 @@ def render_dashboard_header(*, settings: dict[str, Any]) -> None:
     with title_col:
         st.markdown("<div class='dashboard-header'><h2>Gerris ErfolgsTracker</h2></div>", unsafe_allow_html=True)
     with todo_col:
-        _render_goal_quick_todo_popover()
+        _render_goal_quick_todo_popover(
+            form_key=f"{QUICK_GOAL_TODO_FORM_KEY}_header",
+            key_suffix="header",
+        )
     with goal_col:
         _render_goal_quick_goal_popover(
             settings=settings,
