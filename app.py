@@ -1178,7 +1178,7 @@ def _render_goal_quick_todo_popover() -> None:
                             )
                         )
                     )
-            st.rerun()
+                    st.rerun()
 
 
 def _render_goal_quick_goal_popover(*, settings: dict[str, Any]) -> None:
