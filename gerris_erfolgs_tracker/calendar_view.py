@@ -9,6 +9,7 @@ import streamlit as st
 
 from gerris_erfolgs_tracker.models import TodoItem
 from gerris_erfolgs_tracker.state import get_todos
+from gerris_erfolgs_tracker.i18n import translate_text
 
 
 def _normalize_due_date(due_date: Optional[datetime]) -> Optional[date]:
@@ -159,8 +160,16 @@ def _render_day_cell(
     )
 
 
-def render_calendar_view() -> None:
+def render_calendar_view(todos: Optional[list[TodoItem]] = None, *, open_only: bool = True) -> None:
     st.subheader("Kalenderansicht")
+    st.caption(
+        translate_text(
+            (
+                "Zeigt offene Aufgaben pro Tag im ausgewählten Monat.",
+                "Displays open tasks per day in the selected month.",
+            )
+        )
+    )
     _ensure_calendar_styles()
     selected_date = st.date_input(
         "Monat auswählen",
@@ -174,14 +183,12 @@ def render_calendar_view() -> None:
     month = selected_date.month
     year = selected_date.year
 
-    show_only_open = st.checkbox("Nur offene Aufgaben", value=False)
-
-    todos = get_todos()
+    todos = todos or get_todos()
     tasks_by_day = _group_tasks_by_day(
         todos,
         month,
         year,
-        open_only=show_only_open,
+        open_only=open_only,
     )
 
     first_weekday, days_in_month = monthrange(year, month)

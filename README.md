@@ -191,7 +191,7 @@ OPENAI_API_KEY = "sk-..."
 
 ## ToDo-Verwaltung
 
-- Neuer Aufgaben-Tab **Liste / List** (Default) gruppiert nach Kategorie in fester Reihenfolge, sortiert nach Priorität → Fälligkeit → Erstellungsdatum und bietet Filter für erledigte Aufgaben, Kategorie-Multiselect sowie Sortier-Override (Priorität/Fälligkeit/Erstellt). Jede Aufgabe nutzt ein kompaktes Row-Layout mit Done-Toggle, Titel, Prioritäts-Badge (P1–P5), Fälligkeitsdatum (falls vorhanden) und Quadranten-Tag samt Farbcode; Details, Quick-Edit (Kategorie, Priorität, Fälligkeit, Quadrant) und Aktionen **Löschen / Delete** bzw. **Duplizieren / Duplicate** sind über einen platzsparenden Expander erreichbar.
+- Neuer Aufgaben-Tab **Liste / List** (Default) gruppiert nach Kategorie in fester Reihenfolge, sortiert nach Priorität → Fälligkeit → Erstellungsdatum und bietet Kategorie-Multiselect sowie Sortier-Override (Priorität/Fälligkeit/Erstellt). Jede Aufgabe nutzt ein kompaktes Row-Layout mit Done-Toggle, Titel, Prioritäts-Badge (P1–P5), Fälligkeitsdatum (falls vorhanden) und Quadranten-Tag samt Farbcode; Details, Quick-Edit (Kategorie, Priorität, Fälligkeit, Quadrant) und Aktionen **Löschen / Delete** bzw. **Duplizieren / Duplicate** sind über einen platzsparenden Expander erreichbar. Erledigte Aufgaben werden aus den Ansichten ausgeblendet und am Seitenende gesammelt im Expander **Erledigte Aufgaben / Completed tasks** angezeigt.
 - Aktionen zum Löschen erfordern nun eine explizite Bestätigung, um versehentliches Entfernen gespeicherter Aufgaben zu verhindern / Delete actions now ask for explicit confirmation to prevent accidentally removing stored tasks.
 - Legacy-Persistenzdateien mit Datums-Strings oder naiven Zeiten werden beim Laden auf UTC-Datetimes normalisiert; unlesbare Werte landen sicher auf `None` statt Fehler zu werfen / Legacy persistence files with date strings or naive times are normalized to UTC datetimes on load; unreadable values safely fall back to `None` instead of raising errors.
 - Erfassung über das Formular **ToDo hinzufügen / Add task** (Titel, optionales Fälligkeitsdatum, Quadrant) inklusive Button **AI: Quadrant vorschlagen**. Neu sind Kategorie-Auswahl (z. B. Stellensuche, Tagesstruktur), Priorität (1–5) sowie eine optionale Markdown-Beschreibung mit Vorschau. Zusätzlich lassen sich Wiederholungen (einmalig, täglich, werktags, wöchentlich, monatlich, jährlich) und eine E-Mail-Erinnerung (keine, 1 Stunde oder 1 Tag vor Fälligkeit; als Präferenz gespeichert) hinterlegen. Der abschließende Button **ToDo hinzufügen / Add task** ist als primärer Aktionsbutton hervorgehoben, damit das Absenden sofort ins Auge fällt / The final **ToDo hinzufügen / Add task** button is now styled as a primary action so submission stands out.
@@ -216,7 +216,7 @@ OPENAI_API_KEY = "sk-..."
 ## Kalenderansicht / Calendar view
 
 - Monatlicher Überblick über ToDos mit Fälligkeitsdatum in einem 7-Spalten-Raster.
-- Monatsauswahl über Date-Picker (nur Monat/Jahr relevant) und optionaler Filter **Nur offene Aufgaben / Only open tasks**.
+- Monatsauswahl über Date-Picker (nur Monat/Jahr relevant); die Ansicht zeigt ausschließlich offene Aufgaben pro Tag.
 - Aufgaben erscheinen an ihrem jeweiligen Kalendertag mit Status-Emoji (⏳ offen, ✅ erledigt).
 - Der heutige Kalendertag ist im Date-Picker und in der Rasteransicht durch Rahmen + leicht aufgehellten Hintergrund klar
   hervorgehoben / Today's date is visibly highlighted in the date picker and month grid with a border and subtle brightening.
