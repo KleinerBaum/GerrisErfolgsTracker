@@ -1089,9 +1089,7 @@ def _build_new_tasks_gauge(new_task_count: int) -> go.Figure:
     return figure
 
 
-def _render_goal_quick_todo_popover(
-    *, form_key: str = QUICK_GOAL_TODO_FORM_KEY, key_suffix: str | None = None
-) -> None:
+def _render_goal_quick_todo_popover(*, form_key: str = QUICK_GOAL_TODO_FORM_KEY, key_suffix: str | None = None) -> None:
     def _with_suffix(base_key: str) -> str:
         return f"{base_key}_{key_suffix}" if key_suffix else base_key
 
@@ -1193,9 +1191,7 @@ def _render_goal_quick_todo_popover(
                     st.rerun()
 
 
-def _render_goal_quick_goal_popover(
-    *, settings: dict[str, Any], form_key: str = QUICK_GOAL_PROFILE_FORM_KEY
-) -> None:
+def _render_goal_quick_goal_popover(*, settings: dict[str, Any], form_key: str = QUICK_GOAL_PROFILE_FORM_KEY) -> None:
     default_profile = settings.get("goal_profile", _default_goal_profile())
     with st.popover(
         translate_text(("🎯 Ziel", "🎯 Goal")),
@@ -1877,7 +1873,9 @@ def render_settings_popover(
     return ai_enabled, show_storage_notice
 
 
-def render_dashboard_header(*, settings: dict[str, Any], stats: KpiStats, client: Optional[OpenAI], build_metadata: Mapping[str, str | None]) -> tuple[bool, bool]:
+def render_dashboard_header(
+    *, settings: dict[str, Any], stats: KpiStats, client: Optional[OpenAI], build_metadata: Mapping[str, str | None]
+) -> tuple[bool, bool]:
     """Render a compact dashboard header with aligned quick-add actions."""
 
     st.markdown(
@@ -1924,6 +1922,90 @@ def render_dashboard_header(*, settings: dict[str, Any], stats: KpiStats, client
         )
 
     return ai_enabled, show_storage_notice
+
+
+def render_dashboard_page(
+    *,
+    todos: list[TodoItem],
+    stats: KpiStats,
+    category_goals: Mapping[str, int],
+    settings: dict[str, Any],
+    ai_enabled: bool,
+    client: Optional[OpenAI],
+) -> None:
+    st.subheader(translate_text(("Dashboard", "Dashboard")))
+    st.caption(
+        translate_text(
+            (
+                "KPIs, Trends und Coaching gebündelt; Details zu Zielen bleiben im Tab 'Ziele'.",
+                "KPIs, trends, and coaching in one place; goal setup stays in the 'Goals' tab.",
+            )
+        )
+    )
+
+    if not todos:
+        _render_goal_empty_state(ai_enabled=ai_enabled, settings=settings)
+        return
+
+    show_kpi_dashboard, show_category_trends = render_goal_overview(
+        todos,
+        stats=stats,
+        category_goals=category_goals,
+        settings=settings,
+    )
+
+    render_workload_overview(todos=todos, stats=stats)
+
+    coach_column, gamification_column = st.columns([1, 1])
+    with coach_column:
+        render_coach_main_panel()
+    with gamification_column:
+        render_gamification_panel(
+            stats,
+            ai_enabled=ai_enabled,
+            client=client,
+            panel=gamification_column,
+            allow_mode_selection=False,
+        )
+
+    render_shared_calendar_header()
+    render_shared_calendar()
+
+    if show_kpi_dashboard:
+        render_kpi_dashboard(stats, todos=todos)
+
+    if show_category_trends:
+        render_category_dashboard(
+            todos,
+            stats=stats,
+            category_goals=category_goals,
+        )
+
+
+def render_goals_page(
+    *,
+    todos: list[TodoItem],
+    stats: KpiStats,
+    settings: dict[str, Any],
+    ai_enabled: bool,
+    client: Optional[OpenAI],
+) -> bool:
+    st.caption(
+        translate_text(
+            (
+                "Ziele konfigurieren, Tagesziele setzen und Vorlagen pflegen – KPIs sind im Dashboard.",
+                "Configure goals, daily targets, and templates here – KPIs live in the dashboard.",
+            )
+        )
+    )
+
+    if not todos:
+        _render_goal_empty_state(ai_enabled=ai_enabled, settings=settings)
+    else:
+        render_goal_completion_logger(todos)
+
+    settings_container = st.container()
+    return render_settings_panel(stats, client, panel=settings_container)
 
 
 def _get_build_metadata() -> dict[str, str | None]:
@@ -2158,10 +2240,12 @@ def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
     )
 
 
+DASHBOARD_PAGE_KEY = "dashboard"
 GOALS_PAGE_KEY = "goals"
 TASKS_PAGE_KEY = "tasks"
 JOURNAL_PAGE_KEY = "journal"
 
+DASHBOARD_PAGE_LABEL = ("Dashboard", "Dashboard")
 GOALS_PAGE_LABEL = ("Ziele", "Goals")
 TASKS_PAGE_LABEL = ("Aufgaben", "Tasks")
 JOURNAL_PAGE_LABEL = ("Tagebuch", "Journal")
@@ -2186,17 +2270,21 @@ def render_ai_toggle(settings: dict[str, Any], *, client: Optional[OpenAI], cont
 
 
 def render_navigation() -> str:
-    st.sidebar.title("Navigation")
+    st.sidebar.title(translate_text(("Navigation", "Navigation")))
     page_labels = {
+        DASHBOARD_PAGE_KEY: DASHBOARD_PAGE_LABEL,
         GOALS_PAGE_KEY: GOALS_PAGE_LABEL,
         TASKS_PAGE_KEY: TASKS_PAGE_LABEL,
         JOURNAL_PAGE_KEY: JOURNAL_PAGE_LABEL,
     }
     navigation_options = list(page_labels)
-    if NAVIGATION_SELECTION_KEY not in st.session_state:
-        st.session_state[NAVIGATION_SELECTION_KEY] = GOALS_PAGE_KEY
+    if (
+        NAVIGATION_SELECTION_KEY not in st.session_state
+        or st.session_state[NAVIGATION_SELECTION_KEY] not in navigation_options
+    ):
+        st.session_state[NAVIGATION_SELECTION_KEY] = DASHBOARD_PAGE_KEY
     selection = st.sidebar.radio(
-        "Bereich wählen",
+        translate_text(("Bereich wählen", "Choose section")),
         navigation_options,
         key=NAVIGATION_SELECTION_KEY,
         label_visibility="collapsed",
@@ -2662,52 +2750,25 @@ def main() -> None:
             "st.secrets oder der Umgebung hinterlegt ist."
         )
 
-    if selection == GOALS_PAGE_KEY:
-        settings = st.session_state.get(SS_SETTINGS, {})
-        if not isinstance(settings, dict):
-            settings = {}
-        category_goals = _sanitize_category_goals(settings)
-        if not todos:
-            _render_goal_empty_state(ai_enabled=ai_enabled, settings=settings)
-            settings_container = st.container()
-            ai_enabled = render_settings_panel(stats, client, panel=settings_container)
-            return
-        show_kpi_dashboard, show_category_trends = render_goal_overview(
-            todos,
+    category_goals = _sanitize_category_goals(settings)
+
+    if selection == DASHBOARD_PAGE_KEY:
+        render_dashboard_page(
+            todos=todos,
             stats=stats,
             category_goals=category_goals,
             settings=settings,
+            ai_enabled=ai_enabled,
+            client=client,
         )
-
-        render_workload_overview(todos=todos, stats=stats)
-
-        coach_column, gamification_column = st.columns([1, 1])
-        with coach_column:
-            render_coach_main_panel()
-        with gamification_column:
-            render_gamification_panel(
-                stats,
-                ai_enabled=ai_enabled,
-                client=client,
-                panel=gamification_column,
-                allow_mode_selection=False,
-            )
-
-        render_shared_calendar_header()
-        render_shared_calendar()
-
-        if show_kpi_dashboard:
-            render_kpi_dashboard(stats, todos=todos)
-
-        if show_category_trends:
-            render_category_dashboard(
-                todos,
-                stats=stats,
-                category_goals=category_goals,
-            )
-
-        settings_container = st.container()
-        ai_enabled = render_settings_panel(stats, client, panel=settings_container)
+    elif selection == GOALS_PAGE_KEY:
+        ai_enabled = render_goals_page(
+            todos=todos,
+            stats=stats,
+            settings=settings,
+            ai_enabled=ai_enabled,
+            client=client,
+        )
     elif selection == TASKS_PAGE_KEY:
         render_tasks_page(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
     else:
