@@ -2101,6 +2101,7 @@ def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
 GOALS_PAGE_LABEL = "Ziele"
 TASKS_PAGE_LABEL = "Aufgaben"
 JOURNAL_PAGE_LABEL = "Tagebuch"
+NAVIGATION_SELECTION_KEY = "active_page"
 
 
 def render_language_toggle() -> LanguageCode:
@@ -2123,11 +2124,14 @@ def render_ai_toggle_sidebar(settings: dict[str, Any], *, client: Optional[OpenA
 def render_navigation() -> str:
     st.sidebar.title("Navigation")
     navigation_options = [GOALS_PAGE_LABEL, TASKS_PAGE_LABEL, JOURNAL_PAGE_LABEL]
+    if NAVIGATION_SELECTION_KEY not in st.session_state:
+        st.session_state[NAVIGATION_SELECTION_KEY] = GOALS_PAGE_LABEL
     selection = st.sidebar.radio(
         "Bereich wählen",
         navigation_options,
-        index=navigation_options.index(GOALS_PAGE_LABEL),
+        key=NAVIGATION_SELECTION_KEY,
         label_visibility="collapsed",
+        format_func=translate_text,
     )
     st.sidebar.divider()
     return selection
@@ -2610,7 +2614,7 @@ def main() -> None:
             "st.secrets oder der Umgebung hinterlegt ist."
         )
 
-    if selection == translate_text(GOALS_PAGE_LABEL):
+    if selection == GOALS_PAGE_LABEL:
         settings = st.session_state.get(SS_SETTINGS, {})
         if not isinstance(settings, dict):
             settings = {}
@@ -2656,7 +2660,7 @@ def main() -> None:
 
         settings_container = st.container()
         ai_enabled = render_settings_panel(stats, client, panel=settings_container)
-    elif selection == translate_text(TASKS_PAGE_LABEL):
+    elif selection == TASKS_PAGE_LABEL:
         render_tasks_page(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
     else:
         render_journal_section(ai_enabled=ai_enabled, client=client, todos=todos)
