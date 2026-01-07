@@ -45,7 +45,7 @@ Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI
 - Fallback: Wenn kein OneDrive-Hinweis gefunden wird, legt die App `.data/gerris_state.json` im Projektverzeichnis an.
 - Override: Über `GERRIS_ONEDRIVE_DIR` kannst du den Pfad explizit setzen; der Ordner wird bei Bedarf erstellt.
 - Backup: Kopiere `gerris_state.json` regelmäßig in einen sicheren Ordner (z. B. OneDrive-Versionierung oder ein manuelles Backup).
-- Backup-Upload: Im Header-Dropdown **⚙️ Einstellungen** → **Sicherheit & Daten** kannst du eine `gerris_state.json` hochladen und den aktuellen Stand ersetzen / Backup upload: use **⚙️ Settings** → **Safety & data** in the header dropdown to upload a `gerris_state.json` and replace the current state.
+- Backup-Upload: Im Header-Dropdown **⚙️ Einstellungen** → **Sicherheit & Daten** kannst du eine `gerris_state.json` hochladen und den aktuellen Stand ersetzen; der Import-Button nutzt den Formular-Submit, damit Upload und Bestätigung zuverlässig funktionieren / Backup upload: use **⚙️ Settings** → **Safety & data** in the header dropdown to upload a `gerris_state.json` and replace the current state; the import button uses the form submit so uploads and confirmations work reliably.
 - Recovery bei defekter Datei: Benenne `gerris_state.json` in `gerris_state.bak` um, starte die App neu (sie legt eine frische Datei an) und kopiere anschließend gültige Teile aus dem Backup zurück.
 - Reset: Löschen oder Umbenennen der Datei setzt den Zustand komplett zurück; hilfreich, wenn die UI nicht mehr lädt oder JSON-Strukturen geändert wurden.
 
