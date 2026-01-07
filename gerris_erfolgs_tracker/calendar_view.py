@@ -189,7 +189,7 @@ def _render_day_cell(
             with task_columns[1]:
                 with st.popover(
                     translate_text(("Bearbeiten", "Edit")),
-                    use_container_width=True,
+                    width="stretch",
                     key=f"calendar_edit_{task.id}",
                 ):
                     _render_task_edit_form(task, key_prefix=f"calendar_{task.id}")

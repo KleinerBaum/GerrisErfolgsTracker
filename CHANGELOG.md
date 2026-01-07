@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Streamlit: `use_container_width` durch `width="stretch"` ersetzt, um der anstehenden Deprecation (2025-12-31) zuvorzukommen / Streamlit: replaced `use_container_width` with `width="stretch"` to align with the upcoming deprecation (2025-12-31).
 - Einstellungen: Backup-Upload im Tab **Sicherheit & Daten** ermöglicht das Wiederherstellen einer `gerris_state.json` per Datei-Upload / Settings: backup upload in **Safety & data** lets you restore a `gerris_state.json` via file upload.
 - Header-Popover **⚙️ Einstellungen** bündelt jetzt sämtliche Ziel- und Sicherheitsoptionen als Tabs (AI & KI-Schutz, Tagesziel, Ziel-Canvas, Kategorienziele) plus Gamification-Auswahl und Build-Info; doppelte Gamification-Beschriftungen entfallen, der Zusatz "(Avatar)" wurde entfernt / The **⚙️ Settings** popover now offers all goal and safety options in tabs (AI & protection, daily target, goal canvas, category goals) alongside gamification selection and build info; duplicate gamification captions were removed and the "(Avatar)" suffix is gone.
 - Dashboard: Klick auf eine Kategorie blendet die übrigen Tachometer aus und zeigt einen Aufgaben-Fokus mit meilensteinbasiertem Fortschritt pro Task; die Kategorien-Checkboxen liegen jetzt im Dropdown, rechts davon steht **Misc KPIs**. / Dashboard: clicking a category now hides the other gauges and opens a task focus with milestone-based progress per task; category checkboxes sit inside the dropdown with **Misc KPIs** to the right.

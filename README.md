@@ -152,6 +152,7 @@ OPENAI_API_KEY = "sk-..."
 - Typprüfung: `mypy`
 - Tests: `pytest -q`
 - CI: GitHub Actions Workflow (`.github/workflows/ci.yml`) führt `ruff check .` und `pytest -q` bei Push/PR aus.
+- Streamlit-Widgets: Verwende `width="stretch"` statt `use_container_width=True` (deprecated nach 2025-12-31).
 
 ## Troubleshooting
 
