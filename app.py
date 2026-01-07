@@ -13,6 +13,7 @@ import streamlit as st
 from openai import OpenAI
 
 import gerris_erfolgs_tracker.ui.tasks as tasks_ui
+from gerris_erfolgs_tracker.ui.emails import render_emails_page
 from gerris_erfolgs_tracker.ai_features import AISuggestion, suggest_quadrant
 from gerris_erfolgs_tracker.analytics import (
     build_completion_heatmap,
@@ -2564,11 +2565,13 @@ DASHBOARD_PAGE_KEY = "dashboard"
 GOALS_PAGE_KEY = "goals"
 TASKS_PAGE_KEY = "tasks"
 JOURNAL_PAGE_KEY = "journal"
+EMAILS_PAGE_KEY = "emails"
 
 DASHBOARD_PAGE_LABEL = ("Dashboard", "Dashboard")
 GOALS_PAGE_LABEL = ("Ziele", "Goals")
 TASKS_PAGE_LABEL = ("Aufgaben", "Tasks")
 JOURNAL_PAGE_LABEL = ("Tagebuch", "Journal")
+EMAILS_PAGE_LABEL = ("E-Mails", "Emails")
 NAVIGATION_SELECTION_KEY = "active_page"
 
 
@@ -2605,6 +2608,7 @@ def render_navigation() -> str:
         GOALS_PAGE_KEY: GOALS_PAGE_LABEL,
         TASKS_PAGE_KEY: TASKS_PAGE_LABEL,
         JOURNAL_PAGE_KEY: JOURNAL_PAGE_LABEL,
+        EMAILS_PAGE_KEY: EMAILS_PAGE_LABEL,
     }
     navigation_options = list(page_labels)
     if (
@@ -3172,6 +3176,8 @@ def main() -> None:
         )
     elif selection == TASKS_PAGE_KEY:
         render_tasks_page(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
+    elif selection == EMAILS_PAGE_KEY:
+        render_emails_page(ai_enabled=ai_enabled, client=client)
     else:
         render_journal_section(ai_enabled=ai_enabled, client=client, todos=todos)
 

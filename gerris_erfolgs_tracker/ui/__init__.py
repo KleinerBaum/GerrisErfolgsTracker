@@ -1,5 +1,5 @@
 """UI helpers for Gerris ErfolgsTracker."""
 
-from . import common, tasks
+from . import common, emails, tasks
 
-__all__ = ["common", "tasks"]
+__all__ = ["common", "emails", "tasks"]
