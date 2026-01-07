@@ -7,8 +7,11 @@ from typing import Optional
 import streamlit as st
 from openai import OpenAI
 
+from gerris_erfolgs_tracker.ai_features import suggest_email_draft
 from gerris_erfolgs_tracker.constants import (
     NEW_EMAIL_CONTEXT_KEY,
+    NEW_EMAIL_DRAFT_META_KEY,
+    NEW_EMAIL_FROM_AI_KEY,
     NEW_EMAIL_LANGUAGE_KEY,
     NEW_EMAIL_LENGTH_KEY,
     NEW_EMAIL_OUTPUT_KEY,
@@ -18,6 +21,7 @@ from gerris_erfolgs_tracker.constants import (
     NEW_EMAIL_TONE_KEY,
 )
 from gerris_erfolgs_tracker.i18n import translate_text
+from gerris_erfolgs_tracker.llm_schemas import EmailDraft
 
 
 EMAIL_TONE_OPTIONS: tuple[tuple[str, tuple[str, str]], ...] = (
@@ -48,6 +52,8 @@ def _reset_email_state() -> None:
         NEW_EMAIL_LENGTH_KEY,
         NEW_EMAIL_LANGUAGE_KEY,
         NEW_EMAIL_OUTPUT_KEY,
+        NEW_EMAIL_DRAFT_META_KEY,
+        NEW_EMAIL_FROM_AI_KEY,
     ):
         st.session_state.pop(cleanup_key, None)
 
@@ -59,45 +65,30 @@ def _option_label(value: str, options: tuple[tuple[str, tuple[str, str]], ...]) 
     return str(value)
 
 
-def _compose_email_preview(
-    *,
-    title: str,
-    context: str,
-    recipient: str,
-    tone: str,
-    length: str,
-    language: str,
-) -> str:
+def _format_email_output(*, draft: EmailDraft, recipient: str) -> str:
     subject_prefix = translate_text(("Betreff", "Subject"))
     recipient_prefix = translate_text(("Empfänger", "Recipient"))
-    intro = translate_text(("Hallo", "Hello"))
-    closing = translate_text(("Viele Grüße", "Best regards"))
-    language_hint = _option_label(language, EMAIL_LANGUAGE_OPTIONS)
-    tone_hint = _option_label(tone, EMAIL_TONE_OPTIONS)
-    length_hint = _option_label(length, EMAIL_LENGTH_OPTIONS)
     recipient_line = (
         f"{recipient_prefix}: {recipient}"
         if recipient.strip()
         else f"{recipient_prefix}: {translate_text(('Nicht angegeben', 'Not specified'))}"
     )
-
-    detail_intro = translate_text(("Kontext", "Context"))
-    details = context.strip() or translate_text(("Keine zusätzlichen Notizen.", "No additional notes."))
+    salutation = draft.salutation or f"{translate_text(('Hallo', 'Hello'))},"
+    closing = draft.closing or translate_text(("Viele Grüße", "Best regards"))
+    signature = translate_text(("Dein Name", "Your name"))
+    body_md = draft.body_md.strip() or translate_text(("Kein Inhalt.", "No content."))
 
     return "\n".join(
         (
-            f"{subject_prefix}: {title.strip() or translate_text(('Ohne Betreff', 'No subject'))}",
+            f"{subject_prefix}: {draft.subject.strip() or translate_text(('Ohne Betreff', 'No subject'))}",
             recipient_line,
             "",
-            f"{intro},",
+            salutation,
             "",
-            f"{detail_intro}: {details}",
+            body_md,
             "",
-            translate_text(("Ton & Länge", "Tone & length"))
-            + f": {tone_hint} · {length_hint} · {language_hint}",
-            "",
-            closing + ",",
-            translate_text(("Dein Name", "Your name")),
+            f"{closing},",
+            signature,
         )
     )
 
@@ -113,6 +104,8 @@ def render_emails_page(*, ai_enabled: bool, client: Optional[OpenAI]) -> None:  
     st.session_state.setdefault(NEW_EMAIL_LENGTH_KEY, EMAIL_LENGTH_OPTIONS[1][0])
     st.session_state.setdefault(NEW_EMAIL_LANGUAGE_KEY, EMAIL_LANGUAGE_OPTIONS[0][0])
     st.session_state.setdefault(NEW_EMAIL_OUTPUT_KEY, "")
+    st.session_state.setdefault(NEW_EMAIL_DRAFT_META_KEY, {})
+    st.session_state.setdefault(NEW_EMAIL_FROM_AI_KEY, False)
 
     st.markdown(f"## {translate_text(('E-Mails', 'Emails'))}")
     st.caption(
@@ -184,20 +177,79 @@ def render_emails_page(*, ai_enabled: bool, client: Optional[OpenAI]) -> None:  
                 type="primary",
             )
             if submit:
-                output = _compose_email_preview(
+                recipient = str(st.session_state.get(NEW_EMAIL_RECIPIENT_KEY, ""))
+                suggestion = suggest_email_draft(
                     title=str(st.session_state.get(NEW_EMAIL_TITLE_KEY, "")),
                     context=str(st.session_state.get(NEW_EMAIL_CONTEXT_KEY, "")),
-                    recipient=str(st.session_state.get(NEW_EMAIL_RECIPIENT_KEY, "")),
+                    recipient=recipient,
                     tone=str(st.session_state.get(NEW_EMAIL_TONE_KEY, EMAIL_TONE_OPTIONS[0][0])),
                     length=str(st.session_state.get(NEW_EMAIL_LENGTH_KEY, EMAIL_LENGTH_OPTIONS[1][0])),
                     language=str(st.session_state.get(NEW_EMAIL_LANGUAGE_KEY, EMAIL_LANGUAGE_OPTIONS[0][0])),
+                    client=client if ai_enabled else None,
                 )
+                draft = suggestion.payload
+                output = _format_email_output(draft=draft, recipient=recipient)
                 st.session_state[NEW_EMAIL_OUTPUT_KEY] = output
-                st.success(translate_text(("Vorschau aktualisiert.", "Preview updated.")))
+                st.session_state[NEW_EMAIL_FROM_AI_KEY] = suggestion.from_ai
+                st.session_state[NEW_EMAIL_DRAFT_META_KEY] = {
+                    "email_type": draft.email_type,
+                    "tone": draft.tone,
+                    "language": draft.language,
+                }
+                if not ai_enabled:
+                    st.info(
+                        translate_text(
+                            (
+                                "KI ist deaktiviert. Es wurde eine Standardvorlage erstellt.",
+                                "AI is disabled. A standard template was created.",
+                            )
+                        )
+                    )
+                elif suggestion.from_ai:
+                    st.success(translate_text(("KI-Vorschlag erstellt.", "AI draft created.")))
+                else:
+                    st.warning(
+                        translate_text(
+                            (
+                                "KI-Vorschlag fehlgeschlagen, Standardvorlage genutzt.",
+                                "AI draft failed, using the standard template.",
+                            )
+                        )
+                    )
 
     with tabs[1]:
         output = str(st.session_state.get(NEW_EMAIL_OUTPUT_KEY, "")).strip()
         if output:
+            meta = st.session_state.get(NEW_EMAIL_DRAFT_META_KEY, {})
+            if isinstance(meta, dict) and meta:
+                tone_label = _option_label(str(meta.get("tone", "")), EMAIL_TONE_OPTIONS)
+                language_label = _option_label(str(meta.get("language", "")), EMAIL_LANGUAGE_OPTIONS)
+                st.caption(
+                    translate_text(("Typ", "Type"))
+                    + f": {meta.get('email_type', '')} · "
+                    + translate_text(("Ton", "Tone"))
+                    + f": {tone_label} · "
+                    + translate_text(("Sprache", "Language"))
+                    + f": {language_label}"
+                )
+            if not ai_enabled:
+                st.info(
+                    translate_text(
+                        (
+                            "KI ist deaktiviert. Die Vorschau zeigt eine Standardvorlage.",
+                            "AI is disabled. The preview shows a standard template.",
+                        )
+                    )
+                )
+            elif not st.session_state.get(NEW_EMAIL_FROM_AI_KEY, False):
+                st.warning(
+                    translate_text(
+                        (
+                            "Die KI-Antwort war nicht verfügbar. Es wird die Standardvorlage angezeigt.",
+                            "The AI response was unavailable. Showing the standard template.",
+                        )
+                    )
+                )
             st.text_area(
                 translate_text(("E-Mail-Vorschau", "Email preview")),
                 value=output,

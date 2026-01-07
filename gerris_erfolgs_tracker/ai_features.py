@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Generic, Mapping, Optional, Sequence, TypeVar
 
 from openai import OpenAI
+from openai.types.responses import FileSearchTool, WebSearchTool
 
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, ensure_quadrant, sort_todos
 from gerris_erfolgs_tracker.kpis import get_kpi_stats
@@ -17,6 +19,7 @@ from gerris_erfolgs_tracker.llm import (
 from gerris_erfolgs_tracker.llm_schemas import (
     DailyFocusRecommendation,
     DailyPlanningSuggestion,
+    EmailDraft,
     GoalSuggestion,
     MilestoneSuggestionItem,
     MilestoneSuggestionList,
@@ -301,6 +304,168 @@ def _fallback_milestones(todo_title: str) -> MilestoneSuggestionList:
     return MilestoneSuggestionList(milestones=items)
 
 
+def _infer_email_type(title: str, context: str) -> str:
+    lowered = f"{title} {context}".lower()
+    mapping = {
+        "bewerbung": "Bewerbungsschreiben",
+        "application": "Application",
+        "follow-up": "Follow-up",
+        "nachfrage": "Nachfrage",
+        "reminder": "Reminder",
+        "rechnung": "Rechnung",
+        "invoice": "Invoice",
+        "angebot": "Angebot",
+        "proposal": "Proposal",
+        "feedback": "Feedback",
+    }
+    for keyword, label in mapping.items():
+        if keyword in lowered:
+            return label
+    return "Allgemeine Anfrage"
+
+
+def _email_language_label(language: str) -> str:
+    return "en" if language.strip().lower().startswith("en") else "de"
+
+
+def _fallback_email_draft(
+    *,
+    title: str,
+    context: str,
+    recipient: str,
+    tone: str,
+    language: str,
+    length: str,
+) -> EmailDraft:
+    normalized_language = _email_language_label(language)
+    email_type = _infer_email_type(title, context)
+    if normalized_language == "en" and email_type == "Allgemeine Anfrage":
+        email_type = "General inquiry"
+    subject = title.strip()
+    if not subject:
+        subject = "Allgemeine Anfrage" if normalized_language == "de" else "General inquiry"
+
+    if normalized_language == "de":
+        salutation = f"Hallo{f' {recipient}' if recipient.strip() else ''},"
+        closing = "Viele Grüße"
+        intro = "ich melde mich mit folgendem Anliegen:"
+        context_fallback = context.strip() or "Gern teile ich die wichtigsten Punkte."
+        outro = "Vielen Dank für Ihre Zeit und Unterstützung."
+    else:
+        salutation = f"Hello{f' {recipient}' if recipient.strip() else ''},"
+        closing = "Best regards"
+        intro = "I am reaching out with the following request:"
+        context_fallback = context.strip() or "Here are the key points."
+        outro = "Thank you for your time and support."
+
+    detail_lines = [intro, "", context_fallback]
+    if length == "long":
+        follow_up = (
+            "Ich freue mich auf Ihre Rückmeldung."
+            if normalized_language == "de"
+            else "I look forward to your reply."
+        )
+        detail_lines.extend(["", outro, "", follow_up])
+    elif length == "short":
+        detail_lines.append("")
+    else:
+        detail_lines.extend(["", outro])
+
+    body_md = "\n".join(line for line in detail_lines if line is not None)
+
+    return EmailDraft(
+        email_type=email_type,
+        subject=subject,
+        body_md=body_md,
+        tone=tone,
+        language=normalized_language,
+        salutation=salutation,
+        closing=closing,
+    )
+
+
+def _email_tools() -> list[object]:
+    tools: list[object] = [WebSearchTool()]
+    vector_store_id = os.getenv("VECTOR_STORE_ID")
+    if vector_store_id:
+        tools.append(FileSearchTool(vector_store_ids=[vector_store_id]))
+    return tools
+
+
+def suggest_email_draft(
+    *,
+    title: str,
+    context: str,
+    recipient: str,
+    tone: str,
+    language: str,
+    length: str,
+    client: Optional[OpenAI] = None,
+) -> AISuggestion[EmailDraft]:
+    if not (title.strip() or context.strip()):
+        return AISuggestion(
+            _fallback_email_draft(
+                title=title,
+                context=context,
+                recipient=recipient,
+                tone=tone,
+                language=language,
+                length=length,
+            ),
+            from_ai=False,
+        )
+
+    client_to_use = client or get_openai_client()
+    model = get_default_model(reasoning=False)
+    if client_to_use:
+        try:
+            result = request_structured_response(
+                client=client_to_use,
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You draft professional emails. Infer the email_type from the context "
+                            "(e.g., Bewerbungsschreiben, Follow-up, Anfrage). "
+                            "Return a concise, ready-to-send draft in Markdown. "
+                            "Do not include the subject in the body. "
+                            "If a salutation or closing is appropriate, set the fields; otherwise leave them empty. "
+                            "Follow the schema strictly."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Title/subject hint: {title or 'n/a'}\n"
+                            f"Context notes: {context or 'n/a'}\n"
+                            f"Recipient: {recipient or 'n/a'}\n"
+                            f"Tone: {tone}\n"
+                            f"Length preference: {length}\n"
+                            f"Language: {language}\n"
+                        ),
+                    },
+                ],
+                response_model=EmailDraft,
+                tools=_email_tools(),
+            )
+            return AISuggestion(result, from_ai=True)
+        except LLMError:
+            pass
+
+    return AISuggestion(
+        _fallback_email_draft(
+            title=title,
+            context=context,
+            recipient=recipient,
+            tone=tone,
+            language=language,
+            length=length,
+        ),
+        from_ai=False,
+    )
+
+
 def suggest_milestones(
     todo_title: str,
     *,
@@ -389,6 +554,7 @@ def generate_motivation(stats: Optional[KpiStats] = None, client: Optional[OpenA
 __all__ = [
     "AISuggestion",
     "generate_motivation",
+    "suggest_email_draft",
     "suggest_daily_plan",
     "suggest_milestones",
     "suggest_goals",
