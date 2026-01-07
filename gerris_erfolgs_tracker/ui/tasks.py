@@ -1805,7 +1805,8 @@ def render_quadrant_focus_items(todos: list[TodoItem]) -> None:
 
 def _render_focus_item_editor(todo: TodoItem, *, key_prefix: str) -> None:
     editor_label = translate_text(("Aufgabe bearbeiten", "Update task"))
-    with st.popover(editor_label, width="stretch", key=f"{key_prefix}_popover_{todo.id}"):
+    popover_label = f"{editor_label} ({todo.id})"
+    with st.popover(popover_label, width="stretch"):
         with st.form(f"{key_prefix}_form_{todo.id}"):
             updated_title = st.text_input(
                 translate_text(("Titel", "Title")),
