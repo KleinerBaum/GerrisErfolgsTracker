@@ -101,6 +101,7 @@ from gerris_erfolgs_tracker.state import (
     persist_state,
     reset_state,
 )
+from gerris_erfolgs_tracker.state_persistence import PERSISTED_KEYS
 from gerris_erfolgs_tracker.storage import FileStorageBackend
 from gerris_erfolgs_tracker.todos import (
     add_todo,
@@ -693,6 +694,31 @@ def _render_storage_notice(backend: FileStorageBackend, *, is_cloud: bool) -> No
             "kann der Zustand verloren gehen."
         )
     st.info(f"{storage_note} {onedrive_hint}")
+
+
+def _parse_backup_payload(raw_bytes: bytes) -> dict[str, object] | None:
+    try:
+        decoded = raw_bytes.decode("utf-8")
+        payload = json.loads(decoded)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(payload, Mapping):
+        return None
+
+    filtered = {key: payload[key] for key in PERSISTED_KEYS if key in payload}
+    if not filtered:
+        return None
+
+    return filtered
+
+
+def _restore_backup_state(payload: Mapping[str, object]) -> None:
+    for key in PERSISTED_KEYS:
+        if key in payload:
+            st.session_state[key] = payload[key]
+    init_state()
+    persist_state()
 
 
 def _ensure_settings_defaults(*, client: Optional[OpenAI], stats: KpiStats) -> dict[str, Any]:
@@ -2802,6 +2828,71 @@ def render_safety_panel(panel: Any, *, key_suffix: str = "") -> bool:
         ),
     )
     settings[SHOW_STORAGE_NOTICE_KEY] = show_storage_notice
+
+    panel.divider()
+    panel.subheader(translate_text(("Backup importieren", "Import backup")))
+    panel.caption(
+        translate_text(
+            (
+                "Lade eine gerris_state.json hoch, um ToDos, KPIs, Einstellungen und Tagebuch wiederherzustellen.",
+                "Upload a gerris_state.json file to restore todos, KPIs, settings, and journal entries.",
+            )
+        )
+    )
+    with panel.form(f"{key_prefix}backup_import_form"):
+        backup_upload = panel.file_uploader(
+            translate_text(("Backup-Datei (JSON)", "Backup file (JSON)")),
+            type=["json"],
+            key=f"{key_prefix}backup_upload",
+            help=translate_text(
+                (
+                    "Die Datei sollte aus einem vorherigen Export bzw. von deinem Speicherpfad stammen.",
+                    "Use a file from a previous export or your storage path.",
+                )
+            ),
+        )
+        backup_confirmed = panel.checkbox(
+            translate_text(("Aktuellen Stand überschreiben", "Overwrite current state")),
+            value=False,
+            key=f"{key_prefix}backup_confirm",
+            help=translate_text(
+                (
+                    "Der Import ersetzt den aktuellen Stand dieser Sitzung.",
+                    "Importing replaces the current session state.",
+                )
+            ),
+        )
+        restore_clicked = panel.form_submit_button(
+            translate_text(("Backup einspielen", "Restore backup")),
+            type="primary",
+        )
+    if restore_clicked:
+        if backup_upload is None:
+            panel.error(translate_text(("Bitte eine JSON-Datei auswählen.", "Please select a JSON file.")))
+        elif not backup_confirmed:
+            panel.error(
+                translate_text(
+                    (
+                        "Bitte bestätige, dass der aktuelle Stand überschrieben wird.",
+                        "Please confirm that the current state will be overwritten.",
+                    )
+                )
+            )
+        else:
+            payload = _parse_backup_payload(backup_upload.getvalue())
+            if payload is None:
+                panel.error(
+                    translate_text(
+                        (
+                            "Die Datei enthält kein gültiges Gerris-Backup.",
+                            "The file does not contain a valid Gerris backup.",
+                        )
+                    )
+                )
+            else:
+                _restore_backup_state(payload)
+                panel.success(translate_text(("Backup importiert. App wird neu geladen.", "Backup restored. Reloading app.")))
+                st.rerun()
 
     if panel.button(
         "Session zurücksetzen",
