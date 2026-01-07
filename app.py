@@ -2839,7 +2839,7 @@ def render_safety_panel(panel: Any, *, key_suffix: str = "") -> bool:
             )
         )
     )
-    with panel.form(f"{key_prefix}backup_import_form"):
+    with panel.form(f"{key_prefix}backup_import_form") as backup_form:
         backup_upload = panel.file_uploader(
             translate_text(("Backup-Datei (JSON)", "Backup file (JSON)")),
             type=["json"],
@@ -2862,7 +2862,7 @@ def render_safety_panel(panel: Any, *, key_suffix: str = "") -> bool:
                 )
             ),
         )
-        restore_clicked = panel.form_submit_button(
+        restore_clicked = backup_form.form_submit_button(
             translate_text(("Backup einspielen", "Restore backup")),
             type="primary",
         )
