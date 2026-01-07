@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Fokus-Editor-Popover zeigt die Task-ID im Label, damit mehrfach gelistete Aufgaben eindeutige Popover erhalten / Focus editor popovers include the task ID in the label so repeated tasks get unique popovers.
 - Streamlit: `use_container_width` durch `width="stretch"` ersetzt, um der anstehenden Deprecation (2025-12-31) zuvorzukommen / Streamlit: replaced `use_container_width` with `width="stretch"` to align with the upcoming deprecation (2025-12-31).
 - Einstellungen: Backup-Upload im Tab **Sicherheit & Daten** ermöglicht das Wiederherstellen einer `gerris_state.json` per Datei-Upload / Settings: backup upload in **Safety & data** lets you restore a `gerris_state.json` via file upload.
 - Backup-Import nutzt den Formular-Submit, um einen `None`-Handle zu vermeiden / Backup import uses the form submit to avoid a `None` handle.
