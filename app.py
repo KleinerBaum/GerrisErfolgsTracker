@@ -1878,6 +1878,8 @@ def _render_goal_overview_details(*, category: Category, snapshot: CategoryKpi, 
                 )
             )
             st.write(todo.description_md or translate_text(("Keine Beschreibung", "No description")))
+            st.markdown("---")
+            _render_todo_edit_form(todo, key_prefix="goal_overview")
 
 
 def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, category_goals: Mapping[str, int]) -> None:
@@ -2011,6 +2013,86 @@ def _render_misc_metrics(*, stats: KpiStats, todos: Sequence[TodoItem]) -> None:
         )
 
 
+def _render_todo_edit_form(todo: TodoItem, *, key_prefix: str) -> None:
+    st.markdown("**" + translate_text(("Aufgabe bearbeiten", "Update task")) + "**")
+    form_key = f"{key_prefix}_edit_{todo.id}"
+    with st.form(form_key):
+        updated_title = st.text_input(
+            translate_text(("Titel", "Title")),
+            value=todo.title,
+            key=f"{form_key}_title",
+        )
+
+        no_due_date = st.checkbox(
+            translate_text(("Kein Fälligkeitsdatum", "No due date")),
+            value=todo.due_date is None,
+            key=f"{form_key}_no_due",
+        )
+        new_due_value: date | None = None
+        if not no_due_date:
+            new_due_value = st.date_input(
+                translate_text(("Fälligkeitsdatum", "Due date")),
+                value=todo.due_date.date() if todo.due_date else None,
+                format="YYYY-MM-DD",
+                key=f"{form_key}_due",
+            )
+        new_priority = st.selectbox(
+            translate_text(("Priorität (1=hoch)", "Priority (1=high)")),
+            options=list(range(1, 6)),
+            index=list(range(1, 6)).index(todo.priority),
+            key=f"{form_key}_priority",
+        )
+        new_quadrant = st.selectbox(
+            translate_text(("Eisenhower-Quadrant", "Eisenhower quadrant")),
+            options=list(EisenhowerQuadrant),
+            format_func=lambda option: option.label,
+            index=list(EisenhowerQuadrant).index(todo.quadrant),
+            key=f"{form_key}_quadrant",
+        )
+        new_category = st.selectbox(
+            translate_text(("Kategorie", "Category")),
+            options=list(Category),
+            format_func=lambda option: option.label,
+            index=list(Category).index(todo.category),
+            key=f"{form_key}_category",
+        )
+        description_tabs = st.tabs(
+            [
+                translate_text(("Schreiben", "Write")),
+                translate_text(("Vorschau", "Preview")),
+            ]
+        )
+        with description_tabs[0]:
+            new_description = st.text_area(
+                translate_text(("Beschreibung (Markdown)", "Description (Markdown)")),
+                value=todo.description_md,
+                key=f"{form_key}_description",
+            )
+        with description_tabs[1]:
+            description_preview = st.session_state.get(f"{form_key}_description", "")
+            if description_preview.strip():
+                st.markdown(description_preview)
+            else:
+                st.caption(translate_text(("Keine Beschreibung vorhanden", "No description available")))
+
+        submitted = st.form_submit_button(translate_text(("Aktualisieren", "Update")))
+        if submitted:
+            new_due_datetime = (
+                datetime.combine(new_due_value, datetime.min.time(), tzinfo=timezone.utc) if new_due_value else None
+            )
+            update_todo(
+                todo.id,
+                title=updated_title.strip(),
+                due_date=new_due_datetime,
+                priority=new_priority,
+                quadrant=new_quadrant,
+                category=new_category,
+                description_md=new_description,
+            )
+            st.success(translate_text(("Aufgabe aktualisiert", "Task updated")))
+            st.rerun()
+
+
 def render_workload_overview(*, todos: list[TodoItem], stats: KpiStats) -> None:
     st.markdown(
         translate_text(
@@ -2034,84 +2116,7 @@ def render_workload_overview(*, todos: list[TodoItem], stats: KpiStats) -> None:
                 st.write(todo.description_md or translate_text(("Keine Beschreibung", "No description")))
 
                 st.markdown("---")
-                st.markdown("**" + translate_text(("Aufgabe bearbeiten", "Update task")) + "**")
-                with st.form(f"focus_edit_{todo.id}"):
-                    updated_title = st.text_input(
-                        translate_text(("Titel", "Title")),
-                        value=todo.title,
-                        key=f"focus_edit_title_{todo.id}",
-                    )
-
-                    no_due_date = st.checkbox(
-                        translate_text(("Kein Fälligkeitsdatum", "No due date")),
-                        value=todo.due_date is None,
-                        key=f"focus_edit_no_due_{todo.id}",
-                    )
-                    new_due_value: date | None = None
-                    if not no_due_date:
-                        new_due_value = st.date_input(
-                            translate_text(("Fälligkeitsdatum", "Due date")),
-                            value=todo.due_date.date() if todo.due_date else None,
-                            format="YYYY-MM-DD",
-                            key=f"focus_edit_due_{todo.id}",
-                        )
-                    new_priority = st.selectbox(
-                        translate_text(("Priorität (1=hoch)", "Priority (1=high)")),
-                        options=list(range(1, 6)),
-                        index=list(range(1, 6)).index(todo.priority),
-                        key=f"focus_edit_priority_{todo.id}",
-                    )
-                    new_quadrant = st.selectbox(
-                        translate_text(("Eisenhower-Quadrant", "Eisenhower quadrant")),
-                        options=list(EisenhowerQuadrant),
-                        format_func=lambda option: option.label,
-                        index=list(EisenhowerQuadrant).index(todo.quadrant),
-                        key=f"focus_edit_quadrant_{todo.id}",
-                    )
-                    new_category = st.selectbox(
-                        translate_text(("Kategorie", "Category")),
-                        options=list(Category),
-                        format_func=lambda option: option.label,
-                        index=list(Category).index(todo.category),
-                        key=f"focus_edit_category_{todo.id}",
-                    )
-                    description_tabs = st.tabs(
-                        [
-                            translate_text(("Schreiben", "Write")),
-                            translate_text(("Vorschau", "Preview")),
-                        ]
-                    )
-                    with description_tabs[0]:
-                        new_description = st.text_area(
-                            translate_text(("Beschreibung (Markdown)", "Description (Markdown)")),
-                            value=todo.description_md,
-                            key=f"focus_edit_description_{todo.id}",
-                        )
-                    with description_tabs[1]:
-                        description_preview = st.session_state.get(f"focus_edit_description_{todo.id}", "")
-                        if description_preview.strip():
-                            st.markdown(description_preview)
-                        else:
-                            st.caption(translate_text(("Keine Beschreibung vorhanden", "No description available")))
-
-                    submitted = st.form_submit_button(translate_text(("Aktualisieren", "Update")))
-                    if submitted:
-                        new_due_datetime = (
-                            datetime.combine(new_due_value, datetime.min.time(), tzinfo=timezone.utc)
-                            if new_due_value
-                            else None
-                        )
-                        update_todo(
-                            todo.id,
-                            title=updated_title.strip(),
-                            due_date=new_due_datetime,
-                            priority=new_priority,
-                            quadrant=new_quadrant,
-                            category=new_category,
-                            description_md=new_description,
-                        )
-                        st.success(translate_text(("Aufgabe aktualisiert", "Task updated")))
-                        st.rerun()
+                _render_todo_edit_form(todo, key_prefix="focus")
     with calendar_column:
         st.markdown("**Kalender – aktuelle Woche / Calendar – current week**")
         _render_calendar_week(todos)

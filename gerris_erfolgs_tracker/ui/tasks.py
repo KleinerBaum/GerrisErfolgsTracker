@@ -1799,6 +1799,85 @@ def render_quadrant_focus_items(todos: list[TodoItem]) -> None:
                                 f"- {milestone.title} ({milestone.status.label}, {points_label}: {milestone.points})"
                                 f"{milestone_note}"
                             )
+                    st.markdown("---")
+                    _render_focus_item_editor(todo, key_prefix="focus_items")
+
+
+def _render_focus_item_editor(todo: TodoItem, *, key_prefix: str) -> None:
+    editor_label = translate_text(("Aufgabe bearbeiten", "Update task"))
+    with st.popover(editor_label, use_container_width=True, key=f"{key_prefix}_popover_{todo.id}"):
+        with st.form(f"{key_prefix}_form_{todo.id}"):
+            updated_title = st.text_input(
+                translate_text(("Titel", "Title")),
+                value=todo.title,
+                key=f"{key_prefix}_title_{todo.id}",
+            )
+            no_due_date = st.checkbox(
+                translate_text(("Kein Fälligkeitsdatum", "No due date")),
+                value=todo.due_date is None,
+                key=f"{key_prefix}_no_due_{todo.id}",
+            )
+            new_due_value: date | None = None
+            if not no_due_date:
+                new_due_value = st.date_input(
+                    translate_text(("Fälligkeitsdatum", "Due date")),
+                    value=todo.due_date.date() if todo.due_date else None,
+                    format="YYYY-MM-DD",
+                    key=f"{key_prefix}_due_{todo.id}",
+                )
+            new_priority = st.selectbox(
+                translate_text(("Priorität (1=hoch)", "Priority (1=high)")),
+                options=list(range(1, 6)),
+                index=list(range(1, 6)).index(todo.priority),
+                key=f"{key_prefix}_priority_{todo.id}",
+            )
+            new_quadrant = st.selectbox(
+                translate_text(("Eisenhower-Quadrant", "Eisenhower quadrant")),
+                options=list(EisenhowerQuadrant),
+                format_func=lambda option: option.label,
+                index=list(EisenhowerQuadrant).index(todo.quadrant),
+                key=f"{key_prefix}_quadrant_{todo.id}",
+            )
+            new_category = st.selectbox(
+                translate_text(("Kategorie", "Category")),
+                options=list(Category),
+                format_func=lambda option: option.label,
+                index=list(Category).index(todo.category),
+                key=f"{key_prefix}_category_{todo.id}",
+            )
+            description_tabs = st.tabs(
+                [
+                    translate_text(("Schreiben", "Write")),
+                    translate_text(("Vorschau", "Preview")),
+                ]
+            )
+            with description_tabs[0]:
+                new_description = st.text_area(
+                    translate_text(("Beschreibung (Markdown)", "Description (Markdown)")),
+                    value=todo.description_md,
+                    key=f"{key_prefix}_description_{todo.id}",
+                )
+            with description_tabs[1]:
+                preview = st.session_state.get(f"{key_prefix}_description_{todo.id}", "")
+                if preview.strip():
+                    st.markdown(preview)
+                else:
+                    st.caption(translate_text(("Keine Beschreibung vorhanden", "No description available")))
+
+            submitted = st.form_submit_button(translate_text(("Aktualisieren", "Update")))
+            if submitted:
+                new_due_datetime = _as_utc_midnight(new_due_value)
+                update_todo(
+                    todo.id,
+                    title=updated_title.strip(),
+                    due_date=new_due_datetime,
+                    priority=new_priority,
+                    quadrant=new_quadrant,
+                    category=new_category,
+                    description_md=new_description,
+                )
+                st.success(translate_text(("Aufgabe aktualisiert", "Task updated")))
+                st.rerun()
 
 
 def render_quadrant_board(
