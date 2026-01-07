@@ -34,6 +34,24 @@ class GoalSuggestion(BaseModel):
     )
 
 
+class EmailDraft(BaseModel):
+    email_type: str = Field(
+        description="Erkannter E-Mail-Typ, z.B. Bewerbungsschreiben, Follow-up, Anfrage",
+    )
+    subject: str = Field(description="Betreff der E-Mail")
+    body_md: str = Field(description="E-Mail-Text als Markdown ohne Betreff oder Signatur")
+    tone: str = Field(description="Gewählte Tonalität")
+    language: str = Field(description="Ausgabesprache, z.B. de oder en")
+    salutation: str | None = Field(
+        default=None,
+        description="Optionale Anrede",
+    )
+    closing: str | None = Field(
+        default=None,
+        description="Optionale Grußformel",
+    )
+
+
 class Motivation(BaseModel):
     message: str = Field(description="Motivierender Text")
     tone: Literal["encouraging", "calm", "celebratory"] = Field(
@@ -156,6 +174,7 @@ class JournalAlignmentResponse(BaseModel):
 __all__ = [
     "DailyFocusRecommendation",
     "DailyPlanningSuggestion",
+    "EmailDraft",
     "GoalSuggestion",
     "JournalAlignmentAction",
     "JournalAlignmentResponse",
