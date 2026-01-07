@@ -2196,7 +2196,10 @@ def render_dashboard_header(
 
     header_container = st.container()
     with header_container:
-        title_col, todo_col, goal_col, journal_col, settings_col = st.columns([3, 2, 2, 2, 2], gap="small")
+        title_col, todo_col, goal_col, journal_col, email_col, settings_col = st.columns(
+            [3, 2, 2, 2, 2, 2],
+            gap="small",
+        )
 
     with title_col:
         st.markdown("<div class='dashboard-header'><h2>Gerris ErfolgsTracker</h2></div>", unsafe_allow_html=True)
@@ -2212,6 +2215,20 @@ def render_dashboard_header(
         )
     with journal_col:
         _render_goal_quick_journal_popover()
+
+    with email_col:
+        email_clicked = st.button(
+            translate_text(("✉️ E-Mails", "✉️ Emails")),
+            help=translate_text(
+                (
+                    "Öffnet den E-Mail-Assistenten für neue Vorlagen.",
+                    "Opens the email assistant for new drafts.",
+                )
+            ),
+        )
+        if email_clicked:
+            st.session_state[NAVIGATION_SELECTION_KEY] = EMAILS_PAGE_KEY
+            st.rerun()
 
     with settings_col:
         ai_enabled, show_storage_notice = render_settings_popover(
