@@ -1212,7 +1212,7 @@ def _render_goal_quick_todo_popover(
     priority_key = _with_suffix(QUICK_GOAL_TODO_PRIORITY_KEY)
     description_key = _with_suffix(QUICK_GOAL_TODO_DESCRIPTION_KEY)
 
-    with st.popover(translate_text(trigger_label), use_container_width=True):
+    with st.popover(translate_text(trigger_label), width="stretch"):
         st.markdown("**ToDo hinzufügen / Add task**")
         with st.form(_with_suffix(form_key)):
             title = st.text_input(
@@ -1307,7 +1307,7 @@ def _render_goal_quick_goal_popover(
     trigger_label: tuple[str, str] = ("🎯 Ziel", "🎯 Goal"),
 ) -> None:
     default_profile = settings.get("goal_profile", _default_goal_profile())
-    with st.popover(translate_text(trigger_label), use_container_width=True):
+    with st.popover(translate_text(trigger_label), width="stretch"):
         st.markdown("**Ziel hinzufügen / Add goal**")
         with st.form(form_key):
             title = st.text_input(
@@ -1376,7 +1376,7 @@ def _render_goal_quick_goal_popover(
 def _render_goal_quick_journal_popover() -> None:
     with st.popover(
         translate_text(("📓 Journal", "📓 Journal")),
-        use_container_width=True,
+        width="stretch",
     ):
         st.markdown("**Tagebucheintrag / Journal entry**")
         with st.form(QUICK_GOAL_JOURNAL_FORM_KEY):
@@ -1691,7 +1691,7 @@ def render_goal_overview(
                     detail_clicked = st.button(
                         translate_text((f"{category.label} öffnen", f"Open {category.label}")),
                         key=f"category_detail_{category.value}",
-                        use_container_width=True,
+                        width="stretch",
                     )
                     if detail_clicked:
                         selected_category_value = category.value
@@ -1977,7 +1977,7 @@ def _render_calendar_week(todos: Sequence[TodoItem]) -> None:
                 translate_text(("Aufgabe", "Task")): todo.title,
             }
         )
-    st.dataframe(calendar_rows, hide_index=True, use_container_width=True)
+    st.dataframe(calendar_rows, hide_index=True, width="stretch")
 
 
 def _render_misc_metrics(*, stats: KpiStats, todos: Sequence[TodoItem]) -> None:
@@ -2137,7 +2137,7 @@ def render_settings_popover(
     show_storage_notice = bool(settings.get(SHOW_STORAGE_NOTICE_KEY, False))
     ai_enabled = bool(settings.get(AI_ENABLED_KEY, bool(client)))
 
-    with st.popover(translate_text(("⚙️ Einstellungen", "⚙️ Settings")), use_container_width=True):
+    with st.popover(translate_text(("⚙️ Einstellungen", "⚙️ Settings")), width="stretch"):
         st.markdown("**Einstellungen & Sicherheit / Settings & safety**")
         safety_label = translate_text(("Sicherheit & KI", "Safety & AI"))
         goals_label = translate_text(("Ziele & Kategorien", "Goals & categories"))
