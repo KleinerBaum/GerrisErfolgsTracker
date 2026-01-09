@@ -2093,6 +2093,18 @@ def _render_todo_edit_form(todo: TodoItem, *, key_prefix: str) -> None:
             st.success(translate_text(("Aufgabe aktualisiert", "Task updated")))
             st.rerun()
 
+    action_label = translate_text(("Aktionen", "Actions"))
+    st.markdown(f"**{action_label}**")
+    action_columns = st.columns(2)
+    toggle_label = (
+        translate_text(("Erledigt", "Done")) if not todo.completed else translate_text(("Wieder öffnen", "Reopen"))
+    )
+    if action_columns[0].button(toggle_label, key=f"{form_key}_toggle"):
+        tasks_ui._toggle_todo_completion(todo)
+
+    with action_columns[1]:
+        tasks_ui._render_delete_confirmation(todo, key_prefix=f"{form_key}_delete")
+
 
 def render_workload_overview(*, todos: list[TodoItem], stats: KpiStats) -> None:
     st.markdown(

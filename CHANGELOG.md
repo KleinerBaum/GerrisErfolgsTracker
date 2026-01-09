@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Aufgaben-Editoren in Fokus-/Kalender-/Ziele-Detailansichten bieten jetzt zusätzlich Aktionen zum Abschließen und Löschen der Aufgabe / Task editors in focus, calendar, and goals detail views now include actions to mark tasks done or delete them.
 - Navigation: E-Mail-Button setzt jetzt einen separaten Pending-Key, sodass der aktive Tab vor dem Sidebar-Radio gesetzt wird und keine Streamlit-Session-State-Fehler mehr auftreten / Navigation: the email button now uses a separate pending key so the active tab is set before the sidebar radio and Streamlit session-state errors are avoided.
 - Dashboard-Header: Neuer Schnellzugriff **E-Mails / Emails** zwischen Journal und Einstellungen, um direkt zum E-Mail-Assistenten zu wechseln / Dashboard header: added the **E-Mails / Emails** quick action between Journal and Settings for fast access to the email assistant.
 - Fokus-Editor-Popover zeigt die Task-ID im Label, damit mehrfach gelistete Aufgaben eindeutige Popover erhalten / Focus editor popovers include the task ID in the label so repeated tasks get unique popovers.

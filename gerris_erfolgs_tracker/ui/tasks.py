@@ -1880,6 +1880,18 @@ def _render_focus_item_editor(todo: TodoItem, *, key_prefix: str) -> None:
                 st.success(translate_text(("Aufgabe aktualisiert", "Task updated")))
                 st.rerun()
 
+        action_label = translate_text(("Aktionen", "Actions"))
+        st.markdown(f"**{action_label}**")
+        action_columns = st.columns(2)
+        toggle_label = (
+            translate_text(("Erledigt", "Done")) if not todo.completed else translate_text(("Wieder öffnen", "Reopen"))
+        )
+        if action_columns[0].button(toggle_label, key=f"{key_prefix}_toggle_{todo.id}"):
+            _toggle_todo_completion(todo)
+
+        with action_columns[1]:
+            _render_delete_confirmation(todo, key_prefix=f"{key_prefix}_delete_{todo.id}")
+
 
 def render_quadrant_board(
     container: st.delta_generator.DeltaGenerator,
