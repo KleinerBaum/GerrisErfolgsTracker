@@ -2110,7 +2110,7 @@ def render_workload_overview(*, todos: list[TodoItem], stats: KpiStats) -> None:
             ("### Fokus: Nächste Schritte", "### Focus: Next steps"),
         )
     )
-    overdue_and_upcoming, calendar_column, misc_column = st.columns([1.2, 1, 1])
+    overdue_and_upcoming, calendar_column = st.columns([1.2, 1])
     with overdue_and_upcoming:
         st.markdown("**Überfällig & Nächste 3 Tage / Overdue & next 3 days**")
         for todo in _collect_timeboxed_tasks(todos):
@@ -2128,12 +2128,11 @@ def render_workload_overview(*, todos: list[TodoItem], stats: KpiStats) -> None:
 
                 st.markdown("---")
                 _render_todo_edit_form(todo, key_prefix="focus")
+        st.markdown("**Misc KPIs**")
+        _render_misc_metrics(stats=stats, todos=todos)
     with calendar_column:
         st.markdown("**Kalender – aktuelle Woche / Calendar – current week**")
         _render_calendar_week(todos)
-    with misc_column:
-        st.markdown("**Misc KPIs**")
-        _render_misc_metrics(stats=stats, todos=todos)
 
 
 def render_settings_popover(
