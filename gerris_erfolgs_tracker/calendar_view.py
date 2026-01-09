@@ -160,6 +160,22 @@ def _render_task_edit_form(todo: TodoItem, *, key_prefix: str) -> None:
             st.success(translate_text(("Aufgabe aktualisiert", "Task updated")))
             st.rerun()
 
+    action_label = translate_text(("Aktionen", "Actions"))
+    st.markdown(f"**{action_label}**")
+    action_columns = st.columns(2)
+    toggle_label = (
+        translate_text(("Erledigt", "Done")) if not todo.completed else translate_text(("Wieder öffnen", "Reopen"))
+    )
+    if action_columns[0].button(toggle_label, key=f"{key_prefix}_toggle_{todo.id}"):
+        from gerris_erfolgs_tracker.ui import tasks as tasks_ui
+
+        tasks_ui._toggle_todo_completion(todo)
+
+    with action_columns[1]:
+        from gerris_erfolgs_tracker.ui import tasks as tasks_ui
+
+        tasks_ui._render_delete_confirmation(todo, key_prefix=f"{key_prefix}_delete_{todo.id}")
+
 
 def _render_day_cell(
     day: Optional[int],
