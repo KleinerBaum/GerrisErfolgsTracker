@@ -2227,7 +2227,7 @@ def render_dashboard_header(
             ),
         )
         if email_clicked:
-            st.session_state[NAVIGATION_SELECTION_KEY] = EMAILS_PAGE_KEY
+            st.session_state[PENDING_NAVIGATION_KEY] = EMAILS_PAGE_KEY
             st.rerun()
 
     with settings_col:
@@ -2590,6 +2590,7 @@ TASKS_PAGE_LABEL = ("Aufgaben", "Tasks")
 JOURNAL_PAGE_LABEL = ("Tagebuch", "Journal")
 EMAILS_PAGE_LABEL = ("E-Mails", "Emails")
 NAVIGATION_SELECTION_KEY = "active_page"
+PENDING_NAVIGATION_KEY = "pending_active_page"
 
 
 def render_language_toggle() -> LanguageCode:
@@ -2627,6 +2628,8 @@ def render_navigation() -> str:
         JOURNAL_PAGE_KEY: JOURNAL_PAGE_LABEL,
         EMAILS_PAGE_KEY: EMAILS_PAGE_LABEL,
     }
+    if PENDING_NAVIGATION_KEY in st.session_state:
+        st.session_state[NAVIGATION_SELECTION_KEY] = st.session_state.pop(PENDING_NAVIGATION_KEY)
     navigation_options = list(page_labels)
     if (
         NAVIGATION_SELECTION_KEY not in st.session_state
