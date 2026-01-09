@@ -1588,7 +1588,7 @@ def _milestone_progress(todo: TodoItem) -> tuple[float, int, int]:
 def _render_goal_overview_settings(
     *, settings: dict[str, Any], todos: Sequence[TodoItem], stats: KpiStats
 ) -> list[str]:
-    settings_column, misc_column = st.columns([1, 2])
+    settings_column = st.columns(1)[0]
     with settings_column:
         with st.expander(translate_text(("Kategorien", "Categories")), expanded=False):
             st.caption(
@@ -1638,9 +1638,7 @@ def _render_goal_overview_settings(
                 settings[GOAL_OVERVIEW_SELECTED_CATEGORIES_KEY] = sanitized_selection
                 st.session_state[SS_SETTINGS] = settings
                 persist_state()
-
-    with misc_column:
-        misc_column.markdown("**Misc KPIs**")
+        settings_column.markdown("**Misc KPIs**")
         _render_misc_metrics(stats=stats, todos=todos)
 
     return sanitized_selection
