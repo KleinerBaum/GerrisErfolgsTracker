@@ -8,7 +8,7 @@ import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
 
 from gerris_erfolgs_tracker.integrations.google.auth import OAuthFlowError
-from gerris_erfolgs_tracker.integrations.google.token_store import TokenData, TokenStore
+from gerris_erfolgs_tracker.storage.token_store import TokenData, TokenStore
 
 DEFAULT_ENV_VAR = "GOOGLE_TOKENS_JSON"
 DEFAULT_JSON_PATH_ENV = "GOOGLE_TOKENS_JSON_PATH"

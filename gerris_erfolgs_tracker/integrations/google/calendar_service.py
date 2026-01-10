@@ -3,16 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from gerris_erfolgs_tracker.integrations.google.auth import (
-    BASE_SCOPES,
-    GOOGLE_SCOPE_CALENDAR_READONLY,
-)
 from gerris_erfolgs_tracker.integrations.google.client import build_google_api_client
 from gerris_erfolgs_tracker.integrations.google.models import CalendarEvent, parse_google_datetime
+from gerris_erfolgs_tracker.integrations.google.scopes import BASE_SCOPES, GOOGLE_SCOPE_CALENDAR
 
 CALENDAR_API_BASE_URL = "https://www.googleapis.com/calendar/v3"
 
-REQUIRED_SCOPES: tuple[str, ...] = (*BASE_SCOPES, GOOGLE_SCOPE_CALENDAR_READONLY)
+REQUIRED_SCOPES: tuple[str, ...] = (*BASE_SCOPES, GOOGLE_SCOPE_CALENDAR)
 
 
 def list_upcoming_events(
@@ -39,9 +36,9 @@ def list_upcoming_events(
 
 
 def _to_calendar_event(item: dict[str, Any]) -> CalendarEvent:
-    start_data = item.get("start") if isinstance(item.get("start"), dict) else {}
-    end_data = item.get("end") if isinstance(item.get("end"), dict) else {}
-    organizer = item.get("organizer") if isinstance(item.get("organizer"), dict) else {}
+    start_data = _ensure_dict(item.get("start"))
+    end_data = _ensure_dict(item.get("end"))
+    organizer = _ensure_dict(item.get("organizer"))
     return CalendarEvent(
         event_id=str(item.get("id") or ""),
         summary=str(item.get("summary")) if item.get("summary") is not None else None,
@@ -58,3 +55,9 @@ def _extract_datetime(data: dict[str, Any]) -> str | None:
     if isinstance(value, str):
         return value
     return None
+
+
+def _ensure_dict(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    return {}

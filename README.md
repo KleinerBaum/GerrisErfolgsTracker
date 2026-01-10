@@ -15,6 +15,7 @@ Die Sidebar konzentriert sich auf die Navigation; Schalter, Build-Infos sowie Si
   - Die Auswahl von Aufgabenvorlagen funktioniert ohne Streamlit-Fehler im Formular **ToDo hinzufügen** / Task template selection works without Streamlit errors in the **Add task** form.
   - Neuer Bereich **E-Mails / Emails** bietet ein Formular mit Vorschau zum schnellen Erstellen von E-Mail-Entwürfen / New **E-Mails / Emails** area provides a form with preview for quick email drafts.
   - Neuer Bereich **Google Workspace** bündelt Kalender, Gmail, Tasks, Drive und Sheets mit Refresh-Buttons und Beispiel-Listen / New **Google Workspace** area bundles Calendar, Gmail, Tasks, Drive, and Sheets with refresh buttons and sample lists.
+  - Google-Workspace-Verbindung: OAuth-Flow mit **Google verbinden / Connect Google**-Button, Statusanzeige und einmaligem Smoke-Test (z. B. Kalenderliste) zur Verifizierung / Google Workspace connection: OAuth flow with a **Connect Google** button, status indicator, and a one-time smoke test (e.g., calendar listing) for verification.
   - Der Quick-Action-Button **E-Mails / Emails** nutzt jetzt ebenfalls ein Dropdown, damit das Design mit den benachbarten Schnellaktionen konsistent bleibt / The **E-Mails / Emails** quick action now uses a dropdown as well to stay consistent with the neighboring quick actions.
   - Quick-Action-Dropdowns für Aufgaben, Ziele und Journal leeren ihre Felder nach dem Speichern und klappen automatisch zu / Quick-action dropdowns for tasks, goals, and journal now clear their fields after saving and auto-collapse.
   - Quick-Action-ToDos setzen nach dem Speichern ein Reset-Flag und initialisieren ihre Felder vor dem nächsten Render, damit Streamlit-Session-State-Fehler vermieden werden / Quick-action ToDos set a reset flag after saving and reinitialize their fields before the next render to avoid Streamlit session-state errors.
@@ -111,11 +112,11 @@ Die App sucht nach dem OpenAI Key in `st.secrets` oder der Umgebung:
 - `GOOGLE_CLIENT_SECRET` (optional: OAuth Client Secret für die Google Workspace Integration)
 - `GOOGLE_REDIRECT_URI` (optional: OAuth Redirect-URI für die Google Workspace Integration)
 - `GOOGLE_TOKEN_STORE_BACKEND` (optional: Token-Backend, z. B. `sqlite` oder `env`)
-- `GOOGLE_TOKEN_DB_PATH` (optional: Pfad für die lokale SQLite-Tokenablage, Standard: `.data/gerris_google_tokens.sqlite`)
+- `GOOGLE_TOKEN_DB_PATH` (optional: Pfad für die lokale SQLite-Tokenablage, Standard: `.local/gerris_google_tokens.sqlite`)
 - `GOOGLE_TOKENS_JSON` (optional: JSON-Objekt mit Tokens pro Nutzer, z. B. aus Secrets/ENV)
 - `GOOGLE_TOKENS_JSON_PATH` (optional: Schreibbarer Pfad für das JSON-Token-Backend)
 
-Google-Workspace-Services nutzen je Feature nur die nötigen Read-only-Scopes (Kalender, Gmail, Tasks, Drive, Sheets), damit der Zugriff minimal bleibt / Google Workspace services request only the required read-only scopes per feature (Calendar, Gmail, Tasks, Drive, Sheets) to keep access minimal.
+Google-Workspace-Services nutzen ein maximales 7-Scopes-Set (OpenID + E-Mail sowie Calendar, Tasks, Gmail, Drive, Sheets), damit der Zugriff gebündelt und nachvollziehbar bleibt / Google Workspace services use a capped 7-scope set (OpenID + email plus Calendar, Tasks, Gmail, Drive, Sheets) so access stays bundled and traceable.
 
 Beispiel für `GOOGLE_CALENDARS_JSON`:
 

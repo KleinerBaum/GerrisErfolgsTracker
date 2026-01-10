@@ -63,6 +63,17 @@ from gerris_erfolgs_tracker.i18n import (
     localize_streamlit,
     translate_text,
 )
+from gerris_erfolgs_tracker.integrations.google import (
+    SCOPES_MAX_7,
+    OAuthConfigError,
+    OAuthFlowError,
+    build_authorization_url,
+    exchange_code_for_token,
+    fetch_user_info,
+    get_calendar_service,
+    get_default_token_store,
+)
+from gerris_erfolgs_tracker.integrations.google.client import GoogleApiError
 from gerris_erfolgs_tracker.journal import (
     append_journal_links,
     ensure_journal_state,
@@ -2715,6 +2726,141 @@ EMAILS_PAGE_LABEL = ("E-Mails", "Emails")
 WORKSPACE_PAGE_LABEL = ("Google Workspace", "Google Workspace")
 NAVIGATION_SELECTION_KEY = "active_page"
 PENDING_NAVIGATION_KEY = "pending_active_page"
+GOOGLE_OAUTH_STATE_KEY = "google_oauth_state"
+GOOGLE_CONNECTED_EMAIL_KEY = "google_connected_email"
+GOOGLE_SMOKE_ITEMS_KEY = "google_smoke_items"
+GOOGLE_SMOKE_ERROR_KEY = "google_smoke_error"
+
+
+def _get_first_query_param(value: str | list[str] | None) -> str | None:
+    if isinstance(value, list):
+        return value[0] if value else None
+    return value
+
+
+def _run_google_smoke_check(user_email: str) -> list[str]:
+    token_store = get_default_token_store()
+    service = get_calendar_service(user_email, token_store)
+    payload = service.get("users/me/calendarList", params={"maxResults": 5})
+    items = payload.get("items", [])
+    if not isinstance(items, list):
+        return []
+    names: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        summary = item.get("summary")
+        if isinstance(summary, str) and summary:
+            names.append(summary)
+            continue
+        calendar_id = item.get("id")
+        if isinstance(calendar_id, str) and calendar_id:
+            names.append(calendar_id)
+    return names
+
+
+def render_google_connection_panel() -> None:
+    panel = st.container(border=True)
+    panel.subheader(translate_text(("Google verbinden", "Connect Google")))
+    panel.write(
+        translate_text(
+            (
+                "Verbinde dein Google-Konto, um Kalender, Tasks, Gmail, Drive und Sheets zu nutzen.",
+                "Connect your Google account to access Calendar, Tasks, Gmail, Drive, and Sheets.",
+            )
+        )
+    )
+
+    oauth_state = st.session_state.get(GOOGLE_OAUTH_STATE_KEY)
+    if not oauth_state:
+        oauth_state = os.urandom(16).hex()
+        st.session_state[GOOGLE_OAUTH_STATE_KEY] = oauth_state
+
+    try:
+        auth_url = build_authorization_url(state=oauth_state, scopes=SCOPES_MAX_7)
+    except OAuthConfigError:
+        panel.error(
+            translate_text(
+                (
+                    "Google OAuth ist noch nicht konfiguriert. Bitte hinterlege Client-ID, Secret und Redirect-URI.",
+                    "Google OAuth is not configured yet. Please set the client ID, secret, and redirect URI.",
+                )
+            )
+        )
+        panel.caption(
+            translate_text(
+                (
+                    "Erwartete Keys: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI.",
+                    "Expected keys: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI.",
+                )
+            )
+        )
+        return
+
+    panel.link_button(translate_text(("Google verbinden", "Connect Google")), auth_url, type="primary")
+
+    code = _get_first_query_param(st.query_params.get("code"))
+    state = _get_first_query_param(st.query_params.get("state"))
+    token_store = get_default_token_store()
+    if code:
+        if not state or state != oauth_state:
+            panel.error(
+                translate_text(
+                    (
+                        "Die OAuth-Anfrage ist ungültig oder abgelaufen. Bitte starte den Vorgang erneut.",
+                        "The OAuth request is invalid or expired. Please restart the flow.",
+                    )
+                )
+            )
+            return
+        with panel.spinner(
+            translate_text(("Google-Authentifizierung läuft...", "Completing Google authentication..."))
+        ):
+            try:
+                token = exchange_code_for_token(code)
+                user_info = fetch_user_info(token.access_token)
+                email = user_info.get("email")
+                if not email:
+                    raise OAuthFlowError("Missing user email in profile response.")
+                existing_token = token_store.load_token(email)
+                if not token.refresh_token and existing_token and existing_token.refresh_token:
+                    token = token.with_refresh_token(existing_token.refresh_token)
+                token_store.save_token(email, token)
+                st.session_state[GOOGLE_CONNECTED_EMAIL_KEY] = email
+                smoke_items = _run_google_smoke_check(email)
+                st.session_state[GOOGLE_SMOKE_ITEMS_KEY] = smoke_items
+                st.session_state.pop(GOOGLE_SMOKE_ERROR_KEY, None)
+            except (OAuthFlowError, GoogleApiError):
+                st.session_state[GOOGLE_SMOKE_ERROR_KEY] = translate_text(
+                    (
+                        "Beim Abschluss der Verbindung ist ein Fehler aufgetreten. Bitte versuche es erneut.",
+                        "Something went wrong while completing the connection. Please try again.",
+                    )
+                )
+                panel.error(st.session_state[GOOGLE_SMOKE_ERROR_KEY])
+                return
+        panel.success(translate_text(("Google ist verbunden.", "Google connected.")))
+        st.query_params.clear()
+        st.session_state.pop(GOOGLE_OAUTH_STATE_KEY, None)
+
+    connected_email = st.session_state.get(GOOGLE_CONNECTED_EMAIL_KEY)
+    if connected_email and token_store.load_token(connected_email):
+        panel.success(
+            translate_text(
+                (
+                    f"Verbunden als {connected_email}.",
+                    f"Connected as {connected_email}.",
+                )
+            )
+        )
+        if GOOGLE_SMOKE_ERROR_KEY in st.session_state:
+            panel.warning(st.session_state[GOOGLE_SMOKE_ERROR_KEY])
+        smoke_items = st.session_state.get(GOOGLE_SMOKE_ITEMS_KEY)
+        if isinstance(smoke_items, list) and smoke_items:
+            panel.caption(translate_text(("Kalender gefunden:", "Calendars found:")))
+            panel.markdown("\n".join(f"- {item}" for item in smoke_items))
+    else:
+        panel.info(translate_text(("Nicht verbunden.", "Not connected.")))
 
 
 def render_language_toggle() -> LanguageCode:
@@ -3326,6 +3472,8 @@ def main() -> None:
     elif selection == EMAILS_PAGE_KEY:
         render_emails_page(ai_enabled=ai_enabled, client=client)
     elif selection == WORKSPACE_PAGE_KEY:
+        render_google_connection_panel()
+        st.divider()
         render_google_workspace_page()
     else:
         render_journal_section(ai_enabled=ai_enabled, client=client, todos=todos)

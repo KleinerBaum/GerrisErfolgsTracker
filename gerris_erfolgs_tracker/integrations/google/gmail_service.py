@@ -2,16 +2,13 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from gerris_erfolgs_tracker.integrations.google.auth import (
-    BASE_SCOPES,
-    GOOGLE_SCOPE_GMAIL_READONLY,
-)
 from gerris_erfolgs_tracker.integrations.google.client import GoogleApiClient, build_google_api_client
 from gerris_erfolgs_tracker.integrations.google.models import GmailSummary, get_header_value, parse_epoch_millis
+from gerris_erfolgs_tracker.integrations.google.scopes import BASE_SCOPES, GOOGLE_SCOPE_GMAIL
 
 GMAIL_API_BASE_URL = "https://gmail.googleapis.com/gmail/v1"
 
-REQUIRED_SCOPES: tuple[str, ...] = (*BASE_SCOPES, GOOGLE_SCOPE_GMAIL_READONLY)
+REQUIRED_SCOPES: tuple[str, ...] = (*BASE_SCOPES, GOOGLE_SCOPE_GMAIL)
 
 
 def list_recent_messages(
@@ -21,7 +18,7 @@ def list_recent_messages(
     label_ids: Sequence[str] | None = None,
 ) -> list[GmailSummary]:
     client = build_google_api_client(access_token)
-    params = {
+    params: dict[str, object] = {
         "maxResults": max_results,
     }
     if label_ids:

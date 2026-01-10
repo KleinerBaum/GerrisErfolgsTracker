@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Google OAuth: neue Verbindungsschaltfläche in der App mit Statusanzeige, persistenter SQLite-Tokenablage unter `.local/` sowie Service-Factories für Calendar/Gmail/Tasks/Drive/Sheets / Google OAuth: added an in-app connection button with status display, persistent SQLite token storage under `.local/`, and service factories for Calendar/Gmail/Tasks/Drive/Sheets.
 - Dokumentation: Projekt-Guidelines, Google-Setup-Anleitung sowie sichere Config-Templates hinzugefügt / Documentation: added project guidance, Google setup instructions, and safe config templates.
 - Google Workspace: Neue UI-Seite mit Beispiel-Listen für Calendar, Gmail, Tasks, Drive und Sheets inklusive Refresh-Buttons sowie eingebettetem Kalender / Google Workspace: new UI page with sample lists for Calendar, Gmail, Tasks, Drive, and Sheets including refresh buttons and embedded calendar.
 - Google Workspace: Ergänzt Service-Module für Calendar/Gmail/Tasks/Drive/Sheets inkl. minimaler Datenmodelle und Scope-Definitionen für Read-only-Zugriffe / Google Workspace: added service modules for Calendar/Gmail/Tasks/Drive/Sheets with minimal data models and read-only scope definitions.
