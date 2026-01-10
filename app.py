@@ -3,16 +3,17 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from contextlib import nullcontext
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Literal, Mapping, Optional, Sequence, TypedDict, cast
-from urllib.parse import parse_qs, urlparse
+from typing import Any, Callable, Literal, Mapping, Optional, Sequence, TypedDict, TypeVar, cast
+from zoneinfo import ZoneInfo
 
+import httpx
 import plotly.graph_objects as go
 import streamlit as st
 from openai import OpenAI
-from streamlit.errors import StreamlitSecretNotFoundError
 
 import gerris_erfolgs_tracker.ui.tasks as tasks_ui
 from gerris_erfolgs_tracker.ai_features import AISuggestion, suggest_quadrant
@@ -30,6 +31,7 @@ from gerris_erfolgs_tracker.charts import (
 )
 from gerris_erfolgs_tracker.coach.engine import get_coach_state
 from gerris_erfolgs_tracker.coach.scanner import run_daily_coach_scan, schedule_weekly_review
+from gerris_erfolgs_tracker.config.calendars import load_calendars
 from gerris_erfolgs_tracker.constants import (
     AI_ENABLED_KEY,
     AI_MOTIVATION_KEY,
@@ -65,6 +67,22 @@ from gerris_erfolgs_tracker.i18n import (
     localize_streamlit,
     translate_text,
 )
+from gerris_erfolgs_tracker.integrations.google import (
+    SCOPES_MAX_7,
+    OAuthConfigError,
+    OAuthFlowError,
+    build_authorization_url,
+    exchange_code_for_token,
+    fetch_user_info,
+    get_calendar_service,
+    get_default_token_store,
+)
+from gerris_erfolgs_tracker.integrations.google.calendar_service import (
+    create_calendar_event,
+    list_upcoming_events_for_service,
+)
+from gerris_erfolgs_tracker.integrations.google.client import GoogleApiError
+from gerris_erfolgs_tracker.integrations.ical import list_upcoming_ical_events
 from gerris_erfolgs_tracker.journal import (
     append_journal_links,
     ensure_journal_state,
@@ -114,6 +132,11 @@ from gerris_erfolgs_tracker.todos import (
 )
 from gerris_erfolgs_tracker.ui.common import _inject_dark_theme_styles
 from gerris_erfolgs_tracker.ui.emails import render_emails_page
+from gerris_erfolgs_tracker.ui.google_workspace import (
+    render_google_workspace_page,
+    render_shared_calendar,
+    render_shared_calendar_header,
+)
 from gerris_erfolgs_tracker.ui.tasks import (
     gamification_snapshot,
     handle_completion_success,
@@ -368,6 +391,7 @@ QUICK_GOAL_JOURNAL_MOODS_KEY = "quick_goal_journal_moods"
 QUICK_GOAL_JOURNAL_NOTES_KEY = "quick_goal_journal_notes"
 QUICK_GOAL_JOURNAL_CATEGORIES_KEY = "quick_goal_journal_categories"
 QUICK_GOAL_JOURNAL_GRATITUDE_KEY = "quick_goal_journal_gratitude"
+QUICK_GOAL_JOURNAL_SUCCESS_KEY = "quick_goal_journal_success"
 QUICK_GOAL_PROFILE_FORM_KEY = "quick_goal_profile_form"
 QUICK_GOAL_PROFILE_TITLE_KEY = "quick_goal_profile_title"
 QUICK_GOAL_PROFILE_FOCUS_KEY = "quick_goal_profile_focus"
@@ -1379,11 +1403,18 @@ def _render_goal_quick_goal_popover(
     date_key = f"{QUICK_GOAL_PROFILE_DATE_KEY}_{form_key}"
     unit_key = f"{QUICK_GOAL_PROFILE_UNIT_KEY}_{form_key}"
     popover_state_key = f"{QUICK_GOAL_PROFILE_POPOVER_STATE_KEY}_{form_key}"
+    reset_key = f"{form_key}_reset"
 
     default_focus_categories = [
         category for category in Category if category.value in default_profile.get("focus_categories", [])
     ]
     default_target_date = cast(date | None, default_profile.get("target_date")) or date.today() + timedelta(days=30)
+    if st.session_state.pop(reset_key, False):
+        st.session_state[title_key] = str(default_profile.get("title", ""))
+        st.session_state[focus_key] = default_focus_categories
+        st.session_state[date_key] = default_target_date
+        st.session_state[unit_key] = str(default_profile.get("metric_unit", ""))
+
     st.session_state.setdefault(title_key, str(default_profile.get("title", "")))
     st.session_state.setdefault(focus_key, default_focus_categories)
     st.session_state.setdefault(date_key, default_target_date)
@@ -1446,7 +1477,8 @@ def _render_goal_quick_goal_popover(
                 settings["goal_profile"] = goal_profile
                 st.session_state[SS_SETTINGS] = settings
                 st.session_state[GOAL_CREATION_VISIBLE_KEY] = True
-                st.session_state[NAVIGATION_SELECTION_KEY] = GOALS_PAGE_KEY
+                st.session_state[PENDING_NAVIGATION_KEY] = GOALS_PAGE_KEY
+                st.session_state[reset_key] = True
                 persist_state()
                 st.success(
                     translate_text(
@@ -1456,12 +1488,50 @@ def _render_goal_quick_goal_popover(
                         )
                     )
                 )
-                st.session_state[title_key] = ""
-                st.session_state[focus_key] = []
-                st.session_state[date_key] = date.today() + timedelta(days=30)
-                st.session_state[unit_key] = ""
                 _toggle_popover_state(popover_state_key)
                 st.rerun()
+
+
+def _handle_goal_quick_journal_submit() -> None:
+    entry_date = cast(
+        date,
+        st.session_state.get(QUICK_GOAL_JOURNAL_DATE_KEY, date.today()),
+    )
+    moods = list(
+        cast(
+            Sequence[str],
+            st.session_state.get(QUICK_GOAL_JOURNAL_MOODS_KEY, list(MOOD_PRESETS[:2])),
+        )
+    )
+    notes = str(st.session_state.get(QUICK_GOAL_JOURNAL_NOTES_KEY, ""))
+    gratitude = str(st.session_state.get(QUICK_GOAL_JOURNAL_GRATITUDE_KEY, ""))
+    categories = list(
+        cast(
+            Sequence[Category],
+            st.session_state.get(QUICK_GOAL_JOURNAL_CATEGORIES_KEY, []),
+        )
+    )
+    entry = JournalEntry(
+        date=entry_date,
+        moods=moods,
+        mood_notes=notes.strip(),
+        triggers_and_reactions="",
+        negative_thought="",
+        rational_response="",
+        self_care_today="",
+        self_care_tomorrow="",
+        gratitudes=[gratitude.strip()] if gratitude.strip() else [],
+        categories=categories,
+    )
+    upsert_journal_entry(entry)
+    st.session_state[QUICK_GOAL_JOURNAL_SUCCESS_KEY] = True
+    st.session_state[QUICK_GOAL_JOURNAL_DATE_KEY] = date.today()
+    st.session_state[QUICK_GOAL_JOURNAL_MOODS_KEY] = list(MOOD_PRESETS[:2])
+    st.session_state[QUICK_GOAL_JOURNAL_NOTES_KEY] = ""
+    st.session_state[QUICK_GOAL_JOURNAL_GRATITUDE_KEY] = ""
+    st.session_state[QUICK_GOAL_JOURNAL_CATEGORIES_KEY] = []
+    _toggle_popover_state(QUICK_GOAL_JOURNAL_POPOVER_STATE_KEY)
+    st.rerun()
 
 
 def _render_goal_quick_journal_popover() -> None:
@@ -1475,14 +1545,14 @@ def _render_goal_quick_journal_popover() -> None:
     ):
         st.markdown("**Tagebucheintrag / Journal entry**")
         with st.form(QUICK_GOAL_JOURNAL_FORM_KEY, clear_on_submit=True):
-            entry_date = st.date_input(
+            st.date_input(
                 translate_text(("Datum", "Date")),
                 value=st.session_state.get(QUICK_GOAL_JOURNAL_DATE_KEY, date.today()),
                 max_value=date.today(),
                 format="YYYY-MM-DD",
                 key=QUICK_GOAL_JOURNAL_DATE_KEY,
             )
-            moods = st.multiselect(
+            st.multiselect(
                 translate_text(("Stimmung", "Mood")),
                 options=list(MOOD_PRESETS),
                 default=st.session_state.get(QUICK_GOAL_JOURNAL_MOODS_KEY, list(MOOD_PRESETS[:2])),
@@ -1494,7 +1564,7 @@ def _render_goal_quick_journal_popover() -> None:
                     )
                 ),
             )
-            notes = st.text_area(
+            st.text_area(
                 translate_text(("Notizen", "Notes")),
                 key=QUICK_GOAL_JOURNAL_NOTES_KEY,
                 placeholder=translate_text(
@@ -1504,7 +1574,7 @@ def _render_goal_quick_journal_popover() -> None:
                     )
                 ),
             )
-            gratitude = st.text_input(
+            st.text_input(
                 translate_text(("Dankbarkeit (optional)", "Gratitude (optional)")),
                 key=QUICK_GOAL_JOURNAL_GRATITUDE_KEY,
                 placeholder=translate_text(
@@ -1514,7 +1584,7 @@ def _render_goal_quick_journal_popover() -> None:
                     )
                 ),
             )
-            categories = st.multiselect(
+            st.multiselect(
                 translate_text(("Kategorien", "Categories")),
                 options=list(Category),
                 format_func=lambda option: option.label,
@@ -1527,39 +1597,20 @@ def _render_goal_quick_journal_popover() -> None:
                 ),
             )
 
-            submitted = st.form_submit_button(
+            st.form_submit_button(
                 translate_text(("Eintrag speichern", "Save entry")),
                 type="primary",
+                on_click=_handle_goal_quick_journal_submit,
             )
-            if submitted:
-                entry = JournalEntry(
-                    date=entry_date,
-                    moods=list(moods),
-                    mood_notes=notes.strip(),
-                    triggers_and_reactions="",
-                    negative_thought="",
-                    rational_response="",
-                    self_care_today="",
-                    self_care_tomorrow="",
-                    gratitudes=[gratitude.strip()] if gratitude.strip() else [],
-                    categories=list(categories),
-                )
-                upsert_journal_entry(entry)
-                st.success(
-                    translate_text(
-                        (
-                            "Eintrag gespeichert.",
-                            "Entry saved.",
-                        )
+        if st.session_state.pop(QUICK_GOAL_JOURNAL_SUCCESS_KEY, False):
+            st.success(
+                translate_text(
+                    (
+                        "Eintrag gespeichert.",
+                        "Entry saved.",
                     )
                 )
-                st.session_state[QUICK_GOAL_JOURNAL_DATE_KEY] = date.today()
-                st.session_state[QUICK_GOAL_JOURNAL_MOODS_KEY] = list(MOOD_PRESETS[:2])
-                st.session_state[QUICK_GOAL_JOURNAL_NOTES_KEY] = ""
-                st.session_state[QUICK_GOAL_JOURNAL_GRATITUDE_KEY] = ""
-                st.session_state[QUICK_GOAL_JOURNAL_CATEGORIES_KEY] = []
-                _toggle_popover_state(QUICK_GOAL_JOURNAL_POPOVER_STATE_KEY)
-                st.rerun()
+            )
 
 
 def _render_goal_quick_email_popover() -> None:
@@ -1625,7 +1676,7 @@ def render_goal_completion_logger(todos: list[TodoItem]) -> None:
 
     if create_goal_clicked:
         st.session_state[GOAL_CREATION_VISIBLE_KEY] = True
-        st.session_state[NAVIGATION_SELECTION_KEY] = GOALS_PAGE_KEY
+        st.session_state[PENDING_NAVIGATION_KEY] = GOALS_PAGE_KEY
         st.rerun()
 
     if not open_todos:
@@ -2539,177 +2590,6 @@ def render_build_info_sidebar(*, build_metadata: Mapping[str, str | None], conta
     )
 
 
-def render_shared_calendar_header() -> None:
-    st.markdown(
-        translate_text(
-            (
-                "### Google Kalender",
-                "### Google Calendars",
-            )
-        )
-    )
-
-
-def _get_secret(name: str) -> str | None:
-    try:
-        value = st.secrets.get(name)
-        if value:
-            return str(value)
-    except StreamlitSecretNotFoundError:
-        value = None
-    return os.getenv(name)
-
-
-def _extract_calendar_src(value: str) -> str:
-    cleaned = value.strip()
-    if "://" not in cleaned:
-        return cleaned
-    parsed = urlparse(cleaned)
-    query = parse_qs(parsed.query)
-    for key in ("src", "cid"):
-        if key in query and query[key]:
-            return query[key][0]
-    return cleaned
-
-
-def _calendar_src_from_env(*, keys: Sequence[str], fallback: str | None = None) -> str | None:
-    for key in keys:
-        value = _get_secret(key)
-        if value:
-            return _extract_calendar_src(value)
-    return fallback
-
-
-def _load_calendar_configs() -> list[tuple[str, str]]:
-    raw = _get_secret("GOOGLE_CALENDARS_JSON")
-    if not raw:
-        return []
-
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
-        st.warning(
-            translate_text(
-                (
-                    "GOOGLE_CALENDARS_JSON ist kein gültiges JSON. Es werden die einzelnen Kalender-ENV-Variablen genutzt.",
-                    "GOOGLE_CALENDARS_JSON is not valid JSON. Falling back to the individual calendar env vars.",
-                )
-            )
-        )
-        return []
-
-    if not isinstance(payload, list):
-        st.warning(
-            translate_text(
-                (
-                    "GOOGLE_CALENDARS_JSON muss eine Liste von Kalender-Objekten sein.",
-                    "GOOGLE_CALENDARS_JSON must be a list of calendar objects.",
-                )
-            )
-        )
-        return []
-
-    configs: list[tuple[str, str]] = []
-    for item in payload:
-        if not isinstance(item, dict):
-            continue
-        name_value = item.get("name") or item.get("key")
-        if not isinstance(name_value, str):
-            continue
-        calendar_value = None
-        for field in ("calendar_id", "ical_url"):
-            candidate = item.get(field)
-            if isinstance(candidate, str) and candidate.strip():
-                calendar_value = candidate
-                break
-        if not calendar_value:
-            continue
-        configs.append((name_value.strip(), _extract_calendar_src(calendar_value)))
-
-    if not configs:
-        st.warning(
-            translate_text(
-                (
-                    "GOOGLE_CALENDARS_JSON enthält keine gültigen Kalender.",
-                    "GOOGLE_CALENDARS_JSON does not contain any valid calendars.",
-                )
-            )
-        )
-
-    return configs
-
-
-def _render_calendar_iframe(*, calendar_src: str, color: str) -> None:
-    iframe = f"""
-    <iframe src="https://calendar.google.com/calendar/embed?height=600&wkst=1&ctz=Europe%2FAmsterdam&showPrint=0&src={calendar_src}&color={color}" style="border:solid 1px #777" width="100%" height="600" frameborder="0" scrolling="no"></iframe>
-    """
-    st.markdown(iframe, unsafe_allow_html=True)
-
-
-def render_shared_calendar() -> None:
-    calendar_configs = _load_calendar_configs()
-    if calendar_configs:
-        colors = [
-            "%23616161",
-            "%237986cb",
-            "%23b874d9",
-            "%2376a73e",
-            "%23c95f2a",
-        ]
-        for row_start in range(0, len(calendar_configs), 2):
-            row = calendar_configs[row_start : row_start + 2]
-            columns = st.columns(len(row))
-            for offset, (name, src) in enumerate(row):
-                with columns[offset]:
-                    st.markdown(translate_text((f"**{name}**", f"**{name}**")))
-                    color = colors[(row_start + offset) % len(colors)]
-                    _render_calendar_iframe(calendar_src=src, color=color)
-        return
-
-    shared_calendar_src = _calendar_src_from_env(
-        keys=(
-            "2025 von Carla, Miri & Gerrit",
-            "CALENDAR_SHARED_2025",
-            "KALENDER_SHARED_2025",
-        ),
-        fallback="e2a52f862c8088c82d9f74825b8c39f6069965fdc652472fbf5ec28e891c077e@group.calendar.google.com",
-    )
-    gerri_calendar_src = _calendar_src_from_env(
-        keys=(
-            "KalenderGerri",
-            "CALENDAR_GERRI",
-            "KALENDER_GERRI",
-        )
-    )
-
-    if gerri_calendar_src:
-        shared_column, gerri_column = st.columns(2)
-        with shared_column:
-            st.markdown(
-                translate_text(
-                    (
-                        "**Gemeinsamer Kalender / 2025**",
-                        "**Shared calendar / 2025**",
-                    )
-                )
-            )
-            _render_calendar_iframe(calendar_src=shared_calendar_src, color="%23616161")
-        with gerri_column:
-            st.markdown(translate_text(("**Kalender Gerri**", "**Gerri calendar**")))
-            _render_calendar_iframe(calendar_src=gerri_calendar_src, color="%237986cb")
-        return
-
-    st.markdown(
-        translate_text(
-            (
-                "Kalender Gerri ist noch nicht hinterlegt. Setze `KalenderGerri` (oder `CALENDAR_GERRI`) in deinen Secrets oder der Umgebung, um ihn neben dem geteilten Kalender anzuzeigen.",
-                "Gerri calendar is not configured yet. Set `KalenderGerri` (or `CALENDAR_GERRI`) in your secrets or environment to show it next to the shared calendar.",
-            )
-        )
-    )
-    _render_calendar_iframe(calendar_src=shared_calendar_src, color="%23616161")
-
-
 def _format_duration_short(value: timedelta | None) -> str:
     if value is None:
         return "–"
@@ -2873,14 +2753,417 @@ GOALS_PAGE_KEY = "goals"
 TASKS_PAGE_KEY = "tasks"
 JOURNAL_PAGE_KEY = "journal"
 EMAILS_PAGE_KEY = "emails"
+WORKSPACE_PAGE_KEY = "workspace"
+CALENDAR_PAGE_KEY = "calendar"
 
 DASHBOARD_PAGE_LABEL = ("Dashboard", "Dashboard")
 GOALS_PAGE_LABEL = ("Ziele", "Goals")
 TASKS_PAGE_LABEL = ("Aufgaben", "Tasks")
 JOURNAL_PAGE_LABEL = ("Tagebuch", "Journal")
 EMAILS_PAGE_LABEL = ("E-Mails", "Emails")
+WORKSPACE_PAGE_LABEL = ("Google Workspace", "Google Workspace")
+CALENDAR_PAGE_LABEL = ("Kalender", "Calendar")
 NAVIGATION_SELECTION_KEY = "active_page"
 PENDING_NAVIGATION_KEY = "pending_active_page"
+GOOGLE_OAUTH_STATE_KEY = "google_oauth_state"
+GOOGLE_CONNECTED_EMAIL_KEY = "google_connected_email"
+GOOGLE_SMOKE_ITEMS_KEY = "google_smoke_items"
+GOOGLE_SMOKE_ERROR_KEY = "google_smoke_error"
+
+
+def _get_first_query_param(value: str | list[str] | None) -> str | None:
+    if isinstance(value, list):
+        return value[0] if value else None
+    return value
+
+
+def _run_google_smoke_check(user_email: str) -> list[str]:
+    token_store = get_default_token_store()
+    service = get_calendar_service(user_email, token_store)
+    payload = service.get("users/me/calendarList", params={"maxResults": 5})
+    items = payload.get("items", [])
+    if not isinstance(items, list):
+        return []
+    names: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        summary = item.get("summary")
+        if isinstance(summary, str) and summary:
+            names.append(summary)
+            continue
+        calendar_id = item.get("id")
+        if isinstance(calendar_id, str) and calendar_id:
+            names.append(calendar_id)
+    return names
+
+
+def render_google_connection_panel() -> None:
+    panel = st.container(border=True)
+    panel.subheader(translate_text(("Google verbinden", "Connect Google")))
+    panel.write(
+        translate_text(
+            (
+                "Verbinde dein Google-Konto, um Kalender, Tasks, Gmail, Drive und Sheets zu nutzen.",
+                "Connect your Google account to access Calendar, Tasks, Gmail, Drive, and Sheets.",
+            )
+        )
+    )
+
+    oauth_state = st.session_state.get(GOOGLE_OAUTH_STATE_KEY)
+    if not oauth_state:
+        oauth_state = os.urandom(16).hex()
+        st.session_state[GOOGLE_OAUTH_STATE_KEY] = oauth_state
+
+    try:
+        auth_url = build_authorization_url(state=oauth_state, scopes=SCOPES_MAX_7)
+    except OAuthConfigError:
+        panel.error(
+            translate_text(
+                (
+                    "Google OAuth ist noch nicht konfiguriert. Bitte hinterlege Client-ID, Secret und Redirect-URI.",
+                    "Google OAuth is not configured yet. Please set the client ID, secret, and redirect URI.",
+                )
+            )
+        )
+        panel.caption(
+            translate_text(
+                (
+                    "Erwartete Keys: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI.",
+                    "Expected keys: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI.",
+                )
+            )
+        )
+        return
+
+    panel.link_button(translate_text(("Google verbinden", "Connect Google")), auth_url, type="primary")
+
+    code = _get_first_query_param(st.query_params.get("code"))
+    state = _get_first_query_param(st.query_params.get("state"))
+    token_store = get_default_token_store()
+    if code:
+        if not state or state != oauth_state:
+            panel.error(
+                translate_text(
+                    (
+                        "Die OAuth-Anfrage ist ungültig oder abgelaufen. Bitte starte den Vorgang erneut.",
+                        "The OAuth request is invalid or expired. Please restart the flow.",
+                    )
+                )
+            )
+            return
+        with panel.spinner(
+            translate_text(("Google-Authentifizierung läuft...", "Completing Google authentication..."))
+        ):
+            try:
+                token = exchange_code_for_token(code)
+                user_info = fetch_user_info(token.access_token)
+                email = user_info.get("email")
+                if not email:
+                    raise OAuthFlowError("Missing user email in profile response.")
+                existing_token = token_store.load_token(email)
+                if not token.refresh_token and existing_token and existing_token.refresh_token:
+                    token = token.with_refresh_token(existing_token.refresh_token)
+                token_store.save_token(email, token)
+                st.session_state[GOOGLE_CONNECTED_EMAIL_KEY] = email
+                smoke_items = _run_google_smoke_check(email)
+                st.session_state[GOOGLE_SMOKE_ITEMS_KEY] = smoke_items
+                st.session_state.pop(GOOGLE_SMOKE_ERROR_KEY, None)
+            except (OAuthFlowError, GoogleApiError):
+                st.session_state[GOOGLE_SMOKE_ERROR_KEY] = translate_text(
+                    (
+                        "Beim Abschluss der Verbindung ist ein Fehler aufgetreten. Bitte versuche es erneut.",
+                        "Something went wrong while completing the connection. Please try again.",
+                    )
+                )
+                panel.error(st.session_state[GOOGLE_SMOKE_ERROR_KEY])
+                return
+        panel.success(translate_text(("Google ist verbunden.", "Google connected.")))
+        st.query_params.clear()
+        st.session_state.pop(GOOGLE_OAUTH_STATE_KEY, None)
+
+    connected_email = st.session_state.get(GOOGLE_CONNECTED_EMAIL_KEY)
+    if connected_email and token_store.load_token(connected_email):
+        panel.success(
+            translate_text(
+                (
+                    f"Verbunden als {connected_email}.",
+                    f"Connected as {connected_email}.",
+                )
+            )
+        )
+        if GOOGLE_SMOKE_ERROR_KEY in st.session_state:
+            panel.warning(st.session_state[GOOGLE_SMOKE_ERROR_KEY])
+        smoke_items = st.session_state.get(GOOGLE_SMOKE_ITEMS_KEY)
+        if isinstance(smoke_items, list) and smoke_items:
+            panel.caption(translate_text(("Kalender gefunden:", "Calendars found:")))
+            panel.markdown("\n".join(f"- {item}" for item in smoke_items))
+    else:
+        panel.info(translate_text(("Nicht verbunden.", "Not connected.")))
+
+
+def _format_event_time(value: datetime | None) -> str:
+    if value is None:
+        return "—"
+    if value.tzinfo is None:
+        return value.strftime("%Y-%m-%d %H:%M")
+    return value.astimezone().strftime("%Y-%m-%d %H:%M")
+
+
+T = TypeVar("T")
+
+
+def _with_backoff(action: Callable[[], T], *, retries: int = 3, base_delay: float = 0.5) -> T:
+    last_error: Exception | None = None
+    for attempt in range(retries):
+        try:
+            return action()
+        except Exception as exc:
+            last_error = exc
+            if attempt < retries - 1:
+                time.sleep(base_delay * (2**attempt))
+    if last_error:
+        raise last_error
+    raise RuntimeError("Failed without error context.")
+
+
+def _render_calendar_events(events: Sequence[Any]) -> None:
+    if not events:
+        st.info(translate_text(("Keine Termine gefunden.", "No events found.")))
+        return
+    rows = []
+    for item in events:
+        rows.append(
+            {
+                translate_text(("Start", "Start")): _format_event_time(getattr(item, "start", None)),
+                translate_text(("Ende", "End")): _format_event_time(getattr(item, "end", None)),
+                translate_text(("Titel", "Summary")): getattr(item, "summary", None) or "—",
+                translate_text(("Ort", "Location")): getattr(item, "location", None) or "—",
+            }
+        )
+    st.dataframe(rows, width="stretch", hide_index=True)
+
+
+def render_calendar_page() -> None:
+    st.markdown(translate_text(("## Kalender", "## Calendar")))
+    calendar_configs = load_calendars()
+    if not calendar_configs:
+        st.warning(
+            translate_text(
+                (
+                    "Keine Kalender konfiguriert. Setze CAL_GERRI_ID/CAL_2025_ID oder die Legacy-Keys.",
+                    "No calendars configured yet. Set CAL_GERRI_ID/CAL_2025_ID or the legacy keys.",
+                )
+            )
+        )
+        return
+
+    config_lookup = {item["key"]: item for item in calendar_configs}
+    selected_key = st.selectbox(
+        translate_text(("Kalender auswählen", "Select calendar")),
+        options=list(config_lookup),
+        format_func=lambda option: config_lookup[option]["name"],
+    )
+    selected_calendar = config_lookup[selected_key]
+    calendar_id = selected_calendar.get("calendar_id")
+    ical_url = selected_calendar.get("ical_url")
+    st.caption(
+        translate_text(
+            (
+                f"Aktiver Kalender: {selected_calendar['name']} (ID: {calendar_id or '—'})",
+                f"Active calendar: {selected_calendar['name']} (ID: {calendar_id or '—'})",
+            )
+        )
+    )
+
+    token_store = get_default_token_store()
+    connected_email = st.session_state.get(GOOGLE_CONNECTED_EMAIL_KEY)
+    connected_email_value = connected_email if isinstance(connected_email, str) else None
+    has_google_token = bool(connected_email_value and token_store.load_token(connected_email_value))
+    if has_google_token:
+        st.success(
+            translate_text(
+                (
+                    f"Google verbunden als {connected_email_value}. Kalender-API wird genutzt.",
+                    f"Google connected as {connected_email_value}. Using the Calendar API.",
+                )
+            )
+        )
+        if not calendar_id:
+            st.warning(
+                translate_text(
+                    (
+                        "Kalender-ID fehlt für diesen Eintrag. Bitte CAL_GERRI_ID/CAL_2025_ID setzen.",
+                        "Calendar ID is missing for this entry. Please set CAL_GERRI_ID/CAL_2025_ID.",
+                    )
+                )
+            )
+    elif ical_url:
+        st.info(
+            translate_text(
+                (
+                    "Google nicht verbunden. iCal-Feed wird als read-only Fallback genutzt.",
+                    "Google is not connected. Using the iCal feed as a read-only fallback.",
+                )
+            )
+        )
+    else:
+        st.warning(
+            translate_text(
+                (
+                    "Google nicht verbunden und kein iCal-Link vorhanden.",
+                    "Google is not connected and no iCal link is configured.",
+                )
+            )
+        )
+
+    if st.button(translate_text(("Nächste 20 Termine anzeigen", "List next 20 events"))):
+        with st.spinner(translate_text(("Lade Termine...", "Loading events..."))):
+            try:
+                if has_google_token:
+                    if not calendar_id:
+                        st.error(
+                            translate_text(
+                                (
+                                    "Es ist keine Kalender-ID konfiguriert.",
+                                    "No calendar ID is configured.",
+                                )
+                            )
+                        )
+                        return
+                    service = get_calendar_service(cast(str, connected_email_value), token_store)
+                    events = _with_backoff(
+                        lambda: list_upcoming_events_for_service(
+                            service,
+                            calendar_id=calendar_id,
+                            max_results=20,
+                        )
+                    )
+                else:
+                    if not ical_url:
+                        st.error(
+                            translate_text(
+                                (
+                                    "Es ist keine iCal-URL konfiguriert.",
+                                    "No iCal URL is configured.",
+                                )
+                            )
+                        )
+                        return
+                    events = _with_backoff(lambda: list_upcoming_ical_events(ical_url, max_results=20))
+            except (GoogleApiError, OAuthFlowError, httpx.HTTPError) as exc:
+                st.error(
+                    translate_text(
+                        (
+                            f"Kalender konnte nicht geladen werden: {exc}",
+                            f"Failed to load calendar events: {exc}",
+                        )
+                    )
+                )
+                return
+        _render_calendar_events(events)
+
+    if has_google_token:
+        with st.expander(translate_text(("Termin erstellen", "Create event")), expanded=False):
+            with st.form("calendar_create_event_form"):
+                summary = st.text_input(
+                    translate_text(("Titel", "Summary")),
+                    placeholder=translate_text(("z. B. Arzttermin", "e.g. Doctor appointment")),
+                )
+                start_cols = st.columns(2)
+                with start_cols[0]:
+                    start_date = st.date_input(translate_text(("Startdatum", "Start date")), value=date.today())
+                with start_cols[1]:
+                    start_time = st.time_input(translate_text(("Startzeit", "Start time")))
+                end_cols = st.columns(2)
+                with end_cols[0]:
+                    end_date = st.date_input(translate_text(("Enddatum", "End date")), value=date.today())
+                with end_cols[1]:
+                    end_time = st.time_input(translate_text(("Endzeit", "End time")))
+                timezone_value = st.text_input(
+                    translate_text(("Zeitzone", "Timezone")),
+                    value="Europe/Berlin",
+                    help=translate_text(
+                        (
+                            "IANA-Zeitzone, z. B. Europe/Berlin oder UTC.",
+                            "IANA timezone, e.g. Europe/Berlin or UTC.",
+                        )
+                    ),
+                )
+                submit_event = st.form_submit_button(
+                    translate_text(("Termin erstellen", "Create event")),
+                    type="primary",
+                    disabled=not calendar_id,
+                )
+            if submit_event:
+                if not calendar_id:
+                    st.error(
+                        translate_text(
+                            (
+                                "Kalender-ID fehlt. Bitte CAL_GERRI_ID/CAL_2025_ID setzen.",
+                                "Calendar ID is missing. Please set CAL_GERRI_ID/CAL_2025_ID.",
+                            )
+                        )
+                    )
+                    return
+                if not summary.strip():
+                    st.error(translate_text(("Bitte einen Titel angeben.", "Please provide a summary.")))
+                    return
+                try:
+                    tzinfo = ZoneInfo(timezone_value)
+                except Exception:
+                    st.error(
+                        translate_text(
+                            (
+                                "Ungültige Zeitzone. Bitte eine IANA-Zeitzone angeben (z. B. Europe/Berlin).",
+                                "Invalid timezone. Please enter a valid IANA timezone (e.g. Europe/Berlin).",
+                            )
+                        )
+                    )
+                    return
+                start_dt = datetime.combine(start_date, start_time, tzinfo=tzinfo)
+                end_dt = datetime.combine(end_date, end_time, tzinfo=tzinfo)
+                if end_dt <= start_dt:
+                    st.error(
+                        translate_text(
+                            (
+                                "Endzeit muss nach der Startzeit liegen.",
+                                "End time must be after the start time.",
+                            )
+                        )
+                    )
+                    return
+                with st.spinner(translate_text(("Termin wird erstellt...", "Creating event..."))):
+                    try:
+                        service = get_calendar_service(cast(str, connected_email_value), token_store)
+                        created = _with_backoff(
+                            lambda: create_calendar_event(
+                                service,
+                                calendar_id=calendar_id,
+                                summary=summary.strip(),
+                                start=start_dt,
+                                end=end_dt,
+                                timezone_name=timezone_value,
+                            )
+                        )
+                    except (GoogleApiError, OAuthFlowError) as exc:
+                        st.error(
+                            translate_text(
+                                (
+                                    f"Termin konnte nicht erstellt werden: {exc}",
+                                    f"Failed to create event: {exc}",
+                                )
+                            )
+                        )
+                        return
+                st.success(
+                    translate_text(
+                        (
+                            f"Termin erstellt: {created.summary or summary}",
+                            f"Event created: {created.summary or summary}",
+                        )
+                    )
+                )
 
 
 def render_language_toggle() -> LanguageCode:
@@ -2917,6 +3200,8 @@ def render_navigation() -> str:
         TASKS_PAGE_KEY: TASKS_PAGE_LABEL,
         JOURNAL_PAGE_KEY: JOURNAL_PAGE_LABEL,
         EMAILS_PAGE_KEY: EMAILS_PAGE_LABEL,
+        WORKSPACE_PAGE_KEY: WORKSPACE_PAGE_LABEL,
+        CALENDAR_PAGE_KEY: CALENDAR_PAGE_LABEL,
     }
     if PENDING_NAVIGATION_KEY in st.session_state:
         st.session_state[NAVIGATION_SELECTION_KEY] = st.session_state.pop(PENDING_NAVIGATION_KEY)
@@ -3490,6 +3775,12 @@ def main() -> None:
         render_tasks_page(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
     elif selection == EMAILS_PAGE_KEY:
         render_emails_page(ai_enabled=ai_enabled, client=client)
+    elif selection == WORKSPACE_PAGE_KEY:
+        render_google_connection_panel()
+        st.divider()
+        render_google_workspace_page()
+    elif selection == CALENDAR_PAGE_KEY:
+        render_calendar_page()
     else:
         render_journal_section(ai_enabled=ai_enabled, client=client, todos=todos)
 

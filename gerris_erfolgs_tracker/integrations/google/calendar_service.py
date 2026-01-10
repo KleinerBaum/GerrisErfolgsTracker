@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+from gerris_erfolgs_tracker.integrations.google.client import build_google_api_client
+from gerris_erfolgs_tracker.integrations.google.models import CalendarEvent, parse_google_datetime
+from gerris_erfolgs_tracker.integrations.google.scopes import BASE_SCOPES, GOOGLE_SCOPE_CALENDAR
+from gerris_erfolgs_tracker.integrations.google.services import GoogleService
+
+CALENDAR_API_BASE_URL = "https://www.googleapis.com/calendar/v3"
+
+REQUIRED_SCOPES: tuple[str, ...] = (*BASE_SCOPES, GOOGLE_SCOPE_CALENDAR)
+
+
+def list_upcoming_events(
+    access_token: str,
+    *,
+    calendar_id: str = "primary",
+    max_results: int = 10,
+    time_min: datetime | None = None,
+) -> list[CalendarEvent]:
+    client = build_google_api_client(access_token)
+    query_time = time_min or datetime.now(timezone.utc)
+    params = {
+        "maxResults": max_results,
+        "orderBy": "startTime",
+        "singleEvents": "true",
+        "timeMin": query_time.isoformat(),
+    }
+    url = f"{CALENDAR_API_BASE_URL}/calendars/{calendar_id}/events"
+    payload = client.get(url, params=params)
+    items = payload.get("items", [])
+    if not isinstance(items, list):
+        return []
+    return [_to_calendar_event(item) for item in items if isinstance(item, dict)]
+
+
+def list_upcoming_events_for_service(
+    service: GoogleService,
+    *,
+    calendar_id: str = "primary",
+    max_results: int = 10,
+    time_min: datetime | None = None,
+) -> list[CalendarEvent]:
+    query_time = time_min or datetime.now(timezone.utc)
+    params = {
+        "maxResults": max_results,
+        "orderBy": "startTime",
+        "singleEvents": "true",
+        "timeMin": query_time.isoformat(),
+    }
+    payload = service.get(f"calendars/{calendar_id}/events", params=params)
+    items = payload.get("items", [])
+    if not isinstance(items, list):
+        return []
+    return [_to_calendar_event(item) for item in items if isinstance(item, dict)]
+
+
+def create_calendar_event(
+    service: GoogleService,
+    *,
+    calendar_id: str,
+    summary: str,
+    start: datetime,
+    end: datetime,
+    timezone_name: str,
+) -> CalendarEvent:
+    payload = {
+        "summary": summary,
+        "start": {"dateTime": start.isoformat(), "timeZone": timezone_name},
+        "end": {"dateTime": end.isoformat(), "timeZone": timezone_name},
+    }
+    response = service.post(f"calendars/{calendar_id}/events", json=payload)
+    return _to_calendar_event(response)
+
+
+def _to_calendar_event(item: dict[str, Any]) -> CalendarEvent:
+    start_data = _ensure_dict(item.get("start"))
+    end_data = _ensure_dict(item.get("end"))
+    organizer = _ensure_dict(item.get("organizer"))
+    return CalendarEvent(
+        event_id=str(item.get("id") or ""),
+        summary=str(item.get("summary")) if item.get("summary") is not None else None,
+        start=parse_google_datetime(_extract_datetime(start_data)),
+        end=parse_google_datetime(_extract_datetime(end_data)),
+        location=str(item.get("location")) if item.get("location") is not None else None,
+        html_link=str(item.get("htmlLink")) if item.get("htmlLink") is not None else None,
+        organizer_email=str(organizer.get("email")) if organizer.get("email") is not None else None,
+    )
+
+
+def _extract_datetime(data: dict[str, Any]) -> str | None:
+    value = data.get("dateTime") or data.get("date")
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def _ensure_dict(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    return {}

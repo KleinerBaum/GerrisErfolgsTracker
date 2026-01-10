@@ -14,8 +14,12 @@ Die Sidebar konzentriert sich auf die Navigation; Schalter, Build-Infos sowie Si
   - Der Bereich **Ziele & Einstellungen** wird ohne Überschrift eingebettet, damit die Seite schlanker wirkt / The **Goals & settings** section renders without a header to keep the page lean.
   - Die Auswahl von Aufgabenvorlagen funktioniert ohne Streamlit-Fehler im Formular **ToDo hinzufügen** / Task template selection works without Streamlit errors in the **Add task** form.
   - Neuer Bereich **E-Mails / Emails** bietet ein Formular mit Vorschau zum schnellen Erstellen von E-Mail-Entwürfen / New **E-Mails / Emails** area provides a form with preview for quick email drafts.
+  - Neuer Bereich **Google Workspace** bündelt Kalender, Gmail, Tasks, Drive und Sheets; Google Tasks lädt Tasklisten und Aufgaben live inkl. Anlage, die übrigen Bereiche zeigen noch Beispieldaten / New **Google Workspace** area bundles Calendar, Gmail, Tasks, Drive, and Sheets; Google Tasks now loads task lists and tasks live with creation, while the other sections still show sample data.
+  - Google-Workspace-Verbindung: OAuth-Flow mit **Google verbinden / Connect Google**-Button, Statusanzeige und einmaligem Smoke-Test (z. B. Kalenderliste) zur Verifizierung / Google Workspace connection: OAuth flow with a **Connect Google** button, status indicator, and a one-time smoke test (e.g., calendar listing) for verification.
+  - Neuer Bereich **Kalender / Calendar**: Kalender-Auswahl, Button **Nächste 20 Termine anzeigen / List next 20 events** sowie optionales Formular zum Erstellen von Terminen via Calendar API (mit iCal-Fallback bei fehlender OAuth-Verbindung) / New **Calendar** area: calendar selection, **List next 20 events** button, and an optional event creation form via the Calendar API (with iCal fallback when OAuth is not connected).
   - Der Quick-Action-Button **E-Mails / Emails** nutzt jetzt ebenfalls ein Dropdown, damit das Design mit den benachbarten Schnellaktionen konsistent bleibt / The **E-Mails / Emails** quick action now uses a dropdown as well to stay consistent with the neighboring quick actions.
   - Quick-Action-Dropdowns für Aufgaben, Ziele und Journal leeren ihre Felder nach dem Speichern und klappen automatisch zu / Quick-action dropdowns for tasks, goals, and journal now clear their fields after saving and auto-collapse.
+  - Quick-Action-Ziele setzen nach dem Speichern ein Reset-Flag und initialisieren ihre Felder vor dem nächsten Render, um Streamlit-Session-State-Fehler zu vermeiden / Quick-action goals set a reset flag after saving and initialize their fields before the next render to avoid Streamlit session-state errors.
   - Quick-Action-ToDos setzen nach dem Speichern ein Reset-Flag und initialisieren ihre Felder vor dem nächsten Render, damit Streamlit-Session-State-Fehler vermieden werden / Quick-action ToDos set a reset flag after saving and reinitialize their fields before the next render to avoid Streamlit session-state errors.
   - Neue Analytics-Funktionen für Cycle Time, Backlog-Gesundheit und Abschluss-Heatmap ergänzen das KPI-Tab um zusätzliche Kennzahlen / New analytics for cycle time, backlog health, and a completion heatmap extend the KPI tab with additional indicators.
   - Kompaktere Oberfläche: Gamification in der Sidebar nur noch als Kurzzeile plus Expander, Wochenstatistiken/Kategorie-Trends als einklappbare Grafiken und Aufgaben mit Top-3-Vorschau pro Kategorie sowie eingeklappten Filtern / Compact UI: sidebar gamification reduced to a short summary plus expander, weekly stats and category trends tucked into expanders, and the task list shows a top-3 preview per category with collapsible filters.
@@ -104,8 +108,18 @@ Die App sucht nach dem OpenAI Key in `st.secrets` oder der Umgebung:
 - `OPENAI_MODEL` (optional, z. B. `gpt-4o-mini` oder `o3-mini`)
 - `GERRIS_ONEDRIVE_DIR` (optional: expliziter OneDrive-Sync-Ordner für die JSON-Datei)
 - `GOOGLE_CALENDARS_JSON` (optional: JSON-Liste mit Google-Kalendern, um mehrere Kalender ohne viele ENV-Variablen zu konfigurieren)
-- `KalenderGerri` oder `CALENDAR_GERRI` (optional: Freigabelink oder Calendar-ID für den persönlichen Kalender)
-- `2025 von Carla, Miri & Gerrit` oder `CALENDAR_SHARED_2025` (optional: Freigabelink oder Calendar-ID für den geteilten Kalender)
+- `CAL_GERRI_ID`, `CAL_GERRI_ICAL_URL`, `CAL_GERRI_NAME` (optional: Kalender-ID, iCal-Link und Anzeigename für Gerri)
+- `CAL_2025_ID`, `CAL_2025_ICAL_URL`, `CAL_2025_NAME` (optional: Kalender-ID, iCal-Link und Anzeigename für den 2025-Kalender)
+- Legacy (optional): `id_gerri`, `ical_Gerri`, `KalenderGerri` sowie `2025 von Carla, Miri & Gerrit`, `CALENDAR_SHARED_2025` (ältere Kalender-Keys für bestehende Setups)
+- `GOOGLE_CLIENT_ID` (optional: OAuth Client-ID für die Google Workspace Integration)
+- `GOOGLE_CLIENT_SECRET` (optional: OAuth Client Secret für die Google Workspace Integration)
+- `GOOGLE_REDIRECT_URI` (optional: OAuth Redirect-URI für die Google Workspace Integration)
+- `GOOGLE_TOKEN_STORE_BACKEND` (optional: Token-Backend, z. B. `sqlite` oder `env`)
+- `GOOGLE_TOKEN_DB_PATH` (optional: Pfad für die lokale SQLite-Tokenablage, Standard: `.local/gerris_google_tokens.sqlite`)
+- `GOOGLE_TOKENS_JSON` (optional: JSON-Objekt mit Tokens pro Nutzer, z. B. aus Secrets/ENV)
+- `GOOGLE_TOKENS_JSON_PATH` (optional: Schreibbarer Pfad für das JSON-Token-Backend)
+
+Google-Workspace-Services nutzen ein maximales 7-Scopes-Set (OpenID + E-Mail sowie Calendar, Tasks, Gmail, Drive, Sheets), damit der Zugriff gebündelt und nachvollziehbar bleibt / Google Workspace services use a capped 7-scope set (OpenID + email plus Calendar, Tasks, Gmail, Drive, Sheets) so access stays bundled and traceable.
 
 Beispiel für `GOOGLE_CALENDARS_JSON`:
 
@@ -143,7 +157,7 @@ scheduler.run()
 
 ### Lokale Secrets
 
-Erstelle `.streamlit/secrets.toml` (siehe `.streamlit/secrets.example.toml`):
+Erstelle `.streamlit/secrets.toml` (siehe `.streamlit/secrets.toml.example`):
 
 ```toml
 OPENAI_API_KEY = "sk-..."
@@ -173,6 +187,8 @@ OPENAI_API_KEY = "sk-..."
 - Tests: `pytest -q`
 - CI: GitHub Actions Workflow (`.github/workflows/ci.yml`) führt `ruff check .` und `pytest -q` bei Push/PR aus.
 - Streamlit-Widgets: Verwende `width="stretch"` statt `use_container_width=True` (deprecated nach 2025-12-31).
+- Setup-Templates: `.env.example` und `.streamlit/secrets.toml.example` enthalten sichere Vorlagen ohne Secrets.
+- Google Workspace Setup: siehe [`docs/google_setup.md`](docs/google_setup.md).
 
 ## Troubleshooting
 
