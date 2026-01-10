@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Dashboard: Google-Kalender lassen sich jetzt nebeneinander darstellen, inkl. optionalem persönlichem Kalender per ENV-Setup / Dashboard: Google Calendars can now be shown side by side, including an optional personal calendar configured via env.
 - Quick-Action-ToDo-Reset läuft jetzt über ein Reset-Flag vor dem Widget-Rendering, um Streamlit-Session-State-Fehler zu vermeiden / Quick-action ToDo reset now runs via a reset flag before widget rendering to avoid Streamlit session-state errors.
 - Dashboard: Der **Kategorien / Categories**-Expander enthält jetzt eine Wochenziel-Komponente pro Kategorie, und die Tachos passen sich dem Wochenfortschritt an / Dashboard: the **Kategorien / Categories** expander now includes weekly targets per category, and the gauges respond to weekly progress.
 - Quick-Action-ToDo-Formular behält Eingaben bei Validierungsfehlern und resettet erst nach erfolgreichem Speichern / Quick-action ToDo form keeps inputs on validation errors and only resets after a successful save.
