@@ -2350,14 +2350,6 @@ def render_dashboard_page(
     client: Optional[OpenAI],
 ) -> None:
     st.subheader(translate_text(("Dashboard", "Dashboard")))
-    st.caption(
-        translate_text(
-            (
-                "Ziel-Übersicht und KPIs direkt hier; Details und Templates bleiben im Tab 'Ziele'.",
-                "Goal overview and KPIs live here; details and templates remain in the 'Goals' tab.",
-            )
-        )
-    )
 
     if not todos:
         st.info(
@@ -2370,6 +2362,8 @@ def render_dashboard_page(
             icon="✨",
         )
         return
+
+    render_kpi_summary(stats)
 
     render_goal_overview(
         todos,
@@ -2535,9 +2529,8 @@ def _format_duration_short(value: timedelta | None) -> str:
     return f"{total_seconds / 60:.0f}m"
 
 
-def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
+def render_kpi_summary(stats: KpiStats) -> None:
     _sync_tasks_streamlit()
-    st.subheader("KPI-Dashboard")
     col_total, col_today, col_streak, col_goal = st.columns(4)
 
     col_total.metric("Erledigt gesamt", stats.done_total)
@@ -2555,6 +2548,10 @@ def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
         f"{stats.done_today}/{stats.goal_daily}",
         delta=goal_delta,
     )
+
+
+def render_kpi_dashboard(stats: KpiStats, *, todos: list[TodoItem]) -> None:
+    _sync_tasks_streamlit()
 
     new_tasks_count = count_new_tasks_last_7_days(todos)
     st.markdown("#### " + translate_text(("Neue Aufgaben (7 Tage)", "New tasks (7 days)")))
