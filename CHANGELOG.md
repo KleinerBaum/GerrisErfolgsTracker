@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Quick-Action-ToDo-Formular resettet seine Felder jetzt über einen Submit-Callback, sodass die Popover-Steuerung konsistent bleibt / Quick-action ToDo form now resets its fields via the submit callback to keep popover state consistent.
 - Dashboard: Tachometer stehen jetzt links neben **Misc KPIs** und skalieren ihre Größe je nach Anzahl der ausgewählten Kategorien / Dashboard: gauges now sit to the left of **Misc KPIs** and scale their size based on how many categories are selected.
 - Dashboard-Header: **E-Mails / Emails** nutzt jetzt ein Dropdown wie die benachbarten Quick-Actions, sodass der Stil konsistent bleibt / Dashboard header: **E-Mails / Emails** now uses a dropdown like the neighboring quick actions for consistent styling.
 - Quick-Action-Dropdowns für Aufgaben, Ziele und Journal leeren ihre Felder nach dem Speichern und klappen automatisch zu / Quick-action dropdowns for tasks, goals, and journal now clear their fields after saving and auto-collapse.
