@@ -3,7 +3,16 @@ from __future__ import annotations
 import os
 
 from gerris_erfolgs_tracker.integrations.google.auth import (
+    BASE_SCOPES,
     DEFAULT_SCOPES,
+    GOOGLE_SCOPE_CALENDAR_READONLY,
+    GOOGLE_SCOPE_DRIVE_READONLY,
+    GOOGLE_SCOPE_GMAIL_READONLY,
+    GOOGLE_SCOPE_OPENID,
+    GOOGLE_SCOPE_SHEETS_READONLY,
+    GOOGLE_SCOPE_TASKS_READONLY,
+    GOOGLE_SCOPE_USERINFO_EMAIL,
+    GOOGLE_SCOPE_USERINFO_PROFILE,
     OAuthConfig,
     OAuthConfigError,
     OAuthFlowError,
@@ -19,6 +28,15 @@ from gerris_erfolgs_tracker.integrations.google.token_store import TokenData, To
 
 __all__ = [
     "DEFAULT_SCOPES",
+    "BASE_SCOPES",
+    "GOOGLE_SCOPE_CALENDAR_READONLY",
+    "GOOGLE_SCOPE_DRIVE_READONLY",
+    "GOOGLE_SCOPE_GMAIL_READONLY",
+    "GOOGLE_SCOPE_OPENID",
+    "GOOGLE_SCOPE_SHEETS_READONLY",
+    "GOOGLE_SCOPE_TASKS_READONLY",
+    "GOOGLE_SCOPE_USERINFO_EMAIL",
+    "GOOGLE_SCOPE_USERINFO_PROFILE",
     "EnvTokenStore",
     "OAuthConfig",
     "OAuthConfigError",

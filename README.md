@@ -114,6 +114,8 @@ Die App sucht nach dem OpenAI Key in `st.secrets` oder der Umgebung:
 - `GOOGLE_TOKENS_JSON` (optional: JSON-Objekt mit Tokens pro Nutzer, z. B. aus Secrets/ENV)
 - `GOOGLE_TOKENS_JSON_PATH` (optional: Schreibbarer Pfad für das JSON-Token-Backend)
 
+Google-Workspace-Services nutzen je Feature nur die nötigen Read-only-Scopes (Kalender, Gmail, Tasks, Drive, Sheets), damit der Zugriff minimal bleibt / Google Workspace services request only the required read-only scopes per feature (Calendar, Gmail, Tasks, Drive, Sheets) to keep access minimal.
+
 Beispiel für `GOOGLE_CALENDARS_JSON`:
 
 ```env
