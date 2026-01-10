@@ -153,7 +153,7 @@ scheduler.run()
 
 ### Lokale Secrets
 
-Erstelle `.streamlit/secrets.toml` (siehe `.streamlit/secrets.example.toml`):
+Erstelle `.streamlit/secrets.toml` (siehe `.streamlit/secrets.toml.example`):
 
 ```toml
 OPENAI_API_KEY = "sk-..."
@@ -183,6 +183,8 @@ OPENAI_API_KEY = "sk-..."
 - Tests: `pytest -q`
 - CI: GitHub Actions Workflow (`.github/workflows/ci.yml`) führt `ruff check .` und `pytest -q` bei Push/PR aus.
 - Streamlit-Widgets: Verwende `width="stretch"` statt `use_container_width=True` (deprecated nach 2025-12-31).
+- Setup-Templates: `.env.example` und `.streamlit/secrets.toml.example` enthalten sichere Vorlagen ohne Secrets.
+- Google Workspace Setup: siehe [`docs/google_setup.md`](docs/google_setup.md).
 
 ## Troubleshooting
 
