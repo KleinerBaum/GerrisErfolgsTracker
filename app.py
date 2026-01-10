@@ -1402,11 +1402,18 @@ def _render_goal_quick_goal_popover(
     date_key = f"{QUICK_GOAL_PROFILE_DATE_KEY}_{form_key}"
     unit_key = f"{QUICK_GOAL_PROFILE_UNIT_KEY}_{form_key}"
     popover_state_key = f"{QUICK_GOAL_PROFILE_POPOVER_STATE_KEY}_{form_key}"
+    reset_key = f"{form_key}_reset"
 
     default_focus_categories = [
         category for category in Category if category.value in default_profile.get("focus_categories", [])
     ]
     default_target_date = cast(date | None, default_profile.get("target_date")) or date.today() + timedelta(days=30)
+    if st.session_state.pop(reset_key, False):
+        st.session_state[title_key] = str(default_profile.get("title", ""))
+        st.session_state[focus_key] = default_focus_categories
+        st.session_state[date_key] = default_target_date
+        st.session_state[unit_key] = str(default_profile.get("metric_unit", ""))
+
     st.session_state.setdefault(title_key, str(default_profile.get("title", "")))
     st.session_state.setdefault(focus_key, default_focus_categories)
     st.session_state.setdefault(date_key, default_target_date)
@@ -1470,6 +1477,7 @@ def _render_goal_quick_goal_popover(
                 st.session_state[SS_SETTINGS] = settings
                 st.session_state[GOAL_CREATION_VISIBLE_KEY] = True
                 st.session_state[PENDING_NAVIGATION_KEY] = GOALS_PAGE_KEY
+                st.session_state[reset_key] = True
                 persist_state()
                 st.success(
                     translate_text(
@@ -1479,10 +1487,6 @@ def _render_goal_quick_goal_popover(
                         )
                     )
                 )
-                st.session_state[title_key] = ""
-                st.session_state[focus_key] = []
-                st.session_state[date_key] = date.today() + timedelta(days=30)
-                st.session_state[unit_key] = ""
                 _toggle_popover_state(popover_state_key)
                 st.rerun()
 
