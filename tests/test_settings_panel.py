@@ -64,11 +64,32 @@ class _PanelStub:
     def expander(self, *_: Any, **__: Any) -> "_PanelStub":
         return self
 
+    def form(self, *_: Any, **__: Any) -> "_PanelStub":
+        return self
+
     def header(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
         """No-op header stub."""
 
     def markdown(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
         """No-op markdown stub."""
+
+    def caption(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
+        """No-op caption stub."""
+
+    def subheader(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
+        """No-op subheader stub."""
+
+    def divider(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
+        """No-op divider stub."""
+
+    def info(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
+        """No-op info stub."""
+
+    def warning(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
+        """No-op warning stub."""
+
+    def error(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
+        """No-op error stub."""
 
     def text_input(
         self,
@@ -88,6 +109,13 @@ class _PanelStub:
         **__: Any,
     ) -> List[Any]:
         return default or []
+
+    def file_uploader(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
+        """No-op file uploader stub."""
+        return None
+
+    def checkbox(self, *_: Any, value: bool = False, **__: Any) -> bool:  # noqa: ANN401
+        return value
 
     def tabs(self, labels: List[str]) -> List["_TabStub"]:
         return [_TabStub() for _ in labels]
@@ -117,21 +145,6 @@ class _PanelStub:
 
     def success(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
         """No-op success stub."""
-
-    def info(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
-        """No-op info stub."""
-
-    def divider(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
-        """No-op divider stub."""
-
-    def subheader(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
-        """No-op subheader stub."""
-
-    def warning(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
-        """No-op warning stub."""
-
-    def caption(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
-        """No-op caption stub."""
 
     def selectbox(
         self,
@@ -169,6 +182,9 @@ class _StreamlitStub:
 
     def caption(self, *_: Any, **__: Any) -> None:  # noqa: D401, ANN401
         """No-op caption stub."""
+
+    def form_submit_button(self, *_: Any, **__: Any) -> bool:  # noqa: ANN401
+        return False
 
     def tabs(self, labels: List[str]) -> List["_TabStub"]:
         return [_TabStub() for _ in labels]

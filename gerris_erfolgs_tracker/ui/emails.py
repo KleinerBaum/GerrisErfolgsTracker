@@ -23,7 +23,6 @@ from gerris_erfolgs_tracker.constants import (
 from gerris_erfolgs_tracker.i18n import translate_text
 from gerris_erfolgs_tracker.llm_schemas import EmailDraft
 
-
 EMAIL_TONE_OPTIONS: tuple[tuple[str, tuple[str, str]], ...] = (
     ("friendly", ("Freundlich", "Friendly")),
     ("formal", ("Formell", "Formal")),
@@ -113,8 +112,7 @@ def render_emails_page(*, ai_enabled: bool, client: Optional[OpenAI]) -> None:  
             (
                 "Erstelle eine E-Mail-Vorlage mit Betreff, Kontext und Tonalität. "
                 "Die Vorschau lässt sich leicht kopieren oder anpassen.",
-                "Create an email template with subject, context, and tone. "
-                "The preview is easy to copy or tweak.",
+                "Create an email template with subject, context, and tone. The preview is easy to copy or tweak.",
             )
         )
     )
@@ -143,7 +141,9 @@ def render_emails_page(*, ai_enabled: bool, client: Optional[OpenAI]) -> None:  
                 st.text_area(
                     translate_text(("Kontext / Notizen", "Context / Notes")),
                     key=NEW_EMAIL_CONTEXT_KEY,
-                    placeholder=translate_text(("Wichtige Details, Stichpunkte, Ziele", "Key details, bullet points, goals")),
+                    placeholder=translate_text(
+                        ("Wichtige Details, Stichpunkte, Ziele", "Key details, bullet points, goals")
+                    ),
                     height=180,
                 )
 
@@ -153,9 +153,7 @@ def render_emails_page(*, ai_enabled: bool, client: Optional[OpenAI]) -> None:  
                     options=[option for option, _ in EMAIL_TONE_OPTIONS],
                     key=NEW_EMAIL_TONE_KEY,
                     format_func=lambda option: _option_label(option, EMAIL_TONE_OPTIONS),
-                    help=translate_text(
-                        ("Lege die Tonalität der E-Mail fest.", "Set the tone for the email draft.")
-                    ),
+                    help=translate_text(("Lege die Tonalität der E-Mail fest.", "Set the tone for the email draft.")),
                 )
                 st.selectbox(
                     translate_text(("Länge", "Length")),
@@ -258,7 +256,10 @@ def render_emails_page(*, ai_enabled: bool, client: Optional[OpenAI]) -> None:  
         else:
             st.info(
                 translate_text(
-                    ("Erstelle zuerst eine E-Mail, um die Vorschau zu sehen.", "Create an email first to see a preview.")
+                    (
+                        "Erstelle zuerst eine E-Mail, um die Vorschau zu sehen.",
+                        "Create an email first to see a preview.",
+                    )
                 )
             )
 

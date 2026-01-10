@@ -3,12 +3,12 @@ from __future__ import annotations
 import html
 from calendar import monthrange
 from datetime import date, datetime, time, timezone
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional, cast
 
 import streamlit as st
 
-from gerris_erfolgs_tracker.i18n import translate_text
 from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant
+from gerris_erfolgs_tracker.i18n import translate_text
 from gerris_erfolgs_tracker.models import Category, TodoItem
 from gerris_erfolgs_tracker.state import get_todos
 from gerris_erfolgs_tracker.todos import update_todo
@@ -203,7 +203,8 @@ def _render_day_cell(
             task_columns = st.columns([4, 1])
             task_columns[0].markdown(f"{status} {title}")
             with task_columns[1]:
-                with st.popover(
+                popover = cast(Any, st.popover)
+                with popover(
                     translate_text(("Bearbeiten", "Edit")),
                     width="stretch",
                     key=f"calendar_edit_{task.id}",

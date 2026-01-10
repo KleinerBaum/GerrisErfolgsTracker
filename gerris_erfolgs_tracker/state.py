@@ -58,7 +58,7 @@ def _default_gamification() -> GamificationState:
 
 def _default_settings() -> dict[str, Any]:
     return {
-        "category_goals": {category.value: 1 for category in Category},
+        "category_goals": {category.value: 7 for category in Category},
         "goal_profile": {},
     }
 

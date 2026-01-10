@@ -13,9 +13,9 @@ class CategoryKpi:
     category: Category
     open_count: int
     done_total: int
-    done_today: int
+    done_this_week: int
     streak: int
-    daily_goal: int
+    weekly_goal: int
     goal_progress: float
 
 
@@ -53,6 +53,7 @@ def aggregate_category_kpis(
     fallback_streak: int = 0,
 ) -> dict[Category, CategoryKpi]:
     current_day = today or datetime.now(timezone.utc).date()
+    start_of_week = current_day - timedelta(days=current_day.weekday())
     goals_lookup: dict[Category, int] = {category: 1 for category in Category}
     if category_goals is not None:
         for key, goal in category_goals.items():
@@ -63,7 +64,7 @@ def aggregate_category_kpis(
 
     open_counts: defaultdict[Category, int] = defaultdict(int)
     done_totals: defaultdict[Category, int] = defaultdict(int)
-    done_today: defaultdict[Category, int] = defaultdict(int)
+    done_this_week: defaultdict[Category, int] = defaultdict(int)
     completion_days: defaultdict[Category, list[date]] = defaultdict(list)
 
     for todo in todos:
@@ -73,8 +74,8 @@ def aggregate_category_kpis(
             if todo.completed_at is not None:
                 completion_date = todo.completed_at.astimezone(timezone.utc).date()
                 completion_days[category].append(completion_date)
-                if completion_date == current_day:
-                    done_today[category] += 1
+                if start_of_week <= completion_date <= current_day:
+                    done_this_week[category] += 1
         else:
             open_counts[category] += 1
 
@@ -84,15 +85,15 @@ def aggregate_category_kpis(
         if streak == 0 and not completion_days.get(category):
             streak = fallback_streak
 
-        daily_goal = goals_lookup.get(category, 1)
-        goal_progress = done_today.get(category, 0) / daily_goal if daily_goal > 0 else 0.0
+        weekly_goal = goals_lookup.get(category, 1)
+        goal_progress = done_this_week.get(category, 0) / weekly_goal if weekly_goal > 0 else 0.0
         snapshots[category] = CategoryKpi(
             category=category,
             open_count=open_counts.get(category, 0),
             done_total=done_totals.get(category, 0),
-            done_today=done_today.get(category, 0),
+            done_this_week=done_this_week.get(category, 0),
             streak=streak,
-            daily_goal=daily_goal,
+            weekly_goal=weekly_goal,
             goal_progress=goal_progress,
         )
 

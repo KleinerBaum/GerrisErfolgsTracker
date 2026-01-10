@@ -13,7 +13,6 @@ import streamlit as st
 from openai import OpenAI
 
 import gerris_erfolgs_tracker.ui.tasks as tasks_ui
-from gerris_erfolgs_tracker.ui.emails import render_emails_page
 from gerris_erfolgs_tracker.ai_features import AISuggestion, suggest_quadrant
 from gerris_erfolgs_tracker.analytics import (
     build_completion_heatmap,
@@ -112,6 +111,7 @@ from gerris_erfolgs_tracker.todos import (
     update_todo_progress,
 )
 from gerris_erfolgs_tracker.ui.common import _inject_dark_theme_styles
+from gerris_erfolgs_tracker.ui.emails import render_emails_page
 from gerris_erfolgs_tracker.ui.tasks import (
     gamification_snapshot,
     handle_completion_success,
@@ -290,15 +290,23 @@ def _sanitize_goal_profile(settings: Mapping[str, object]) -> GoalProfile:
     return sanitized
 
 
+DEFAULT_CATEGORY_WEEKLY_GOAL = 7
+MAX_CATEGORY_WEEKLY_GOAL = 70
+
+
 def _sanitize_category_goals(settings: Mapping[str, object]) -> dict[str, int]:
     raw_goals = settings.get("category_goals", {}) if isinstance(settings, Mapping) else {}
     sanitized: dict[str, int] = {}
     for category in Category:
         try:
-            raw_value = raw_goals.get(category.value, 1) if isinstance(raw_goals, Mapping) else 1
-            sanitized_value = max(0, min(20, int(raw_value)))
+            raw_value = (
+                raw_goals.get(category.value, DEFAULT_CATEGORY_WEEKLY_GOAL)
+                if isinstance(raw_goals, Mapping)
+                else DEFAULT_CATEGORY_WEEKLY_GOAL
+            )
+            sanitized_value = max(0, min(MAX_CATEGORY_WEEKLY_GOAL, int(raw_value)))
         except (TypeError, ValueError):
-            sanitized_value = 1
+            sanitized_value = DEFAULT_CATEGORY_WEEKLY_GOAL
         sanitized[category.value] = sanitized_value
     return sanitized
 
@@ -824,6 +832,32 @@ def _category_goal_key(category_value: str, *, key_suffix: str) -> str:
     return f"goal_{category_value}_{key_suffix}" if key_suffix else f"goal_{category_value}"
 
 
+def _render_category_weekly_goals(*, panel: Any, settings: dict[str, Any], key_suffix: str) -> dict[str, int]:
+    category_goals = settings.get("category_goals", {})
+    goal_columns = panel.columns(2)
+    for index, category in enumerate(Category):
+        with goal_columns[index % 2]:
+            goal_value = panel.number_input(
+                f"{category.label}",
+                min_value=0,
+                max_value=MAX_CATEGORY_WEEKLY_GOAL,
+                step=1,
+                value=int(category_goals.get(category.value, DEFAULT_CATEGORY_WEEKLY_GOAL)),
+                key=_category_goal_key(category.value, key_suffix=key_suffix),
+                help=translate_text(
+                    (
+                        "Wochenziel pro Kategorie – steuert den Tacho im Dashboard.",
+                        "Weekly target per category that drives the dashboard gauges.",
+                    )
+                ),
+            )
+            category_goals[category.value] = int(goal_value)
+
+    settings["category_goals"] = _sanitize_category_goals(settings)
+    settings["category_goals"].update(category_goals)
+    return cast(dict[str, int], settings["category_goals"])
+
+
 def _tabs_with_optional_key(panel: Any, labels: list[str], *, key_suffix: str) -> list[Any]:
     if key_suffix:
         labels = [f"{label}\u200b{key_suffix}" for label in labels]
@@ -1078,42 +1112,33 @@ def _render_goal_canvas(*, panel: Any, goal_profile: GoalProfile, settings: dict
     if profile_saved:
         panel.success(translate_text(("Zielprofil aktualisiert", "Goal profile updated")))
 
-    with _panel_section(panel, translate_text(("Kategorienziele", "Category goals"))):
-        category_goals = settings.get("category_goals", {})
-        goal_columns = panel.columns(2)
-        for index, category in enumerate(Category):
-            with goal_columns[index % 2]:
-                goal_value = panel.number_input(
-                    f"{category.label}",
-                    min_value=0,
-                    max_value=20,
-                    step=1,
-                    value=int(category_goals.get(category.value, 1)),
-                    key=_category_goal_key(category.value, key_suffix=key_suffix),
-                    help=translate_text(
-                        (
-                            "Tagesziel pro Kategorie – dient als Basis für das Ziel-Dashboard.",
-                            "Daily target per category used by the goal dashboard.",
-                        )
-                    ),
+    with _panel_section(panel, translate_text(("Wochenziele pro Kategorie", "Weekly category goals"))):
+        panel.caption(
+            translate_text(
+                (
+                    "Passe an, wie viele Aufgaben du pro Woche je Kategorie erreichen möchtest.",
+                    "Set how many tasks you want to complete per category each week.",
                 )
-                category_goals[category.value] = int(goal_value)
-
-        settings["category_goals"] = _sanitize_category_goals(settings)
-        settings["category_goals"].update(category_goals)
+            )
+        )
+        _render_category_weekly_goals(panel=panel, settings=settings, key_suffix=key_suffix)
 
 
 def _build_category_progress(snapshot: CategoryKpi) -> go.Figure:
-    x_max = max(snapshot.daily_goal, snapshot.done_today, 1)
+    x_max = max(snapshot.weekly_goal, snapshot.done_this_week, 1)
     bar = go.Bar(
-        x=[snapshot.done_today],
+        x=[snapshot.done_this_week],
         y=[snapshot.category.label],
         orientation="h",
         marker_color=PRIMARY_COLOR,
         textfont_color="#E6F2EC",
-        text=[f"{snapshot.done_today}/{snapshot.daily_goal}"],
+        text=[f"{snapshot.done_this_week}/{snapshot.weekly_goal}"],
         textposition="outside",
-        hovertemplate=(f"{snapshot.category.label}<br>Heute erledigtTagesziel"),
+        hovertemplate=(
+            f"{snapshot.category.label}<br>"
+            f"{translate_text(('Diese Woche erledigt', 'Done this week'))}: {snapshot.done_this_week}<br>"
+            f"{translate_text(('Wochenziel', 'Weekly target'))}: {snapshot.weekly_goal}"
+        ),
     )
     figure = go.Figure(bar)
     figure.update_layout(
@@ -1133,13 +1158,13 @@ POINTS_PER_NEW_TASK = 10
 
 
 def _build_category_gauge(snapshot: CategoryKpi, *, height: int = 240) -> go.Figure:
-    axis_max = max(snapshot.daily_goal, snapshot.done_today, 1)
+    axis_max = max(snapshot.weekly_goal, snapshot.done_this_week, 1)
     figure = go.Figure(
         go.Indicator(
             mode="gauge+number",
-            value=snapshot.done_today,
+            value=snapshot.done_this_week,
             number={
-                "suffix": f"/{snapshot.daily_goal}",
+                "suffix": f"/{snapshot.weekly_goal}",
                 "font": {"color": "#E6F2EC", "size": 26},
             },
             title={"text": snapshot.category.label, "font": {"color": "#E6F2EC", "size": 14}},
@@ -1737,6 +1762,17 @@ def _render_goal_overview_settings(
                 settings[GOAL_OVERVIEW_SELECTED_CATEGORIES_KEY] = sanitized_selection
                 st.session_state[SS_SETTINGS] = settings
                 persist_state()
+            st.divider()
+            st.markdown(translate_text(("**Wochenziele pro Kategorie**", "**Weekly targets per category**")))
+            st.caption(
+                translate_text(
+                    (
+                        "Lege fest, wie viele Aufgaben du pro Woche je Bereich erledigen möchtest.",
+                        "Define how many tasks you want to complete per week for each area.",
+                    )
+                )
+            )
+            _render_category_weekly_goals(panel=st, settings=settings, key_suffix="overview")
     return sanitized_selection
 
 
@@ -1898,8 +1934,8 @@ def _render_goal_overview_details(*, category: Category, snapshot: CategoryKpi, 
     summary_columns = detail_container.columns([1, 1, 1])
     with summary_columns[0]:
         st.metric(
-            translate_text(("Heute erledigt", "Done today")),
-            f"{snapshot.done_today}/{snapshot.daily_goal}",
+            translate_text(("Diese Woche erledigt", "Done this week")),
+            f"{snapshot.done_this_week}/{snapshot.weekly_goal}",
         )
     with summary_columns[1]:
         st.metric(
@@ -1996,13 +2032,18 @@ def render_category_dashboard(todos: list[TodoItem], *, stats: KpiStats, categor
             with st.container(border=True):
                 st.markdown(f"**{category.label}**")
                 delta_text = (
-                    f"Δ {snapshot.done_today - snapshot.daily_goal} zum Ziel"
-                    if snapshot.daily_goal > 0
-                    else "Kein Tagesziel"
+                    translate_text(
+                        (
+                            f"Δ {snapshot.done_this_week - snapshot.weekly_goal} zum Wochenziel",
+                            f"Δ {snapshot.done_this_week - snapshot.weekly_goal} to weekly target",
+                        )
+                    )
+                    if snapshot.weekly_goal > 0
+                    else translate_text(("Kein Wochenziel", "No weekly target"))
                 )
                 st.metric(
-                    "Heute erledigt",
-                    f"{snapshot.done_today}/{snapshot.daily_goal}",
+                    translate_text(("Diese Woche erledigt", "Done this week")),
+                    f"{snapshot.done_this_week}/{snapshot.weekly_goal}",
                     delta=delta_text,
                 )
                 st.plotly_chart(
@@ -3016,7 +3057,9 @@ def render_safety_panel(panel: Any, *, key_suffix: str = "") -> bool:
                 )
             else:
                 _restore_backup_state(payload)
-                panel.success(translate_text(("Backup importiert. App wird neu geladen.", "Backup restored. Reloading app.")))
+                panel.success(
+                    translate_text(("Backup importiert. App wird neu geladen.", "Backup restored. Reloading app."))
+                )
                 st.rerun()
 
     if panel.button(
