@@ -1469,7 +1469,7 @@ def _render_goal_quick_goal_popover(
                 settings["goal_profile"] = goal_profile
                 st.session_state[SS_SETTINGS] = settings
                 st.session_state[GOAL_CREATION_VISIBLE_KEY] = True
-                st.session_state[NAVIGATION_SELECTION_KEY] = GOALS_PAGE_KEY
+                st.session_state[PENDING_NAVIGATION_KEY] = GOALS_PAGE_KEY
                 persist_state()
                 st.success(
                     translate_text(
@@ -1648,7 +1648,7 @@ def render_goal_completion_logger(todos: list[TodoItem]) -> None:
 
     if create_goal_clicked:
         st.session_state[GOAL_CREATION_VISIBLE_KEY] = True
-        st.session_state[NAVIGATION_SELECTION_KEY] = GOALS_PAGE_KEY
+        st.session_state[PENDING_NAVIGATION_KEY] = GOALS_PAGE_KEY
         st.rerun()
 
     if not open_todos:
