@@ -11,28 +11,12 @@ import httpx
 import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
 
-from gerris_erfolgs_tracker.integrations.google.token_store import TokenData
+from gerris_erfolgs_tracker.integrations.google.scopes import DEFAULT_SCOPES
+from gerris_erfolgs_tracker.storage.token_store import TokenData
 
 GOOGLE_AUTH_BASE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
-
-GOOGLE_SCOPE_OPENID = "openid"
-GOOGLE_SCOPE_USERINFO_EMAIL = "https://www.googleapis.com/auth/userinfo.email"
-GOOGLE_SCOPE_USERINFO_PROFILE = "https://www.googleapis.com/auth/userinfo.profile"
-GOOGLE_SCOPE_CALENDAR_READONLY = "https://www.googleapis.com/auth/calendar.readonly"
-GOOGLE_SCOPE_GMAIL_READONLY = "https://www.googleapis.com/auth/gmail.readonly"
-GOOGLE_SCOPE_TASKS_READONLY = "https://www.googleapis.com/auth/tasks.readonly"
-GOOGLE_SCOPE_DRIVE_READONLY = "https://www.googleapis.com/auth/drive.readonly"
-GOOGLE_SCOPE_SHEETS_READONLY = "https://www.googleapis.com/auth/spreadsheets.readonly"
-
-BASE_SCOPES: tuple[str, ...] = (
-    GOOGLE_SCOPE_OPENID,
-    GOOGLE_SCOPE_USERINFO_EMAIL,
-    GOOGLE_SCOPE_USERINFO_PROFILE,
-)
-
-DEFAULT_SCOPES: tuple[str, ...] = BASE_SCOPES
 
 
 @dataclass(frozen=True)
@@ -144,6 +128,7 @@ def _token_from_payload(payload: dict[str, object], *, refresh_token_override: s
     expires_at = None
     if isinstance(expires_in, (int, float)):
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
+    refresh_token_value: str | None
     refresh_token = payload.get("refresh_token")
     if isinstance(refresh_token, str):
         refresh_token_value = refresh_token

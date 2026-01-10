@@ -10,16 +10,6 @@ import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
 
 from gerris_erfolgs_tracker.i18n import translate_text
-from gerris_erfolgs_tracker.integrations.google import (
-    OAuthConfigError,
-    OAuthFlowError,
-    build_authorization_url,
-    exchange_code_for_token,
-    fetch_user_info,
-    get_default_token_store,
-)
-
-GOOGLE_OAUTH_STATE_KEY = "google_oauth_state"
 
 
 def _get_secret(name: str) -> str | None:
@@ -165,6 +155,17 @@ def render_shared_calendar() -> None:
         )
     )
 
+    if not shared_calendar_src:
+        st.warning(
+            translate_text(
+                (
+                    "Kein geteilter Kalender konfiguriert.",
+                    "No shared calendar configured.",
+                )
+            )
+        )
+        return
+
     if gerri_calendar_src:
         shared_column, gerri_column = st.columns(2)
         with shared_column:
@@ -246,103 +247,6 @@ def _render_service_section(
         panel.info(translate_text(("Keine Einträge gefunden.", "No entries found.")))
 
 
-def _render_workspace_connection_panel() -> None:
-    panel = st.container(border=True)
-    panel.subheader(translate_text(("Google Workspace verbinden", "Connect Google Workspace")))
-    panel.write(
-        translate_text(
-            (
-                "Verbinde dein Google-Workspace-Konto, um zukünftige Integrationen wie Kalender- und Directory-Zugriffe zu aktivieren.",
-                "Connect your Google Workspace account to enable future integrations like calendar and directory access.",
-            )
-        )
-    )
-
-    oauth_state = st.session_state.get(GOOGLE_OAUTH_STATE_KEY)
-    if not oauth_state:
-        oauth_state = os.urandom(16).hex()
-        st.session_state[GOOGLE_OAUTH_STATE_KEY] = oauth_state
-
-    try:
-        auth_url = build_authorization_url(state=oauth_state)
-    except OAuthConfigError:
-        panel.error(
-            translate_text(
-                (
-                    "Google OAuth ist noch nicht konfiguriert. Bitte hinterlege Client-ID, Secret und Redirect-URI.",
-                    "Google OAuth is not configured yet. Please set the client ID, secret, and redirect URI.",
-                )
-            )
-        )
-        panel.caption(
-            translate_text(
-                (
-                    "Erwartete Keys: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI.",
-                    "Expected keys: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI.",
-                )
-            )
-        )
-        return
-
-    panel.link_button(
-        translate_text(("Google Workspace verbinden", "Connect Google Workspace")),
-        auth_url,
-        type="primary",
-    )
-
-    code = _get_first_query_param(st.query_params.get("code"))
-    state = _get_first_query_param(st.query_params.get("state"))
-    if code:
-        if not state or state != oauth_state:
-            panel.error(
-                translate_text(
-                    (
-                        "Die OAuth-Anfrage ist ungültig oder abgelaufen. Bitte starte den Vorgang erneut.",
-                        "The OAuth request is invalid or expired. Please restart the flow.",
-                    )
-                )
-            )
-            return
-        with panel.spinner(translate_text(("Google-Authentifizierung läuft...", "Completing Google authentication..."))):
-            try:
-                token = exchange_code_for_token(code)
-                user_info = fetch_user_info(token.access_token)
-                email = user_info.get("email")
-                if not email:
-                    raise OAuthFlowError("Missing user email in profile response.")
-                token_store = get_default_token_store()
-                existing_token = token_store.load_token(email)
-                if not token.refresh_token and existing_token and existing_token.refresh_token:
-                    token = token.with_refresh_token(existing_token.refresh_token)
-                token_store.save_token(email, token)
-            except OAuthFlowError:
-                panel.error(
-                    translate_text(
-                        (
-                            "Beim Abschluss der Verbindung ist ein Fehler aufgetreten. Bitte versuche es erneut.",
-                            "Something went wrong while completing the connection. Please try again.",
-                        )
-                    )
-                )
-                return
-        panel.success(
-            translate_text(
-                (
-                    "Google Workspace ist verbunden. Tokens wurden gespeichert.",
-                    "Google Workspace connected. Tokens have been stored.",
-                )
-            )
-        )
-        st.query_params.clear()
-        st.session_state.pop(GOOGLE_OAUTH_STATE_KEY, None)
-
-
-def _get_first_query_param(value: str | list[str] | None) -> str | None:
-    if isinstance(value, list):
-        return value[0] if value else None
-    return value
-
-
 def render_google_workspace_page() -> None:
     st.markdown(translate_text(("### Google Workspace", "### Google Workspace")))
     st.caption(
@@ -353,10 +257,6 @@ def render_google_workspace_page() -> None:
             )
         )
     )
-
-    _render_workspace_connection_panel()
-
-    st.divider()
 
     _render_service_section(
         service_key="calendar",

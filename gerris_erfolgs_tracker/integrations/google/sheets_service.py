@@ -2,21 +2,21 @@ from __future__ import annotations
 
 from typing import Any
 
-from gerris_erfolgs_tracker.integrations.google.auth import (
-    BASE_SCOPES,
-    GOOGLE_SCOPE_DRIVE_READONLY,
-    GOOGLE_SCOPE_SHEETS_READONLY,
-)
 from gerris_erfolgs_tracker.integrations.google.client import build_google_api_client
 from gerris_erfolgs_tracker.integrations.google.models import SheetMetadata, parse_google_datetime
+from gerris_erfolgs_tracker.integrations.google.scopes import (
+    BASE_SCOPES,
+    GOOGLE_SCOPE_DRIVE,
+    GOOGLE_SCOPE_SHEETS,
+)
 
 SHEETS_API_BASE_URL = "https://sheets.googleapis.com/v4"
 DRIVE_API_BASE_URL = "https://www.googleapis.com/drive/v3"
 
 REQUIRED_SCOPES: tuple[str, ...] = (
     *BASE_SCOPES,
-    GOOGLE_SCOPE_SHEETS_READONLY,
-    GOOGLE_SCOPE_DRIVE_READONLY,
+    GOOGLE_SCOPE_SHEETS,
+    GOOGLE_SCOPE_DRIVE,
 )
 
 
