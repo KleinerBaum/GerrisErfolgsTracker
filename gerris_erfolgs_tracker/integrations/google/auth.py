@@ -17,12 +17,22 @@ GOOGLE_AUTH_BASE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 
-DEFAULT_SCOPES: tuple[str, ...] = (
-    "openid",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile",
-    "https://www.googleapis.com/auth/calendar.readonly",
+GOOGLE_SCOPE_OPENID = "openid"
+GOOGLE_SCOPE_USERINFO_EMAIL = "https://www.googleapis.com/auth/userinfo.email"
+GOOGLE_SCOPE_USERINFO_PROFILE = "https://www.googleapis.com/auth/userinfo.profile"
+GOOGLE_SCOPE_CALENDAR_READONLY = "https://www.googleapis.com/auth/calendar.readonly"
+GOOGLE_SCOPE_GMAIL_READONLY = "https://www.googleapis.com/auth/gmail.readonly"
+GOOGLE_SCOPE_TASKS_READONLY = "https://www.googleapis.com/auth/tasks.readonly"
+GOOGLE_SCOPE_DRIVE_READONLY = "https://www.googleapis.com/auth/drive.readonly"
+GOOGLE_SCOPE_SHEETS_READONLY = "https://www.googleapis.com/auth/spreadsheets.readonly"
+
+BASE_SCOPES: tuple[str, ...] = (
+    GOOGLE_SCOPE_OPENID,
+    GOOGLE_SCOPE_USERINFO_EMAIL,
+    GOOGLE_SCOPE_USERINFO_PROFILE,
 )
+
+DEFAULT_SCOPES: tuple[str, ...] = BASE_SCOPES
 
 
 @dataclass(frozen=True)
