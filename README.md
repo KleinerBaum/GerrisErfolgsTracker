@@ -106,6 +106,13 @@ Die App sucht nach dem OpenAI Key in `st.secrets` oder der Umgebung:
 - `GOOGLE_CALENDARS_JSON` (optional: JSON-Liste mit Google-Kalendern, um mehrere Kalender ohne viele ENV-Variablen zu konfigurieren)
 - `KalenderGerri` oder `CALENDAR_GERRI` (optional: Freigabelink oder Calendar-ID für den persönlichen Kalender)
 - `2025 von Carla, Miri & Gerrit` oder `CALENDAR_SHARED_2025` (optional: Freigabelink oder Calendar-ID für den geteilten Kalender)
+- `GOOGLE_CLIENT_ID` (optional: OAuth Client-ID für die Google Workspace Integration)
+- `GOOGLE_CLIENT_SECRET` (optional: OAuth Client Secret für die Google Workspace Integration)
+- `GOOGLE_REDIRECT_URI` (optional: OAuth Redirect-URI für die Google Workspace Integration)
+- `GOOGLE_TOKEN_STORE_BACKEND` (optional: Token-Backend, z. B. `sqlite` oder `env`)
+- `GOOGLE_TOKEN_DB_PATH` (optional: Pfad für die lokale SQLite-Tokenablage, Standard: `.data/gerris_google_tokens.sqlite`)
+- `GOOGLE_TOKENS_JSON` (optional: JSON-Objekt mit Tokens pro Nutzer, z. B. aus Secrets/ENV)
+- `GOOGLE_TOKENS_JSON_PATH` (optional: Schreibbarer Pfad für das JSON-Token-Backend)
 
 Beispiel für `GOOGLE_CALENDARS_JSON`:
 

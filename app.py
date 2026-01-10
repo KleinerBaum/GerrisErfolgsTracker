@@ -125,6 +125,14 @@ from gerris_erfolgs_tracker.ui.tasks import (
 from gerris_erfolgs_tracker.ui.tasks import (
     render_todo_section as _render_todo_section,
 )
+from gerris_erfolgs_tracker.integrations.google import (
+    OAuthConfigError,
+    OAuthFlowError,
+    build_authorization_url,
+    exchange_code_for_token,
+    fetch_user_info,
+    get_default_token_store,
+)
 
 __all__ = [
     "AI_QUADRANT_RATIONALE_KEY",
@@ -2873,14 +2881,17 @@ GOALS_PAGE_KEY = "goals"
 TASKS_PAGE_KEY = "tasks"
 JOURNAL_PAGE_KEY = "journal"
 EMAILS_PAGE_KEY = "emails"
+WORKSPACE_PAGE_KEY = "workspace"
 
 DASHBOARD_PAGE_LABEL = ("Dashboard", "Dashboard")
 GOALS_PAGE_LABEL = ("Ziele", "Goals")
 TASKS_PAGE_LABEL = ("Aufgaben", "Tasks")
 JOURNAL_PAGE_LABEL = ("Tagebuch", "Journal")
 EMAILS_PAGE_LABEL = ("E-Mails", "Emails")
+WORKSPACE_PAGE_LABEL = ("Google Workspace", "Google Workspace")
 NAVIGATION_SELECTION_KEY = "active_page"
 PENDING_NAVIGATION_KEY = "pending_active_page"
+GOOGLE_OAUTH_STATE_KEY = "google_oauth_state"
 
 
 def render_language_toggle() -> LanguageCode:
@@ -2917,6 +2928,7 @@ def render_navigation() -> str:
         TASKS_PAGE_KEY: TASKS_PAGE_LABEL,
         JOURNAL_PAGE_KEY: JOURNAL_PAGE_LABEL,
         EMAILS_PAGE_KEY: EMAILS_PAGE_LABEL,
+        WORKSPACE_PAGE_KEY: WORKSPACE_PAGE_LABEL,
     }
     if PENDING_NAVIGATION_KEY in st.session_state:
         st.session_state[NAVIGATION_SELECTION_KEY] = st.session_state.pop(PENDING_NAVIGATION_KEY)
@@ -3430,6 +3442,104 @@ def render_journal_section(*, ai_enabled: bool, client: Optional[OpenAI], todos:
                     st.caption("Kategorien" + ", ".join(category.label for category in history_entry.categories))
 
 
+def _get_first_query_param(value: str | list[str] | None) -> str | None:
+    if isinstance(value, list):
+        return value[0] if value else None
+    return value
+
+
+def render_google_workspace_page() -> None:
+    st.markdown(translate_text(("### Google Workspace", "### Google Workspace")))
+    panel = st.container(border=True)
+    panel.subheader(translate_text(("Google Workspace verbinden", "Connect Google Workspace")))
+    panel.write(
+        translate_text(
+            (
+                "Verbinde dein Google-Workspace-Konto, um zukünftige Integrationen wie Kalender- und Directory-Zugriffe zu aktivieren.",
+                "Connect your Google Workspace account to enable future integrations like calendar and directory access.",
+            )
+        )
+    )
+
+    oauth_state = st.session_state.get(GOOGLE_OAUTH_STATE_KEY)
+    if not oauth_state:
+        oauth_state = os.urandom(16).hex()
+        st.session_state[GOOGLE_OAUTH_STATE_KEY] = oauth_state
+
+    try:
+        auth_url = build_authorization_url(state=oauth_state)
+    except OAuthConfigError:
+        panel.error(
+            translate_text(
+                (
+                    "Google OAuth ist noch nicht konfiguriert. Bitte hinterlege Client-ID, Secret und Redirect-URI.",
+                    "Google OAuth is not configured yet. Please set the client ID, secret, and redirect URI.",
+                )
+            )
+        )
+        panel.caption(
+            translate_text(
+                (
+                    "Erwartete Keys: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI.",
+                    "Expected keys: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI.",
+                )
+            )
+        )
+        return
+
+    panel.link_button(
+        translate_text(("Google Workspace verbinden", "Connect Google Workspace")),
+        auth_url,
+        type="primary",
+    )
+
+    code = _get_first_query_param(st.query_params.get("code"))
+    state = _get_first_query_param(st.query_params.get("state"))
+    if code:
+        if not state or state != oauth_state:
+            panel.error(
+                translate_text(
+                    (
+                        "Die OAuth-Anfrage ist ungültig oder abgelaufen. Bitte starte den Vorgang erneut.",
+                        "The OAuth request is invalid or expired. Please restart the flow.",
+                    )
+                )
+            )
+            return
+        with panel.spinner(translate_text(("Google-Authentifizierung läuft...", "Completing Google authentication..."))):
+            try:
+                token = exchange_code_for_token(code)
+                user_info = fetch_user_info(token.access_token)
+                email = user_info.get("email")
+                if not email:
+                    raise OAuthFlowError("Missing user email in profile response.")
+                token_store = get_default_token_store()
+                existing_token = token_store.load_token(email)
+                if not token.refresh_token and existing_token and existing_token.refresh_token:
+                    token = token.with_refresh_token(existing_token.refresh_token)
+                token_store.save_token(email, token)
+            except OAuthFlowError:
+                panel.error(
+                    translate_text(
+                        (
+                            "Beim Abschluss der Verbindung ist ein Fehler aufgetreten. Bitte versuche es erneut.",
+                            "Something went wrong while completing the connection. Please try again.",
+                        )
+                    )
+                )
+                return
+        panel.success(
+            translate_text(
+                (
+                    "Google Workspace ist verbunden. Tokens wurden gespeichert.",
+                    "Google Workspace connected. Tokens have been stored.",
+                )
+            )
+        )
+        st.query_params.clear()
+        st.session_state.pop(GOOGLE_OAUTH_STATE_KEY, None)
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Gerris ErfolgsTracker",
@@ -3490,6 +3600,8 @@ def main() -> None:
         render_tasks_page(ai_enabled=ai_enabled, client=client, todos=todos, stats=stats)
     elif selection == EMAILS_PAGE_KEY:
         render_emails_page(ai_enabled=ai_enabled, client=client)
+    elif selection == WORKSPACE_PAGE_KEY:
+        render_google_workspace_page()
     else:
         render_journal_section(ai_enabled=ai_enabled, client=client, todos=todos)
 
