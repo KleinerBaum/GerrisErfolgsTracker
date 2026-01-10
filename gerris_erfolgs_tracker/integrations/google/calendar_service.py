@@ -6,6 +6,7 @@ from typing import Any
 from gerris_erfolgs_tracker.integrations.google.client import build_google_api_client
 from gerris_erfolgs_tracker.integrations.google.models import CalendarEvent, parse_google_datetime
 from gerris_erfolgs_tracker.integrations.google.scopes import BASE_SCOPES, GOOGLE_SCOPE_CALENDAR
+from gerris_erfolgs_tracker.integrations.google.services import GoogleService
 
 CALENDAR_API_BASE_URL = "https://www.googleapis.com/calendar/v3"
 
@@ -33,6 +34,45 @@ def list_upcoming_events(
     if not isinstance(items, list):
         return []
     return [_to_calendar_event(item) for item in items if isinstance(item, dict)]
+
+
+def list_upcoming_events_for_service(
+    service: GoogleService,
+    *,
+    calendar_id: str = "primary",
+    max_results: int = 10,
+    time_min: datetime | None = None,
+) -> list[CalendarEvent]:
+    query_time = time_min or datetime.now(timezone.utc)
+    params = {
+        "maxResults": max_results,
+        "orderBy": "startTime",
+        "singleEvents": "true",
+        "timeMin": query_time.isoformat(),
+    }
+    payload = service.get(f"calendars/{calendar_id}/events", params=params)
+    items = payload.get("items", [])
+    if not isinstance(items, list):
+        return []
+    return [_to_calendar_event(item) for item in items if isinstance(item, dict)]
+
+
+def create_calendar_event(
+    service: GoogleService,
+    *,
+    calendar_id: str,
+    summary: str,
+    start: datetime,
+    end: datetime,
+    timezone_name: str,
+) -> CalendarEvent:
+    payload = {
+        "summary": summary,
+        "start": {"dateTime": start.isoformat(), "timeZone": timezone_name},
+        "end": {"dateTime": end.isoformat(), "timeZone": timezone_name},
+    }
+    response = service.post(f"calendars/{calendar_id}/events", json=payload)
+    return _to_calendar_event(response)
 
 
 def _to_calendar_event(item: dict[str, Any]) -> CalendarEvent:

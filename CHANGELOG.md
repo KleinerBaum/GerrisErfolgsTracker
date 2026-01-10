@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Kalender-API: Neue Kalender-Seite mit Auswahl, Event-Liste (20 Termine), optionaler Termin-Erstellung via OAuth sowie iCal-Fallback für read-only Zugriff / Calendar API: new Calendar page with selection, 20-event listing, optional event creation via OAuth, and read-only iCal fallback.
 - Google OAuth: neue Verbindungsschaltfläche in der App mit Statusanzeige, persistenter SQLite-Tokenablage unter `.local/` sowie Service-Factories für Calendar/Gmail/Tasks/Drive/Sheets / Google OAuth: added an in-app connection button with status display, persistent SQLite token storage under `.local/`, and service factories for Calendar/Gmail/Tasks/Drive/Sheets.
 - Dokumentation: Projekt-Guidelines, Google-Setup-Anleitung sowie sichere Config-Templates hinzugefügt / Documentation: added project guidance, Google setup instructions, and safe config templates.
 - Google Workspace: Neue UI-Seite mit Beispiel-Listen für Calendar, Gmail, Tasks, Drive und Sheets inklusive Refresh-Buttons sowie eingebettetem Kalender / Google Workspace: new UI page with sample lists for Calendar, Gmail, Tasks, Drive, and Sheets including refresh buttons and embedded calendar.

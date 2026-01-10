@@ -16,6 +16,7 @@ Die Sidebar konzentriert sich auf die Navigation; Schalter, Build-Infos sowie Si
   - Neuer Bereich **E-Mails / Emails** bietet ein Formular mit Vorschau zum schnellen Erstellen von E-Mail-Entwürfen / New **E-Mails / Emails** area provides a form with preview for quick email drafts.
   - Neuer Bereich **Google Workspace** bündelt Kalender, Gmail, Tasks, Drive und Sheets mit Refresh-Buttons und Beispiel-Listen / New **Google Workspace** area bundles Calendar, Gmail, Tasks, Drive, and Sheets with refresh buttons and sample lists.
   - Google-Workspace-Verbindung: OAuth-Flow mit **Google verbinden / Connect Google**-Button, Statusanzeige und einmaligem Smoke-Test (z. B. Kalenderliste) zur Verifizierung / Google Workspace connection: OAuth flow with a **Connect Google** button, status indicator, and a one-time smoke test (e.g., calendar listing) for verification.
+  - Neuer Bereich **Kalender / Calendar**: Kalender-Auswahl, Button **Nächste 20 Termine anzeigen / List next 20 events** sowie optionales Formular zum Erstellen von Terminen via Calendar API (mit iCal-Fallback bei fehlender OAuth-Verbindung) / New **Calendar** area: calendar selection, **List next 20 events** button, and an optional event creation form via the Calendar API (with iCal fallback when OAuth is not connected).
   - Der Quick-Action-Button **E-Mails / Emails** nutzt jetzt ebenfalls ein Dropdown, damit das Design mit den benachbarten Schnellaktionen konsistent bleibt / The **E-Mails / Emails** quick action now uses a dropdown as well to stay consistent with the neighboring quick actions.
   - Quick-Action-Dropdowns für Aufgaben, Ziele und Journal leeren ihre Felder nach dem Speichern und klappen automatisch zu / Quick-action dropdowns for tasks, goals, and journal now clear their fields after saving and auto-collapse.
   - Quick-Action-ToDos setzen nach dem Speichern ein Reset-Flag und initialisieren ihre Felder vor dem nächsten Render, damit Streamlit-Session-State-Fehler vermieden werden / Quick-action ToDos set a reset flag after saving and reinitialize their fields before the next render to avoid Streamlit session-state errors.
@@ -106,8 +107,9 @@ Die App sucht nach dem OpenAI Key in `st.secrets` oder der Umgebung:
 - `OPENAI_MODEL` (optional, z. B. `gpt-4o-mini` oder `o3-mini`)
 - `GERRIS_ONEDRIVE_DIR` (optional: expliziter OneDrive-Sync-Ordner für die JSON-Datei)
 - `GOOGLE_CALENDARS_JSON` (optional: JSON-Liste mit Google-Kalendern, um mehrere Kalender ohne viele ENV-Variablen zu konfigurieren)
-- `KalenderGerri` oder `CALENDAR_GERRI` (optional: Freigabelink oder Calendar-ID für den persönlichen Kalender)
-- `2025 von Carla, Miri & Gerrit` oder `CALENDAR_SHARED_2025` (optional: Freigabelink oder Calendar-ID für den geteilten Kalender)
+- `CAL_GERRI_ID`, `CAL_GERRI_ICAL_URL`, `CAL_GERRI_NAME` (optional: Kalender-ID, iCal-Link und Anzeigename für Gerri)
+- `CAL_2025_ID`, `CAL_2025_ICAL_URL`, `CAL_2025_NAME` (optional: Kalender-ID, iCal-Link und Anzeigename für den 2025-Kalender)
+- Legacy (optional): `id_gerri`, `ical_Gerri`, `KalenderGerri` sowie `2025 von Carla, Miri & Gerrit`, `CALENDAR_SHARED_2025` (ältere Kalender-Keys für bestehende Setups)
 - `GOOGLE_CLIENT_ID` (optional: OAuth Client-ID für die Google Workspace Integration)
 - `GOOGLE_CLIENT_SECRET` (optional: OAuth Client Secret für die Google Workspace Integration)
 - `GOOGLE_REDIRECT_URI` (optional: OAuth Redirect-URI für die Google Workspace Integration)
