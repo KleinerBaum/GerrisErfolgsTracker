@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Google Workspace: Neue Integrationsbasis mit OAuth-Flow, pluggablem Token-Store (SQLite-Default, Env/Secrets-Backend) und eigener Navigationsseite / Google Workspace: Added integration scaffolding with OAuth flow, pluggable token store (SQLite default, env/secrets backend), and a dedicated navigation page.
 - Kalender-Konfiguration: Mehrere Google-Kalender lassen sich jetzt gesammelt über `GOOGLE_CALENDARS_JSON` konfigurieren, statt viele einzelne ENV-Variablen zu pflegen / Calendar configuration: multiple Google calendars can now be configured via `GOOGLE_CALENDARS_JSON` instead of many individual env vars.
 - Dashboard: Google-Kalender lassen sich jetzt nebeneinander darstellen, inkl. optionalem persönlichem Kalender per ENV-Setup / Dashboard: Google Calendars can now be shown side by side, including an optional personal calendar configured via env.
 - Quick-Action-ToDo-Reset läuft jetzt über ein Reset-Flag vor dem Widget-Rendering, um Streamlit-Session-State-Fehler zu vermeiden / Quick-action ToDo reset now runs via a reset flag before widget rendering to avoid Streamlit session-state errors.
