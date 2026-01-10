@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Quick-Action-Ziel-Popover setzt nach dem Speichern ein Reset-Flag und initialisiert Felder vor dem nächsten Render, um Streamlit-Session-State-Fehler zu vermeiden / Quick-action goal popover now sets a reset flag after saving and initializes fields before the next render to avoid Streamlit session-state errors.
 - Google Workspace: Google Tasks lädt Tasklisten und Aufgaben live, inklusive Auswahl und Erstellen neuer Tasks / Google Workspace: Google Tasks now loads task lists and tasks live, including selection and creating new tasks.
 - Kalender-API: Neue Kalender-Seite mit Auswahl, Event-Liste (20 Termine), optionaler Termin-Erstellung via OAuth sowie iCal-Fallback für read-only Zugriff / Calendar API: new Calendar page with selection, 20-event listing, optional event creation via OAuth, and read-only iCal fallback.
 - Google OAuth: neue Verbindungsschaltfläche in der App mit Statusanzeige, persistenter SQLite-Tokenablage unter `.local/` sowie Service-Factories für Calendar/Gmail/Tasks/Drive/Sheets / Google OAuth: added an in-app connection button with status display, persistent SQLite token storage under `.local/`, and service factories for Calendar/Gmail/Tasks/Drive/Sheets.
