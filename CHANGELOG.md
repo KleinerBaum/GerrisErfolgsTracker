@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Dashboard-Header: **E-Mails / Emails** nutzt jetzt ein Dropdown wie die benachbarten Quick-Actions, sodass der Stil konsistent bleibt / Dashboard header: **E-Mails / Emails** now uses a dropdown like the neighboring quick actions for consistent styling.
 - Workload-Übersicht: **Misc KPIs** stehen jetzt direkt unter **Überfällig & Nächste 3 Tage**, damit Aufgaben und Kennzahlen zusammenbleiben / Workload overview: **Misc KPIs** now sit directly below **Overdue & next 3 days** to keep tasks and metrics together.
 - Aufgaben-Editoren in Fokus-/Kalender-/Ziele-Detailansichten bieten jetzt zusätzlich Aktionen zum Abschließen und Löschen der Aufgabe / Task editors in focus, calendar, and goals detail views now include actions to mark tasks done or delete them.
 - Navigation: E-Mail-Button setzt jetzt einen separaten Pending-Key, sodass der aktive Tab vor dem Sidebar-Radio gesetzt wird und keine Streamlit-Session-State-Fehler mehr auftreten / Navigation: the email button now uses a separate pending key so the active tab is set before the sidebar radio and Streamlit session-state errors are avoided.
