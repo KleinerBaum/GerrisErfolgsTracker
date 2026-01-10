@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Google Workspace: Neue UI-Seite mit Beispiel-Listen für Calendar, Gmail, Tasks, Drive und Sheets inklusive Refresh-Buttons sowie eingebettetem Kalender / Google Workspace: new UI page with sample lists for Calendar, Gmail, Tasks, Drive, and Sheets including refresh buttons and embedded calendar.
 - Google Workspace: Ergänzt Service-Module für Calendar/Gmail/Tasks/Drive/Sheets inkl. minimaler Datenmodelle und Scope-Definitionen für Read-only-Zugriffe / Google Workspace: added service modules for Calendar/Gmail/Tasks/Drive/Sheets with minimal data models and read-only scope definitions.
 - Google Workspace: Neue Integrationsbasis mit OAuth-Flow, pluggablem Token-Store (SQLite-Default, Env/Secrets-Backend) und eigener Navigationsseite / Google Workspace: Added integration scaffolding with OAuth flow, pluggable token store (SQLite default, env/secrets backend), and a dedicated navigation page.
 - Kalender-Konfiguration: Mehrere Google-Kalender lassen sich jetzt gesammelt über `GOOGLE_CALENDARS_JSON` konfigurieren, statt viele einzelne ENV-Variablen zu pflegen / Calendar configuration: multiple Google calendars can now be configured via `GOOGLE_CALENDARS_JSON` instead of many individual env vars.
