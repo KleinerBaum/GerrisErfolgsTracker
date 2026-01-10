@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Assets: Dashboard-KPI-Screenshot entfernt, um binäre PR-Beschränkungen zu vermeiden / Assets: removed the dashboard KPI screenshot to avoid binary PR restrictions.
+- Dashboard: KPI-Karten (Erledigt gesamt, Heute erledigt, Kontinuität, Zielerreichung) stehen jetzt direkt unter dem Dashboard-Titel; die separate KPI-Dashboard-Überschrift entfällt / Dashboard: KPI cards (Done total, Done today, Streak, Goal progress) now sit directly under the dashboard title and the separate KPI dashboard header was removed.
 - Dashboard: Tachometer stehen jetzt links neben **Misc KPIs** und skalieren ihre Größe je nach Anzahl der ausgewählten Kategorien / Dashboard: gauges now sit to the left of **Misc KPIs** and scale their size based on how many categories are selected.
 - Dashboard-Header: **E-Mails / Emails** nutzt jetzt ein Dropdown wie die benachbarten Quick-Actions, sodass der Stil konsistent bleibt / Dashboard header: **E-Mails / Emails** now uses a dropdown like the neighboring quick actions for consistent styling.
 - Quick-Action-Dropdowns für Aufgaben, Ziele und Journal leeren ihre Felder nach dem Speichern und klappen automatisch zu / Quick-action dropdowns for tasks, goals, and journal now clear their fields after saving and auto-collapse.
