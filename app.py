@@ -391,6 +391,7 @@ QUICK_GOAL_JOURNAL_MOODS_KEY = "quick_goal_journal_moods"
 QUICK_GOAL_JOURNAL_NOTES_KEY = "quick_goal_journal_notes"
 QUICK_GOAL_JOURNAL_CATEGORIES_KEY = "quick_goal_journal_categories"
 QUICK_GOAL_JOURNAL_GRATITUDE_KEY = "quick_goal_journal_gratitude"
+QUICK_GOAL_JOURNAL_SUCCESS_KEY = "quick_goal_journal_success"
 QUICK_GOAL_PROFILE_FORM_KEY = "quick_goal_profile_form"
 QUICK_GOAL_PROFILE_TITLE_KEY = "quick_goal_profile_title"
 QUICK_GOAL_PROFILE_FOCUS_KEY = "quick_goal_profile_focus"
@@ -1491,6 +1492,48 @@ def _render_goal_quick_goal_popover(
                 st.rerun()
 
 
+def _handle_goal_quick_journal_submit() -> None:
+    entry_date = cast(
+        date,
+        st.session_state.get(QUICK_GOAL_JOURNAL_DATE_KEY, date.today()),
+    )
+    moods = list(
+        cast(
+            Sequence[str],
+            st.session_state.get(QUICK_GOAL_JOURNAL_MOODS_KEY, list(MOOD_PRESETS[:2])),
+        )
+    )
+    notes = str(st.session_state.get(QUICK_GOAL_JOURNAL_NOTES_KEY, ""))
+    gratitude = str(st.session_state.get(QUICK_GOAL_JOURNAL_GRATITUDE_KEY, ""))
+    categories = list(
+        cast(
+            Sequence[Category],
+            st.session_state.get(QUICK_GOAL_JOURNAL_CATEGORIES_KEY, []),
+        )
+    )
+    entry = JournalEntry(
+        date=entry_date,
+        moods=moods,
+        mood_notes=notes.strip(),
+        triggers_and_reactions="",
+        negative_thought="",
+        rational_response="",
+        self_care_today="",
+        self_care_tomorrow="",
+        gratitudes=[gratitude.strip()] if gratitude.strip() else [],
+        categories=categories,
+    )
+    upsert_journal_entry(entry)
+    st.session_state[QUICK_GOAL_JOURNAL_SUCCESS_KEY] = True
+    st.session_state[QUICK_GOAL_JOURNAL_DATE_KEY] = date.today()
+    st.session_state[QUICK_GOAL_JOURNAL_MOODS_KEY] = list(MOOD_PRESETS[:2])
+    st.session_state[QUICK_GOAL_JOURNAL_NOTES_KEY] = ""
+    st.session_state[QUICK_GOAL_JOURNAL_GRATITUDE_KEY] = ""
+    st.session_state[QUICK_GOAL_JOURNAL_CATEGORIES_KEY] = []
+    _toggle_popover_state(QUICK_GOAL_JOURNAL_POPOVER_STATE_KEY)
+    st.rerun()
+
+
 def _render_goal_quick_journal_popover() -> None:
     popover_label = _popover_label(
         translate_text(("📓 Journal", "📓 Journal")),
@@ -1502,14 +1545,14 @@ def _render_goal_quick_journal_popover() -> None:
     ):
         st.markdown("**Tagebucheintrag / Journal entry**")
         with st.form(QUICK_GOAL_JOURNAL_FORM_KEY, clear_on_submit=True):
-            entry_date = st.date_input(
+            st.date_input(
                 translate_text(("Datum", "Date")),
                 value=st.session_state.get(QUICK_GOAL_JOURNAL_DATE_KEY, date.today()),
                 max_value=date.today(),
                 format="YYYY-MM-DD",
                 key=QUICK_GOAL_JOURNAL_DATE_KEY,
             )
-            moods = st.multiselect(
+            st.multiselect(
                 translate_text(("Stimmung", "Mood")),
                 options=list(MOOD_PRESETS),
                 default=st.session_state.get(QUICK_GOAL_JOURNAL_MOODS_KEY, list(MOOD_PRESETS[:2])),
@@ -1521,7 +1564,7 @@ def _render_goal_quick_journal_popover() -> None:
                     )
                 ),
             )
-            notes = st.text_area(
+            st.text_area(
                 translate_text(("Notizen", "Notes")),
                 key=QUICK_GOAL_JOURNAL_NOTES_KEY,
                 placeholder=translate_text(
@@ -1531,7 +1574,7 @@ def _render_goal_quick_journal_popover() -> None:
                     )
                 ),
             )
-            gratitude = st.text_input(
+            st.text_input(
                 translate_text(("Dankbarkeit (optional)", "Gratitude (optional)")),
                 key=QUICK_GOAL_JOURNAL_GRATITUDE_KEY,
                 placeholder=translate_text(
@@ -1541,7 +1584,7 @@ def _render_goal_quick_journal_popover() -> None:
                     )
                 ),
             )
-            categories = st.multiselect(
+            st.multiselect(
                 translate_text(("Kategorien", "Categories")),
                 options=list(Category),
                 format_func=lambda option: option.label,
@@ -1554,39 +1597,20 @@ def _render_goal_quick_journal_popover() -> None:
                 ),
             )
 
-            submitted = st.form_submit_button(
+            st.form_submit_button(
                 translate_text(("Eintrag speichern", "Save entry")),
                 type="primary",
+                on_click=_handle_goal_quick_journal_submit,
             )
-            if submitted:
-                entry = JournalEntry(
-                    date=entry_date,
-                    moods=list(moods),
-                    mood_notes=notes.strip(),
-                    triggers_and_reactions="",
-                    negative_thought="",
-                    rational_response="",
-                    self_care_today="",
-                    self_care_tomorrow="",
-                    gratitudes=[gratitude.strip()] if gratitude.strip() else [],
-                    categories=list(categories),
-                )
-                upsert_journal_entry(entry)
-                st.success(
-                    translate_text(
-                        (
-                            "Eintrag gespeichert.",
-                            "Entry saved.",
-                        )
+        if st.session_state.pop(QUICK_GOAL_JOURNAL_SUCCESS_KEY, False):
+            st.success(
+                translate_text(
+                    (
+                        "Eintrag gespeichert.",
+                        "Entry saved.",
                     )
                 )
-                st.session_state[QUICK_GOAL_JOURNAL_DATE_KEY] = date.today()
-                st.session_state[QUICK_GOAL_JOURNAL_MOODS_KEY] = list(MOOD_PRESETS[:2])
-                st.session_state[QUICK_GOAL_JOURNAL_NOTES_KEY] = ""
-                st.session_state[QUICK_GOAL_JOURNAL_GRATITUDE_KEY] = ""
-                st.session_state[QUICK_GOAL_JOURNAL_CATEGORIES_KEY] = []
-                _toggle_popover_state(QUICK_GOAL_JOURNAL_POPOVER_STATE_KEY)
-                st.rerun()
+            )
 
 
 def _render_goal_quick_email_popover() -> None:
