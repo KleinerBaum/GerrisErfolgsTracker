@@ -358,6 +358,13 @@ QUICK_GOAL_JOURNAL_NOTES_KEY = "quick_goal_journal_notes"
 QUICK_GOAL_JOURNAL_CATEGORIES_KEY = "quick_goal_journal_categories"
 QUICK_GOAL_JOURNAL_GRATITUDE_KEY = "quick_goal_journal_gratitude"
 QUICK_GOAL_PROFILE_FORM_KEY = "quick_goal_profile_form"
+QUICK_GOAL_PROFILE_TITLE_KEY = "quick_goal_profile_title"
+QUICK_GOAL_PROFILE_FOCUS_KEY = "quick_goal_profile_focus"
+QUICK_GOAL_PROFILE_DATE_KEY = "quick_goal_profile_date"
+QUICK_GOAL_PROFILE_UNIT_KEY = "quick_goal_profile_unit"
+QUICK_GOAL_TODO_POPOVER_STATE_KEY = "quick_goal_todo_popover_state"
+QUICK_GOAL_PROFILE_POPOVER_STATE_KEY = "quick_goal_profile_popover_state"
+QUICK_GOAL_JOURNAL_POPOVER_STATE_KEY = "quick_goal_journal_popover_state"
 
 
 def _is_streamlit_cloud() -> bool:
@@ -1209,6 +1216,15 @@ def _build_new_tasks_gauge(new_task_count: int) -> go.Figure:
     return figure
 
 
+def _popover_label(label: str, *, state_key: str) -> str:
+    suffix = "\u200b" if st.session_state.get(state_key, False) else "\u200c"
+    return f"{label}{suffix}"
+
+
+def _toggle_popover_state(state_key: str) -> None:
+    st.session_state[state_key] = not st.session_state.get(state_key, False)
+
+
 def _render_goal_quick_todo_popover(
     *,
     form_key: str = QUICK_GOAL_TODO_FORM_KEY,
@@ -1224,10 +1240,13 @@ def _render_goal_quick_todo_popover(
     category_key = _with_suffix(QUICK_GOAL_TODO_CATEGORY_KEY)
     priority_key = _with_suffix(QUICK_GOAL_TODO_PRIORITY_KEY)
     description_key = _with_suffix(QUICK_GOAL_TODO_DESCRIPTION_KEY)
+    popover_state_key = _with_suffix(QUICK_GOAL_TODO_POPOVER_STATE_KEY)
 
-    with st.popover(translate_text(trigger_label), width="stretch"):
+    popover_label = _popover_label(translate_text(trigger_label), state_key=popover_state_key)
+
+    with st.popover(popover_label, width="stretch"):
         st.markdown("**ToDo hinzufügen / Add task**")
-        with st.form(_with_suffix(form_key)):
+        with st.form(_with_suffix(form_key), clear_on_submit=True):
             title = st.text_input(
                 translate_text(("Titel / Title", "Title / Title")),
                 key=title_key,
@@ -1310,6 +1329,13 @@ def _render_goal_quick_todo_popover(
                             )
                         )
                     )
+                    st.session_state[title_key] = ""
+                    st.session_state[due_key] = date.today()
+                    st.session_state[quadrant_key] = EisenhowerQuadrant.URGENT_IMPORTANT
+                    st.session_state[category_key] = Category.DAILY_STRUCTURE
+                    st.session_state[priority_key] = 3
+                    st.session_state[description_key] = ""
+                    _toggle_popover_state(popover_state_key)
                     st.rerun()
 
 
@@ -1320,22 +1346,38 @@ def _render_goal_quick_goal_popover(
     trigger_label: tuple[str, str] = ("🎯 Ziel", "🎯 Goal"),
 ) -> None:
     default_profile = settings.get("goal_profile", _default_goal_profile())
-    with st.popover(translate_text(trigger_label), width="stretch"):
+    title_key = f"{QUICK_GOAL_PROFILE_TITLE_KEY}_{form_key}"
+    focus_key = f"{QUICK_GOAL_PROFILE_FOCUS_KEY}_{form_key}"
+    date_key = f"{QUICK_GOAL_PROFILE_DATE_KEY}_{form_key}"
+    unit_key = f"{QUICK_GOAL_PROFILE_UNIT_KEY}_{form_key}"
+    popover_state_key = f"{QUICK_GOAL_PROFILE_POPOVER_STATE_KEY}_{form_key}"
+
+    default_focus_categories = [
+        category for category in Category if category.value in default_profile.get("focus_categories", [])
+    ]
+    default_target_date = cast(date | None, default_profile.get("target_date")) or date.today() + timedelta(days=30)
+    st.session_state.setdefault(title_key, str(default_profile.get("title", "")))
+    st.session_state.setdefault(focus_key, default_focus_categories)
+    st.session_state.setdefault(date_key, default_target_date)
+    st.session_state.setdefault(unit_key, str(default_profile.get("metric_unit", "")))
+
+    popover_label = _popover_label(translate_text(trigger_label), state_key=popover_state_key)
+
+    with st.popover(popover_label, width="stretch"):
         st.markdown("**Ziel hinzufügen / Add goal**")
-        with st.form(form_key):
+        with st.form(form_key, clear_on_submit=True):
             title = st.text_input(
                 translate_text(("Zielname", "Goal name")),
-                value=str(default_profile.get("title", "")),
+                value=str(st.session_state.get(title_key, "")),
                 placeholder=translate_text(
                     ("z. B. 10.000 Schritte täglich", "e.g., 10k steps per day"),
                 ),
+                key=title_key,
             )
             focus_categories = st.multiselect(
                 translate_text(("Fokus-Kategorien", "Focus categories")),
                 options=list(Category),
-                default=[
-                    category for category in Category if category.value in default_profile.get("focus_categories", [])
-                ],
+                default=st.session_state.get(focus_key, []),
                 format_func=lambda option: option.label,
                 help=translate_text(
                     (
@@ -1343,16 +1385,19 @@ def _render_goal_quick_goal_popover(
                         "Pick the life areas you want to strengthen.",
                     )
                 ),
+                key=focus_key,
             )
             target_date = st.date_input(
                 translate_text(("Zieldatum", "Target date")),
-                value=cast(date | None, default_profile.get("target_date")) or date.today() + timedelta(days=30),
+                value=cast(date | None, st.session_state.get(date_key)) or default_target_date,
                 format="YYYY-MM-DD",
+                key=date_key,
             )
             metric_unit = st.text_input(
                 translate_text(("Mess-Einheit", "Metric unit")),
-                value=str(default_profile.get("metric_unit", "")),
+                value=str(st.session_state.get(unit_key, "")),
                 placeholder=translate_text(("z. B. km, Sessions", "e.g., km, sessions")),
+                key=unit_key,
             )
 
             submitted = st.form_submit_button(
@@ -1383,16 +1428,25 @@ def _render_goal_quick_goal_popover(
                         )
                     )
                 )
+                st.session_state[title_key] = ""
+                st.session_state[focus_key] = []
+                st.session_state[date_key] = date.today() + timedelta(days=30)
+                st.session_state[unit_key] = ""
+                _toggle_popover_state(popover_state_key)
                 st.rerun()
 
 
 def _render_goal_quick_journal_popover() -> None:
-    with st.popover(
+    popover_label = _popover_label(
         translate_text(("📓 Journal", "📓 Journal")),
+        state_key=QUICK_GOAL_JOURNAL_POPOVER_STATE_KEY,
+    )
+    with st.popover(
+        popover_label,
         width="stretch",
     ):
         st.markdown("**Tagebucheintrag / Journal entry**")
-        with st.form(QUICK_GOAL_JOURNAL_FORM_KEY):
+        with st.form(QUICK_GOAL_JOURNAL_FORM_KEY, clear_on_submit=True):
             entry_date = st.date_input(
                 translate_text(("Datum", "Date")),
                 value=st.session_state.get(QUICK_GOAL_JOURNAL_DATE_KEY, date.today()),
@@ -1471,6 +1525,12 @@ def _render_goal_quick_journal_popover() -> None:
                         )
                     )
                 )
+                st.session_state[QUICK_GOAL_JOURNAL_DATE_KEY] = date.today()
+                st.session_state[QUICK_GOAL_JOURNAL_MOODS_KEY] = list(MOOD_PRESETS[:2])
+                st.session_state[QUICK_GOAL_JOURNAL_NOTES_KEY] = ""
+                st.session_state[QUICK_GOAL_JOURNAL_GRATITUDE_KEY] = ""
+                st.session_state[QUICK_GOAL_JOURNAL_CATEGORIES_KEY] = []
+                _toggle_popover_state(QUICK_GOAL_JOURNAL_POPOVER_STATE_KEY)
                 st.rerun()
 
 
