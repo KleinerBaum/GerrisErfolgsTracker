@@ -204,11 +204,8 @@ def _render_day_cell(
             task_columns[0].markdown(f"{status} {title}")
             with task_columns[1]:
                 popover = cast(Any, st.popover)
-                with popover(
-                    translate_text(("Bearbeiten", "Edit")),
-                    width="stretch",
-                    key=f"calendar_edit_{task.id}",
-                ):
+                label = translate_text((f"Bearbeiten · {task.id}", f"Edit · {task.id}"))
+                with popover(label, width="stretch"):
                     _render_task_edit_form(task, key_prefix=f"calendar_{task.id}")
 
 
