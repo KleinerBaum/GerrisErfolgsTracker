@@ -1242,6 +1242,15 @@ def _render_goal_quick_todo_popover(
     description_key = _with_suffix(QUICK_GOAL_TODO_DESCRIPTION_KEY)
     popover_state_key = _with_suffix(QUICK_GOAL_TODO_POPOVER_STATE_KEY)
 
+    def _reset_quick_todo_form() -> None:
+        st.session_state[title_key] = ""
+        st.session_state[due_key] = date.today()
+        st.session_state[quadrant_key] = EisenhowerQuadrant.URGENT_IMPORTANT
+        st.session_state[category_key] = Category.DAILY_STRUCTURE
+        st.session_state[priority_key] = 3
+        st.session_state[description_key] = ""
+        _toggle_popover_state(popover_state_key)
+
     popover_label = _popover_label(translate_text(trigger_label), state_key=popover_state_key)
 
     with st.popover(popover_label, width="stretch"):
@@ -1300,6 +1309,7 @@ def _render_goal_quick_todo_popover(
             submitted = st.form_submit_button(
                 translate_text(("Aufgabe speichern", "Save task")),
                 type="primary",
+                on_click=_reset_quick_todo_form,
             )
 
             if submitted:
@@ -1329,13 +1339,6 @@ def _render_goal_quick_todo_popover(
                             )
                         )
                     )
-                    st.session_state[title_key] = ""
-                    st.session_state[due_key] = date.today()
-                    st.session_state[quadrant_key] = EisenhowerQuadrant.URGENT_IMPORTANT
-                    st.session_state[category_key] = Category.DAILY_STRUCTURE
-                    st.session_state[priority_key] = 3
-                    st.session_state[description_key] = ""
-                    _toggle_popover_state(popover_state_key)
                     st.rerun()
 
 
