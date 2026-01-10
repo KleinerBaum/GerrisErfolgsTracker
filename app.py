@@ -1280,7 +1280,8 @@ def _render_goal_quick_todo_popover(
 
     with st.popover(popover_label, width="stretch"):
         st.markdown("**ToDo hinzufügen / Add task**")
-        with st.form(_with_suffix(form_key), clear_on_submit=True):
+        clear_on_submit = bool(st.session_state.get(title_key, "").strip())
+        with st.form(_with_suffix(form_key), clear_on_submit=clear_on_submit):
             title = st.text_input(
                 translate_text(("Titel / Title", "Title / Title")),
                 key=title_key,
@@ -1334,7 +1335,6 @@ def _render_goal_quick_todo_popover(
             submitted = st.form_submit_button(
                 translate_text(("Aufgabe speichern", "Save task")),
                 type="primary",
-                on_click=_reset_quick_todo_form,
             )
 
             if submitted:
@@ -1356,6 +1356,7 @@ def _render_goal_quick_todo_popover(
                         priority=priority,
                         description_md=description_md.strip(),
                     )
+                    _reset_quick_todo_form()
                     st.success(
                         translate_text(
                             (
