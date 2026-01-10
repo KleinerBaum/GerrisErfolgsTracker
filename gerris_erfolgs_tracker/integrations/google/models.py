@@ -43,6 +43,12 @@ class TaskItem(BaseModel):
     updated: datetime | None = None
 
 
+class TaskList(BaseModel):
+    list_id: str
+    title: str
+    updated: datetime | None = None
+
+
 class DriveFile(BaseModel):
     file_id: str
     name: str
