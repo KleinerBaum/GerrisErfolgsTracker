@@ -1125,7 +1125,7 @@ NEW_TASK_WEEKLY_GOAL = 7
 POINTS_PER_NEW_TASK = 10
 
 
-def _build_category_gauge(snapshot: CategoryKpi) -> go.Figure:
+def _build_category_gauge(snapshot: CategoryKpi, *, height: int = 240) -> go.Figure:
     axis_max = max(snapshot.daily_goal, snapshot.done_today, 1)
     figure = go.Figure(
         go.Indicator(
@@ -1151,12 +1151,24 @@ def _build_category_gauge(snapshot: CategoryKpi) -> go.Figure:
         )
     )
     figure.update_layout(
-        height=240,
+        height=height,
         margin=dict(t=10, r=10, b=0, l=10),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
     )
     return figure
+
+
+def _goal_overview_gauge_layout(category_count: int) -> tuple[int, int]:
+    if category_count <= 1:
+        return (1, 360)
+    if category_count == 2:
+        return (2, 320)
+    if category_count == 3:
+        return (3, 260)
+    if category_count <= 5:
+        return (3, 230)
+    return (3, 210)
 
 
 def _build_new_tasks_gauge(new_task_count: int) -> go.Figure:
@@ -1662,9 +1674,6 @@ def _render_goal_overview_settings(
                 settings[GOAL_OVERVIEW_SELECTED_CATEGORIES_KEY] = sanitized_selection
                 st.session_state[SS_SETTINGS] = settings
                 persist_state()
-        settings_column.markdown("**Misc KPIs**")
-        _render_misc_metrics(stats=stats, todos=todos)
-
     return sanitized_selection
 
 
@@ -1696,45 +1705,50 @@ def render_goal_overview(
         selected_category_value = visible_categories[0]
         st.session_state[GOAL_OVERVIEW_SELECTED_CATEGORY_KEY] = selected_category_value
 
-    if focus_mode:
-        reset_label = translate_text(("Zurück zur Übersicht", "Back to overview"))
-        if st.button(reset_label, key="goal_overview_reset_focus"):
-            st.session_state[GOAL_OVERVIEW_FOCUS_MODE_KEY] = False
-            st.rerun()
-    else:
-        visible_lookup = set(visible_categories)
-        categories_to_render = [category for category in Category if category.value in visible_lookup]
-        for row_start in range(0, len(categories_to_render), 3):
-            row_categories = categories_to_render[row_start : row_start + 3]
-            overview_columns = st.columns(len(row_categories))
-            for column, category in zip(overview_columns, row_categories, strict=True):
-                snapshot = snapshots[category]
-                with column:
-                    st.markdown(f"**{category.label}**")
-                    detail_clicked = st.button(
-                        translate_text((f"{category.label} öffnen", f"Open {category.label}")),
-                        key=f"category_detail_{category.value}",
-                        width="stretch",
-                    )
-                    if detail_clicked:
-                        selected_category_value = category.value
-                        st.session_state[GOAL_OVERVIEW_SELECTED_CATEGORY_KEY] = category.value
-                        st.session_state[GOAL_OVERVIEW_FOCUS_MODE_KEY] = True
-                        st.rerun()
+    overview_column, misc_column = st.columns([3, 1], gap="large")
+    with misc_column:
+        st.markdown("**Misc KPIs**")
+        _render_misc_metrics(stats=stats, todos=todos)
 
-                    st.plotly_chart(
-                        _build_category_gauge(snapshot),
-                        width="stretch",
-                        config={"displaylogo": False, "responsive": True},
-                    )
+    with overview_column:
+        if focus_mode:
+            reset_label = translate_text(("Zurück zur Übersicht", "Back to overview"))
+            if st.button(reset_label, key="goal_overview_reset_focus"):
+                st.session_state[GOAL_OVERVIEW_FOCUS_MODE_KEY] = False
+                st.rerun()
+            selected_category = Category(selected_category_value)
+            _render_goal_overview_details(
+                category=selected_category,
+                snapshot=snapshots[selected_category],
+                todos=filtered_todos,
+            )
+        else:
+            visible_lookup = set(visible_categories)
+            categories_to_render = [category for category in Category if category.value in visible_lookup]
+            columns_per_row, gauge_height = _goal_overview_gauge_layout(len(categories_to_render))
+            for row_start in range(0, len(categories_to_render), columns_per_row):
+                row_categories = categories_to_render[row_start : row_start + columns_per_row]
+                overview_columns = st.columns(len(row_categories))
+                for column, category in zip(overview_columns, row_categories, strict=True):
+                    snapshot = snapshots[category]
+                    with column:
+                        st.markdown(f"**{category.label}**")
+                        detail_clicked = st.button(
+                            translate_text((f"{category.label} öffnen", f"Open {category.label}")),
+                            key=f"category_detail_{category.value}",
+                            width="stretch",
+                        )
+                        if detail_clicked:
+                            selected_category_value = category.value
+                            st.session_state[GOAL_OVERVIEW_SELECTED_CATEGORY_KEY] = category.value
+                            st.session_state[GOAL_OVERVIEW_FOCUS_MODE_KEY] = True
+                            st.rerun()
 
-    if focus_mode:
-        selected_category = Category(selected_category_value)
-        _render_goal_overview_details(
-            category=selected_category,
-            snapshot=snapshots[selected_category],
-            todos=filtered_todos,
-        )
+                        st.plotly_chart(
+                            _build_category_gauge(snapshot, height=gauge_height),
+                            width="stretch",
+                            config={"displaylogo": False, "responsive": True},
+                        )
 
 
 def _render_goal_empty_state(*, ai_enabled: bool, settings: dict[str, Any]) -> None:
