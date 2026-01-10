@@ -360,6 +360,7 @@ QUICK_GOAL_TODO_QUADRANT_KEY = "quick_goal_todo_quadrant"
 QUICK_GOAL_TODO_CATEGORY_KEY = "quick_goal_todo_category"
 QUICK_GOAL_TODO_PRIORITY_KEY = "quick_goal_todo_priority"
 QUICK_GOAL_TODO_TITLE_KEY = "quick_goal_todo_title"
+QUICK_GOAL_TODO_RESET_KEY = "quick_goal_todo_reset"
 QUICK_GOAL_JOURNAL_DATE_KEY = "quick_goal_journal_date"
 QUICK_GOAL_JOURNAL_MOODS_KEY = "quick_goal_journal_moods"
 QUICK_GOAL_JOURNAL_NOTES_KEY = "quick_goal_journal_notes"
@@ -1265,6 +1266,7 @@ def _render_goal_quick_todo_popover(
     category_key = _with_suffix(QUICK_GOAL_TODO_CATEGORY_KEY)
     priority_key = _with_suffix(QUICK_GOAL_TODO_PRIORITY_KEY)
     description_key = _with_suffix(QUICK_GOAL_TODO_DESCRIPTION_KEY)
+    reset_key = _with_suffix(QUICK_GOAL_TODO_RESET_KEY)
     popover_state_key = _with_suffix(QUICK_GOAL_TODO_POPOVER_STATE_KEY)
 
     def _reset_quick_todo_form() -> None:
@@ -1280,6 +1282,9 @@ def _render_goal_quick_todo_popover(
 
     with st.popover(popover_label, width="stretch"):
         st.markdown("**ToDo hinzufügen / Add task**")
+        if st.session_state.get(reset_key):
+            _reset_quick_todo_form()
+            st.session_state.pop(reset_key, None)
         clear_on_submit = bool(st.session_state.get(title_key, "").strip())
         with st.form(_with_suffix(form_key), clear_on_submit=clear_on_submit):
             title = st.text_input(
@@ -1356,15 +1361,7 @@ def _render_goal_quick_todo_popover(
                         priority=priority,
                         description_md=description_md.strip(),
                     )
-                    _reset_quick_todo_form()
-                    st.success(
-                        translate_text(
-                            (
-                                "Aufgabe angelegt.",
-                                "Task created.",
-                            )
-                        )
-                    )
+                    st.session_state[reset_key] = True
                     st.rerun()
 
 
