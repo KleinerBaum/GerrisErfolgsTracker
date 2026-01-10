@@ -74,17 +74,17 @@ def test_aggregate_category_kpis_tracks_counts_and_streaks() -> None:
     )
 
     job_search = snapshots[Category.JOB_SEARCH]
-    assert job_search.done_today == 1
+    assert job_search.done_this_week == 1
     assert job_search.open_count == 1
     assert job_search.goal_progress == 0.5
 
     admin = snapshots[Category.ADMIN]
     assert admin.done_total == 2
     assert admin.streak == 2
-    assert admin.goal_progress == 0.0
+    assert admin.goal_progress == 2.0
 
     drugs = snapshots[Category.DRUGS]
-    assert drugs.daily_goal == 0
+    assert drugs.weekly_goal == 0
     assert drugs.goal_progress == 0.0
     assert drugs.streak == 1
 

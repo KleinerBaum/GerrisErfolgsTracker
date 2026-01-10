@@ -361,9 +361,7 @@ def _fallback_email_draft(
     detail_lines = [intro, "", context_fallback]
     if length == "long":
         follow_up = (
-            "Ich freue mich auf Ihre Rückmeldung."
-            if normalized_language == "de"
-            else "I look forward to your reply."
+            "Ich freue mich auf Ihre Rückmeldung." if normalized_language == "de" else "I look forward to your reply."
         )
         detail_lines.extend(["", outro, "", follow_up])
     elif length == "short":
@@ -385,10 +383,10 @@ def _fallback_email_draft(
 
 
 def _email_tools() -> list[object]:
-    tools: list[object] = [WebSearchTool()]
+    tools: list[object] = [WebSearchTool(type="web_search")]
     vector_store_id = os.getenv("VECTOR_STORE_ID")
     if vector_store_id:
-        tools.append(FileSearchTool(vector_store_ids=[vector_store_id]))
+        tools.append(FileSearchTool(type="file_search", vector_store_ids=[vector_store_id]))
     return tools
 
 
