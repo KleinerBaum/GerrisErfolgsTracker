@@ -103,8 +103,18 @@ Die App sucht nach dem OpenAI Key in `st.secrets` oder der Umgebung:
 - `OPENAI_BASE_URL` (optional, z. B. EU-Endpunkt)
 - `OPENAI_MODEL` (optional, z. B. `gpt-4o-mini` oder `o3-mini`)
 - `GERRIS_ONEDRIVE_DIR` (optional: expliziter OneDrive-Sync-Ordner für die JSON-Datei)
+- `GOOGLE_CALENDARS_JSON` (optional: JSON-Liste mit Google-Kalendern, um mehrere Kalender ohne viele ENV-Variablen zu konfigurieren)
 - `KalenderGerri` oder `CALENDAR_GERRI` (optional: Freigabelink oder Calendar-ID für den persönlichen Kalender)
 - `2025 von Carla, Miri & Gerrit` oder `CALENDAR_SHARED_2025` (optional: Freigabelink oder Calendar-ID für den geteilten Kalender)
+
+Beispiel für `GOOGLE_CALENDARS_JSON`:
+
+```env
+GOOGLE_CALENDARS_JSON='[
+  {"key":"gerri","name":"Gerri","calendar_id":"...","ical_url":"..."},
+  {"key":"cal_2025","name":"2025 von Carla, Miri & Gerrit","calendar_id":"...","ical_url":"..."}
+]'
+```
 
 ## E-Mail-Erinnerungen / Email reminders
 
