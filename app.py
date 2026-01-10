@@ -2580,6 +2580,65 @@ def _calendar_src_from_env(*, keys: Sequence[str], fallback: str | None = None) 
     return fallback
 
 
+def _load_calendar_configs() -> list[tuple[str, str]]:
+    raw = _get_secret("GOOGLE_CALENDARS_JSON")
+    if not raw:
+        return []
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        st.warning(
+            translate_text(
+                (
+                    "GOOGLE_CALENDARS_JSON ist kein gültiges JSON. Es werden die einzelnen Kalender-ENV-Variablen genutzt.",
+                    "GOOGLE_CALENDARS_JSON is not valid JSON. Falling back to the individual calendar env vars.",
+                )
+            )
+        )
+        return []
+
+    if not isinstance(payload, list):
+        st.warning(
+            translate_text(
+                (
+                    "GOOGLE_CALENDARS_JSON muss eine Liste von Kalender-Objekten sein.",
+                    "GOOGLE_CALENDARS_JSON must be a list of calendar objects.",
+                )
+            )
+        )
+        return []
+
+    configs: list[tuple[str, str]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        name_value = item.get("name") or item.get("key")
+        if not isinstance(name_value, str):
+            continue
+        calendar_value = None
+        for field in ("calendar_id", "ical_url"):
+            candidate = item.get(field)
+            if isinstance(candidate, str) and candidate.strip():
+                calendar_value = candidate
+                break
+        if not calendar_value:
+            continue
+        configs.append((name_value.strip(), _extract_calendar_src(calendar_value)))
+
+    if not configs:
+        st.warning(
+            translate_text(
+                (
+                    "GOOGLE_CALENDARS_JSON enthält keine gültigen Kalender.",
+                    "GOOGLE_CALENDARS_JSON does not contain any valid calendars.",
+                )
+            )
+        )
+
+    return configs
+
+
 def _render_calendar_iframe(*, calendar_src: str, color: str) -> None:
     iframe = f"""
     <iframe src="https://calendar.google.com/calendar/embed?height=600&wkst=1&ctz=Europe%2FAmsterdam&showPrint=0&src={calendar_src}&color={color}" style="border:solid 1px #777" width="100%" height="600" frameborder="0" scrolling="no"></iframe>
@@ -2588,6 +2647,25 @@ def _render_calendar_iframe(*, calendar_src: str, color: str) -> None:
 
 
 def render_shared_calendar() -> None:
+    calendar_configs = _load_calendar_configs()
+    if calendar_configs:
+        colors = [
+            "%23616161",
+            "%237986cb",
+            "%23b874d9",
+            "%2376a73e",
+            "%23c95f2a",
+        ]
+        for row_start in range(0, len(calendar_configs), 2):
+            row = calendar_configs[row_start : row_start + 2]
+            columns = st.columns(len(row))
+            for offset, (name, src) in enumerate(row):
+                with columns[offset]:
+                    st.markdown(translate_text((f"**{name}**", f"**{name}**")))
+                    color = colors[(row_start + offset) % len(colors)]
+                    _render_calendar_iframe(calendar_src=src, color=color)
+        return
+
     shared_calendar_src = _calendar_src_from_env(
         keys=(
             "2025 von Carla, Miri & Gerrit",
