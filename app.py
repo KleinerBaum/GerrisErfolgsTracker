@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from contextlib import nullcontext
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Literal, Mapping, Optional, Sequence, TypedDict, cast
+from typing import Any, Callable, Literal, Mapping, Optional, Sequence, TypedDict, TypeVar, cast
+from zoneinfo import ZoneInfo
 
+import httpx
 import plotly.graph_objects as go
 import streamlit as st
 from openai import OpenAI
@@ -28,6 +31,7 @@ from gerris_erfolgs_tracker.charts import (
 )
 from gerris_erfolgs_tracker.coach.engine import get_coach_state
 from gerris_erfolgs_tracker.coach.scanner import run_daily_coach_scan, schedule_weekly_review
+from gerris_erfolgs_tracker.config.calendars import load_calendars
 from gerris_erfolgs_tracker.constants import (
     AI_ENABLED_KEY,
     AI_MOTIVATION_KEY,
@@ -73,7 +77,12 @@ from gerris_erfolgs_tracker.integrations.google import (
     get_calendar_service,
     get_default_token_store,
 )
+from gerris_erfolgs_tracker.integrations.google.calendar_service import (
+    create_calendar_event,
+    list_upcoming_events_for_service,
+)
 from gerris_erfolgs_tracker.integrations.google.client import GoogleApiError
+from gerris_erfolgs_tracker.integrations.ical import list_upcoming_ical_events
 from gerris_erfolgs_tracker.journal import (
     append_journal_links,
     ensure_journal_state,
@@ -2717,6 +2726,7 @@ TASKS_PAGE_KEY = "tasks"
 JOURNAL_PAGE_KEY = "journal"
 EMAILS_PAGE_KEY = "emails"
 WORKSPACE_PAGE_KEY = "workspace"
+CALENDAR_PAGE_KEY = "calendar"
 
 DASHBOARD_PAGE_LABEL = ("Dashboard", "Dashboard")
 GOALS_PAGE_LABEL = ("Ziele", "Goals")
@@ -2724,6 +2734,7 @@ TASKS_PAGE_LABEL = ("Aufgaben", "Tasks")
 JOURNAL_PAGE_LABEL = ("Tagebuch", "Journal")
 EMAILS_PAGE_LABEL = ("E-Mails", "Emails")
 WORKSPACE_PAGE_LABEL = ("Google Workspace", "Google Workspace")
+CALENDAR_PAGE_LABEL = ("Kalender", "Calendar")
 NAVIGATION_SELECTION_KEY = "active_page"
 PENDING_NAVIGATION_KEY = "pending_active_page"
 GOOGLE_OAUTH_STATE_KEY = "google_oauth_state"
@@ -2863,6 +2874,270 @@ def render_google_connection_panel() -> None:
         panel.info(translate_text(("Nicht verbunden.", "Not connected.")))
 
 
+def _format_event_time(value: datetime | None) -> str:
+    if value is None:
+        return "—"
+    if value.tzinfo is None:
+        return value.strftime("%Y-%m-%d %H:%M")
+    return value.astimezone().strftime("%Y-%m-%d %H:%M")
+
+
+T = TypeVar("T")
+
+
+def _with_backoff(action: Callable[[], T], *, retries: int = 3, base_delay: float = 0.5) -> T:
+    last_error: Exception | None = None
+    for attempt in range(retries):
+        try:
+            return action()
+        except Exception as exc:
+            last_error = exc
+            if attempt < retries - 1:
+                time.sleep(base_delay * (2**attempt))
+    if last_error:
+        raise last_error
+    raise RuntimeError("Failed without error context.")
+
+
+def _render_calendar_events(events: Sequence[Any]) -> None:
+    if not events:
+        st.info(translate_text(("Keine Termine gefunden.", "No events found.")))
+        return
+    rows = []
+    for item in events:
+        rows.append(
+            {
+                translate_text(("Start", "Start")): _format_event_time(getattr(item, "start", None)),
+                translate_text(("Ende", "End")): _format_event_time(getattr(item, "end", None)),
+                translate_text(("Titel", "Summary")): getattr(item, "summary", None) or "—",
+                translate_text(("Ort", "Location")): getattr(item, "location", None) or "—",
+            }
+        )
+    st.dataframe(rows, width="stretch", hide_index=True)
+
+
+def render_calendar_page() -> None:
+    st.markdown(translate_text(("## Kalender", "## Calendar")))
+    calendar_configs = load_calendars()
+    if not calendar_configs:
+        st.warning(
+            translate_text(
+                (
+                    "Keine Kalender konfiguriert. Setze CAL_GERRI_ID/CAL_2025_ID oder die Legacy-Keys.",
+                    "No calendars configured yet. Set CAL_GERRI_ID/CAL_2025_ID or the legacy keys.",
+                )
+            )
+        )
+        return
+
+    config_lookup = {item["key"]: item for item in calendar_configs}
+    selected_key = st.selectbox(
+        translate_text(("Kalender auswählen", "Select calendar")),
+        options=list(config_lookup),
+        format_func=lambda option: config_lookup[option]["name"],
+    )
+    selected_calendar = config_lookup[selected_key]
+    calendar_id = selected_calendar.get("calendar_id")
+    ical_url = selected_calendar.get("ical_url")
+    st.caption(
+        translate_text(
+            (
+                f"Aktiver Kalender: {selected_calendar['name']} (ID: {calendar_id or '—'})",
+                f"Active calendar: {selected_calendar['name']} (ID: {calendar_id or '—'})",
+            )
+        )
+    )
+
+    token_store = get_default_token_store()
+    connected_email = st.session_state.get(GOOGLE_CONNECTED_EMAIL_KEY)
+    connected_email_value = connected_email if isinstance(connected_email, str) else None
+    has_google_token = bool(connected_email_value and token_store.load_token(connected_email_value))
+    if has_google_token:
+        st.success(
+            translate_text(
+                (
+                    f"Google verbunden als {connected_email_value}. Kalender-API wird genutzt.",
+                    f"Google connected as {connected_email_value}. Using the Calendar API.",
+                )
+            )
+        )
+        if not calendar_id:
+            st.warning(
+                translate_text(
+                    (
+                        "Kalender-ID fehlt für diesen Eintrag. Bitte CAL_GERRI_ID/CAL_2025_ID setzen.",
+                        "Calendar ID is missing for this entry. Please set CAL_GERRI_ID/CAL_2025_ID.",
+                    )
+                )
+            )
+    elif ical_url:
+        st.info(
+            translate_text(
+                (
+                    "Google nicht verbunden. iCal-Feed wird als read-only Fallback genutzt.",
+                    "Google is not connected. Using the iCal feed as a read-only fallback.",
+                )
+            )
+        )
+    else:
+        st.warning(
+            translate_text(
+                (
+                    "Google nicht verbunden und kein iCal-Link vorhanden.",
+                    "Google is not connected and no iCal link is configured.",
+                )
+            )
+        )
+
+    if st.button(translate_text(("Nächste 20 Termine anzeigen", "List next 20 events"))):
+        with st.spinner(translate_text(("Lade Termine...", "Loading events..."))):
+            try:
+                if has_google_token:
+                    if not calendar_id:
+                        st.error(
+                            translate_text(
+                                (
+                                    "Es ist keine Kalender-ID konfiguriert.",
+                                    "No calendar ID is configured.",
+                                )
+                            )
+                        )
+                        return
+                    service = get_calendar_service(cast(str, connected_email_value), token_store)
+                    events = _with_backoff(
+                        lambda: list_upcoming_events_for_service(
+                            service,
+                            calendar_id=calendar_id,
+                            max_results=20,
+                        )
+                    )
+                else:
+                    if not ical_url:
+                        st.error(
+                            translate_text(
+                                (
+                                    "Es ist keine iCal-URL konfiguriert.",
+                                    "No iCal URL is configured.",
+                                )
+                            )
+                        )
+                        return
+                    events = _with_backoff(lambda: list_upcoming_ical_events(ical_url, max_results=20))
+            except (GoogleApiError, OAuthFlowError, httpx.HTTPError) as exc:
+                st.error(
+                    translate_text(
+                        (
+                            f"Kalender konnte nicht geladen werden: {exc}",
+                            f"Failed to load calendar events: {exc}",
+                        )
+                    )
+                )
+                return
+        _render_calendar_events(events)
+
+    if has_google_token:
+        with st.expander(translate_text(("Termin erstellen", "Create event")), expanded=False):
+            with st.form("calendar_create_event_form"):
+                summary = st.text_input(
+                    translate_text(("Titel", "Summary")),
+                    placeholder=translate_text(("z. B. Arzttermin", "e.g. Doctor appointment")),
+                )
+                start_cols = st.columns(2)
+                with start_cols[0]:
+                    start_date = st.date_input(translate_text(("Startdatum", "Start date")), value=date.today())
+                with start_cols[1]:
+                    start_time = st.time_input(translate_text(("Startzeit", "Start time")))
+                end_cols = st.columns(2)
+                with end_cols[0]:
+                    end_date = st.date_input(translate_text(("Enddatum", "End date")), value=date.today())
+                with end_cols[1]:
+                    end_time = st.time_input(translate_text(("Endzeit", "End time")))
+                timezone_value = st.text_input(
+                    translate_text(("Zeitzone", "Timezone")),
+                    value="Europe/Berlin",
+                    help=translate_text(
+                        (
+                            "IANA-Zeitzone, z. B. Europe/Berlin oder UTC.",
+                            "IANA timezone, e.g. Europe/Berlin or UTC.",
+                        )
+                    ),
+                )
+                submit_event = st.form_submit_button(
+                    translate_text(("Termin erstellen", "Create event")),
+                    type="primary",
+                    disabled=not calendar_id,
+                )
+            if submit_event:
+                if not calendar_id:
+                    st.error(
+                        translate_text(
+                            (
+                                "Kalender-ID fehlt. Bitte CAL_GERRI_ID/CAL_2025_ID setzen.",
+                                "Calendar ID is missing. Please set CAL_GERRI_ID/CAL_2025_ID.",
+                            )
+                        )
+                    )
+                    return
+                if not summary.strip():
+                    st.error(translate_text(("Bitte einen Titel angeben.", "Please provide a summary.")))
+                    return
+                try:
+                    tzinfo = ZoneInfo(timezone_value)
+                except Exception:
+                    st.error(
+                        translate_text(
+                            (
+                                "Ungültige Zeitzone. Bitte eine IANA-Zeitzone angeben (z. B. Europe/Berlin).",
+                                "Invalid timezone. Please enter a valid IANA timezone (e.g. Europe/Berlin).",
+                            )
+                        )
+                    )
+                    return
+                start_dt = datetime.combine(start_date, start_time, tzinfo=tzinfo)
+                end_dt = datetime.combine(end_date, end_time, tzinfo=tzinfo)
+                if end_dt <= start_dt:
+                    st.error(
+                        translate_text(
+                            (
+                                "Endzeit muss nach der Startzeit liegen.",
+                                "End time must be after the start time.",
+                            )
+                        )
+                    )
+                    return
+                with st.spinner(translate_text(("Termin wird erstellt...", "Creating event..."))):
+                    try:
+                        service = get_calendar_service(cast(str, connected_email_value), token_store)
+                        created = _with_backoff(
+                            lambda: create_calendar_event(
+                                service,
+                                calendar_id=calendar_id,
+                                summary=summary.strip(),
+                                start=start_dt,
+                                end=end_dt,
+                                timezone_name=timezone_value,
+                            )
+                        )
+                    except (GoogleApiError, OAuthFlowError) as exc:
+                        st.error(
+                            translate_text(
+                                (
+                                    f"Termin konnte nicht erstellt werden: {exc}",
+                                    f"Failed to create event: {exc}",
+                                )
+                            )
+                        )
+                        return
+                st.success(
+                    translate_text(
+                        (
+                            f"Termin erstellt: {created.summary or summary}",
+                            f"Event created: {created.summary or summary}",
+                        )
+                    )
+                )
+
+
 def render_language_toggle() -> LanguageCode:
     return get_language()
 
@@ -2898,6 +3173,7 @@ def render_navigation() -> str:
         JOURNAL_PAGE_KEY: JOURNAL_PAGE_LABEL,
         EMAILS_PAGE_KEY: EMAILS_PAGE_LABEL,
         WORKSPACE_PAGE_KEY: WORKSPACE_PAGE_LABEL,
+        CALENDAR_PAGE_KEY: CALENDAR_PAGE_LABEL,
     }
     if PENDING_NAVIGATION_KEY in st.session_state:
         st.session_state[NAVIGATION_SELECTION_KEY] = st.session_state.pop(PENDING_NAVIGATION_KEY)
@@ -3475,6 +3751,8 @@ def main() -> None:
         render_google_connection_panel()
         st.divider()
         render_google_workspace_page()
+    elif selection == CALENDAR_PAGE_KEY:
+        render_calendar_page()
     else:
         render_journal_section(ai_enabled=ai_enabled, client=client, todos=todos)
 

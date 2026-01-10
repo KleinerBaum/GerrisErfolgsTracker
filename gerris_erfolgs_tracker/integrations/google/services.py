@@ -24,6 +24,10 @@ class GoogleService:
         url = f"{self.base_url}/{path.lstrip('/')}"
         return self.client.get(url, params=params)
 
+    def post(self, path: str, *, json: dict[str, Any]) -> dict[str, Any]:
+        url = f"{self.base_url}/{path.lstrip('/')}"
+        return self.client.post(url, json=json)
+
 
 def get_calendar_service(user_id: str, token_store: TokenStore) -> GoogleService:
     return _build_service(CALENDAR_API_BASE_URL, user_id=user_id, token_store=token_store)

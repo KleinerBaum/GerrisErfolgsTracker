@@ -33,6 +33,24 @@ class GoogleApiClient:
             raise GoogleApiError("Google API returned an unexpected response.")
         return data
 
+    def post(self, url: str, *, json: dict[str, Any]) -> dict[str, Any]:
+        try:
+            response = httpx.post(
+                url,
+                headers={"Authorization": f"Bearer {self.access_token}"},
+                json=json,
+                timeout=self.timeout,
+            )
+        except httpx.RequestError as exc:
+            raise GoogleApiError("Google API request failed.") from exc
+        if response.status_code >= 400:
+            message = _extract_error_message(response)
+            raise GoogleApiError(message)
+        data = response.json()
+        if not isinstance(data, dict):
+            raise GoogleApiError("Google API returned an unexpected response.")
+        return data
+
 
 def build_google_api_client(access_token: str, *, timeout: float = 10.0) -> GoogleApiClient:
     return GoogleApiClient(access_token=access_token, timeout=timeout)
