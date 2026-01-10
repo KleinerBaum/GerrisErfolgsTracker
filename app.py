@@ -7,10 +7,12 @@ from contextlib import nullcontext
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal, Mapping, Optional, Sequence, TypedDict, cast
+from urllib.parse import parse_qs, urlparse
 
 import plotly.graph_objects as go
 import streamlit as st
 from openai import OpenAI
+from streamlit.errors import StreamlitSecretNotFoundError
 
 import gerris_erfolgs_tracker.ui.tasks as tasks_ui
 from gerris_erfolgs_tracker.ai_features import AISuggestion, suggest_quadrant
@@ -2541,18 +2543,93 @@ def render_shared_calendar_header() -> None:
     st.markdown(
         translate_text(
             (
-                "### 2025 von Carla, Miri & Gerrit · Google Kalender",
-                "### 2025 by Carla, Miri & Gerrit · Google Calendar",
+                "### Google Kalender",
+                "### Google Calendars",
             )
         )
     )
 
 
-def render_shared_calendar() -> None:
-    calendar_iframe = """
-    <iframe src="https://calendar.google.com/calendar/embed?height=600&wkst=1&ctz=Europe%2FAmsterdam&showPrint=0&src=e2a52f862c8088c82d9f74825b8c39f6069965fdc652472fbf5ec28e891c077e%40group.calendar.google.com&color=%23616161" style="border:solid 1px #777" width="800" height="600" frameborder="0" scrolling="no"></iframe>
+def _get_secret(name: str) -> str | None:
+    try:
+        value = st.secrets.get(name)
+        if value:
+            return str(value)
+    except StreamlitSecretNotFoundError:
+        value = None
+    return os.getenv(name)
+
+
+def _extract_calendar_src(value: str) -> str:
+    cleaned = value.strip()
+    if "://" not in cleaned:
+        return cleaned
+    parsed = urlparse(cleaned)
+    query = parse_qs(parsed.query)
+    for key in ("src", "cid"):
+        if key in query and query[key]:
+            return query[key][0]
+    return cleaned
+
+
+def _calendar_src_from_env(*, keys: Sequence[str], fallback: str | None = None) -> str | None:
+    for key in keys:
+        value = _get_secret(key)
+        if value:
+            return _extract_calendar_src(value)
+    return fallback
+
+
+def _render_calendar_iframe(*, calendar_src: str, color: str) -> None:
+    iframe = f"""
+    <iframe src="https://calendar.google.com/calendar/embed?height=600&wkst=1&ctz=Europe%2FAmsterdam&showPrint=0&src={calendar_src}&color={color}" style="border:solid 1px #777" width="100%" height="600" frameborder="0" scrolling="no"></iframe>
     """
-    st.markdown(calendar_iframe, unsafe_allow_html=True)
+    st.markdown(iframe, unsafe_allow_html=True)
+
+
+def render_shared_calendar() -> None:
+    shared_calendar_src = _calendar_src_from_env(
+        keys=(
+            "2025 von Carla, Miri & Gerrit",
+            "CALENDAR_SHARED_2025",
+            "KALENDER_SHARED_2025",
+        ),
+        fallback="e2a52f862c8088c82d9f74825b8c39f6069965fdc652472fbf5ec28e891c077e@group.calendar.google.com",
+    )
+    gerri_calendar_src = _calendar_src_from_env(
+        keys=(
+            "KalenderGerri",
+            "CALENDAR_GERRI",
+            "KALENDER_GERRI",
+        )
+    )
+
+    if gerri_calendar_src:
+        shared_column, gerri_column = st.columns(2)
+        with shared_column:
+            st.markdown(
+                translate_text(
+                    (
+                        "**Gemeinsamer Kalender / 2025**",
+                        "**Shared calendar / 2025**",
+                    )
+                )
+            )
+            _render_calendar_iframe(calendar_src=shared_calendar_src, color="%23616161")
+        with gerri_column:
+            st.markdown(translate_text(("**Kalender Gerri**", "**Gerri calendar**")))
+            _render_calendar_iframe(calendar_src=gerri_calendar_src, color="%237986cb")
+        return
+
+    st.markdown(
+        translate_text(
+            (
+                "Kalender Gerri ist noch nicht hinterlegt. Setze `KalenderGerri` (oder `CALENDAR_GERRI`) in deinen Secrets oder der Umgebung, um ihn neben dem geteilten Kalender anzuzeigen.",
+                "Gerri calendar is not configured yet. Set `KalenderGerri` (or `CALENDAR_GERRI`) in your secrets or environment to show it next to the shared calendar.",
+            )
+        )
+    )
+    _render_calendar_iframe(calendar_src=shared_calendar_src, color="%23616161")
 
 
 def _format_duration_short(value: timedelta | None) -> str:
