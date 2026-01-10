@@ -1462,6 +1462,30 @@ def _render_goal_quick_journal_popover() -> None:
                 st.rerun()
 
 
+def _render_goal_quick_email_popover() -> None:
+    with st.popover(
+        translate_text(("✉️ E-Mails", "✉️ Emails")),
+        width="stretch",
+    ):
+        st.markdown("**E-Mail-Assistent / Email assistant**")
+        st.caption(
+            translate_text(
+                (
+                    "Starte neue Entwürfe oder öffne vorhandene Vorlagen im E-Mail-Bereich.",
+                    "Start new drafts or open existing templates in the email area.",
+                )
+            )
+        )
+        email_clicked = st.button(
+            translate_text(("Assistent öffnen", "Open assistant")),
+            type="primary",
+            key="header_email_assistant_open",
+        )
+        if email_clicked:
+            st.session_state[PENDING_NAVIGATION_KEY] = EMAILS_PAGE_KEY
+            st.rerun()
+
+
 def render_goal_completion_logger(todos: list[TodoItem]) -> None:
     _sync_tasks_streamlit()
     open_todos = [todo for todo in todos if not todo.completed]
@@ -2226,18 +2250,7 @@ def render_dashboard_header(
         _render_goal_quick_journal_popover()
 
     with email_col:
-        email_clicked = st.button(
-            translate_text(("✉️ E-Mails", "✉️ Emails")),
-            help=translate_text(
-                (
-                    "Öffnet den E-Mail-Assistenten für neue Vorlagen.",
-                    "Opens the email assistant for new drafts.",
-                )
-            ),
-        )
-        if email_clicked:
-            st.session_state[PENDING_NAVIGATION_KEY] = EMAILS_PAGE_KEY
-            st.rerun()
+        _render_goal_quick_email_popover()
 
     with settings_col:
         ai_enabled, show_storage_notice = render_settings_popover(
