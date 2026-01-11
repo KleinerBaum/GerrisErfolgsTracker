@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Aktualisiert das Standard- und Reasoning-LLM auf `gpt-5-nano` in Code und Dokumentation / Updated the default and reasoning LLM to `gpt-5-nano` in code and documentation.
 - Quick-Action-Ziel-Popover setzt nach dem Speichern ein Reset-Flag und initialisiert Felder vor dem nächsten Render, um Streamlit-Session-State-Fehler zu vermeiden / Quick-action goal popover now sets a reset flag after saving and initializes fields before the next render to avoid Streamlit session-state errors.
 - Google Workspace: Google Tasks lädt Tasklisten und Aufgaben live, inklusive Auswahl und Erstellen neuer Tasks / Google Workspace: Google Tasks now loads task lists and tasks live, including selection and creating new tasks.
 - Kalender-API: Neue Kalender-Seite mit Auswahl, Event-Liste (20 Termine), optionaler Termin-Erstellung via OAuth sowie iCal-Fallback für read-only Zugriff / Calendar API: new Calendar page with selection, 20-event listing, optional event creation via OAuth, and read-only iCal fallback.

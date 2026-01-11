@@ -30,7 +30,7 @@ Die Sidebar konzentriert sich auf die Navigation; Schalter, Build-Infos sowie Si
   - Buttons und Popover-Trigger behalten die Standard-Zeilenhöhe und erlauben Zeilenumbrüche, sodass Quick-Actions auf breiten und schmaleren Viewports vollständig lesbar bleiben / Buttons and popover triggers keep the default line height and allow wrapping so quick actions stay fully readable on wide and narrower viewports.
   - **Misc KPIs** im Workload-Bereich sind nun direkt unter der Liste „Überfällig & Nächste 3 Tage“ platziert, damit Aufgaben und Kennzahlen zusammenbleiben / **Misc KPIs** in the workload section now sit directly under the “Overdue & next 3 days” list to keep tasks and metrics together.
 
-Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI aktiv / AI enabled** gesetzt ist, nutzt die App GPT-Modelle (Standard: `gpt-4o-mini`, per Einstellung überschreibbar), um z. B. automatisch den Eisenhower-Quadranten zu empfehlen oder kurze Motivationsnachrichten basierend auf den jüngsten KPIs zu erstellen. Ist kein API-Key hinterlegt oder die AI-Option deaktiviert, werden statische, vorgefertigte Texte verwendet, sodass die Anwendung weiterhin vollständig nutzbar bleibt.
+Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI aktiv / AI enabled** gesetzt ist, nutzt die App GPT-Modelle (Standard: `gpt-5-nano`, per Einstellung überschreibbar), um z. B. automatisch den Eisenhower-Quadranten zu empfehlen oder kurze Motivationsnachrichten basierend auf den jüngsten KPIs zu erstellen. Ist kein API-Key hinterlegt oder die AI-Option deaktiviert, werden statische, vorgefertigte Texte verwendet, sodass die Anwendung weiterhin vollständig nutzbar bleibt.
 
 **Neu (optional, AI):**
 
@@ -46,7 +46,7 @@ Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI
 
 - Python >= 3.11
 - Ein OpenAI API Key, falls du Modellantworten erzeugen möchtest (`OPENAI_API_KEY`).
-- Optional: Modell-Override via `OPENAI_MODEL` (Standard: `gpt-4o-mini`) und benutzerdefinierte Basis-URL z. B. EU-Endpunkt.
+- Optional: Modell-Override via `OPENAI_MODEL` (Standard: `gpt-5-nano`) und benutzerdefinierte Basis-URL z. B. EU-Endpunkt.
 - Optionale Persistenz & Sync: Die App schreibt standardmäßig in einen OneDrive-Sync-Ordner (z. B. `~/OneDrive/GerrisErfolgsTracker/gerris_state.json` oder `C:\\Users\\gerri\\OneDrive\\GerrisErfolgsTracker`). Über `GERRIS_ONEDRIVE_DIR` kannst du den Pfad explizit setzen; das Verzeichnis wird bei Bedarf angelegt. Anhänge (PNG/JPG) landen in `attachments/<todo_id>/` unterhalb des gleichen Stammordners, der JSON-State speichert nur Dateireferenzen.
 - Alle Zeitstempel werden intern als timezone-aware UTC-Datetimes gespeichert, um Sortierungen konsistent zu halten / All timestamps are stored as timezone-aware UTC datetimes to keep sorting consistent.
 - Optionale E-Mail-Erinnerungen über Brevo: `BREVO_API_KEY` + `BREVO_SENDER` (und optional `BREVO_SENDER_NAME`) in der Umgebung setzen.
@@ -105,7 +105,7 @@ Die App sucht nach dem OpenAI Key in `st.secrets` oder der Umgebung:
 
 - `OPENAI_API_KEY` (erforderlich für Modellaufrufe)
 - `OPENAI_BASE_URL` (optional, z. B. EU-Endpunkt)
-- `OPENAI_MODEL` (optional, z. B. `gpt-4o-mini` oder `o3-mini`)
+- `OPENAI_MODEL` (optional, z. B. `gpt-5-nano`)
 - `GERRIS_ONEDRIVE_DIR` (optional: expliziter OneDrive-Sync-Ordner für die JSON-Datei)
 - `GOOGLE_CALENDARS_JSON` (optional: JSON-Liste mit Google-Kalendern, um mehrere Kalender ohne viele ENV-Variablen zu konfigurieren)
 - `CAL_GERRI_ID`, `CAL_GERRI_ICAL_URL`, `CAL_GERRI_NAME` (optional: Kalender-ID, iCal-Link und Anzeigename für Gerri)
@@ -162,7 +162,7 @@ Erstelle `.streamlit/secrets.toml` (siehe `.streamlit/secrets.toml.example`):
 ```toml
 OPENAI_API_KEY = "sk-..."
 # OPENAI_BASE_URL = "https://eu.api.openai.com/v1"
-# OPENAI_MODEL = "gpt-4o-mini"
+# OPENAI_MODEL = "gpt-5-nano"
 ```
 
 ### Streamlit Cloud
@@ -171,7 +171,7 @@ OPENAI_API_KEY = "sk-..."
 2. Unter **App settings → Secrets** folgende Einträge hinzufügen:
    - `OPENAI_API_KEY = sk-...`
    - Optional `OPENAI_BASE_URL = https://eu.api.openai.com/v1`
-   - Optional `OPENAI_MODEL = gpt-4o-mini`
+   - Optional `OPENAI_MODEL = gpt-5-nano`
 3. Deploy starten; die Abhängigkeiten werden über `requirements.txt` installiert.
 
 > **Wichtig:** API-Keys niemals in das Repository einchecken. Nutze lokal `.streamlit/secrets.toml` und auf der Streamlit

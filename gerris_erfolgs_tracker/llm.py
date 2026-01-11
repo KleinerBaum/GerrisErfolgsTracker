@@ -16,8 +16,8 @@ from openai import (
 from pydantic import BaseModel
 from streamlit.errors import StreamlitSecretNotFoundError
 
-DEFAULT_MODEL = "gpt-4o-mini"
-DEFAULT_REASONING_MODEL = "o3-mini"
+DEFAULT_MODEL = "gpt-5-nano"
+DEFAULT_REASONING_MODEL = "gpt-5-nano"
 DEFAULT_TIMEOUT_SECONDS = 20.0
 DEFAULT_MAX_ATTEMPTS = 3
 _BACKOFF_FACTOR = 1.6
