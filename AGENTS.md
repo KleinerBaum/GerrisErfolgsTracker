@@ -112,7 +112,7 @@ Konfiguration (ENV oder `st.secrets`):
 
 - `OPENAI_API_KEY` (erforderlich für Modellaufrufe)
 - `OPENAI_BASE_URL` (optional; z. B. `https://eu.api.openai.com/v1`)
-- `OPENAI_MODEL` (optional; z. B. `gpt-4o-mini` oder `o3-mini`)
+- `OPENAI_MODEL` (optional; z. B. `gpt-5-nano`)
 
 ---
 
