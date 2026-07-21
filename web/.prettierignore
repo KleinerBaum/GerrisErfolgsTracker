@@ -1,0 +1,8 @@
+.next/
+.vinext/
+coverage/
+dist/
+node_modules/
+next-env.d.ts
+public/widget.js
+public/widget.css
