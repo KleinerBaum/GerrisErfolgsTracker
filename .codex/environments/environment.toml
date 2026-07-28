@@ -5,11 +5,31 @@ name = "GerrisErfolgsTracker"
 [setup]
 script = '''
 set -euo pipefail
-cd "$CODEX_WORKTREE_PATH"
 
-node --version
-npm --version
-npm ci'''
+cd "${CODEX_WORKTREE_PATH:-$PWD}"
+
+uv venv --python 3.12 .venv
+
+uv pip install \
+  --python .venv/bin/python \
+  -r requirements.txt \
+  -r requirements-dev.txt
+
+export NVM_DIR="$HOME/.nvm"
+. "$NVM_DIR/nvm.sh"
+nvm use 24.18.0
+
+if [ -f web/package-lock.json ]; then
+  npm --prefix web ci
+else
+  echo "WARNING: web/package-lock.json is missing."
+  echo "Using a non-lockfile bootstrap until a lockfile is added."
+  npm --prefix web install --no-package-lock
+fi
+
+mkdir -p .data
+
+git status --short --branch'''
 
 [setup.win32]
 script = '''
@@ -25,3 +45,60 @@ script = "echo \"No project-specific cleanup required.\""
 
 [cleanup.win32]
 script = "Write-Host \"No project-specific cleanup required.\""
+
+[[actions]]
+name = "Start Streamlit with local data"
+icon = "tool"
+command = '''
+GERRIS_ONEDRIVE_DIR="$PWD/.data" \
+  .venv/bin/python -m streamlit run app.py'''
+
+[[actions]]
+name = "Python quality gate"
+icon = "tool"
+command = '''
+set -euo pipefail
+
+.venv/bin/python -m ruff format --check .
+.venv/bin/python -m ruff check .
+.venv/bin/python -m mypy .
+.venv/bin/python -m pytest -q'''
+
+[[actions]]
+name = "Start web application"
+icon = "tool"
+command = '''
+export NVM_DIR="$HOME/.nvm"
+. "$NVM_DIR/nvm.sh"
+nvm use 24.18.0 >/dev/null
+
+npm --prefix web run dev'''
+
+[[actions]]
+name = "Web quality gate"
+icon = "tool"
+command = '''
+export NVM_DIR="$HOME/.nvm"
+. "$NVM_DIR/nvm.sh"
+nvm use 24.18.0 >/dev/null
+
+npm --prefix web run check'''
+
+[[actions]]
+name = "Complete repository gate"
+icon = "tool"
+command = '''
+set -euo pipefail
+
+export NVM_DIR="$HOME/.nvm"
+. "$NVM_DIR/nvm.sh"
+nvm use 24.18.0 >/dev/null
+
+.venv/bin/python -m ruff format --check .
+.venv/bin/python -m ruff check .
+.venv/bin/python -m mypy .
+.venv/bin/python -m pytest -q
+
+npm --prefix web run check
+
+git status --short --branch'''
