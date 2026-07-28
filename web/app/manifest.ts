@@ -2,13 +2,14 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Gerri Life OS",
-    short_name: "Life OS",
-    description: "Mobile-first Self-Management und nachvollziehbare Automation.",
+    name: "Gerris Kompass",
+    short_name: "Kompass",
+    description:
+      "Privates Selbstmanagement für Aufgaben, Termine, Kosten und Unterlagen.",
     start_url: "/",
     display: "standalone",
-    background_color: "#f6f8f7",
-    theme_color: "#0f766e",
-    lang: "de-DE",
+    background_color: "#f2f5f0",
+    theme_color: "#0f765d",
+    lang: "de",
   };
 }

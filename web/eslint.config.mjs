@@ -1,17 +1,9 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTypescript from "eslint-config-next/typescript";
+import nextTs from "eslint-config-next/typescript";
 
 export default defineConfig([
   ...nextVitals,
-  ...nextTypescript,
-  globalIgnores([
-    ".next/**",
-    ".vinext/**",
-    "coverage/**",
-    "dist/**",
-    "node_modules/**",
-    "next-env.d.ts",
-    "public/widget.js",
-  ]),
+  ...nextTs,
+  globalIgnores([".next/**", "dist/**", "out/**", "next-env.d.ts"]),
 ]);

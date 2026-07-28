@@ -60,11 +60,11 @@ def get_openai_client() -> Optional[OpenAI]:
     if base_url:
         client_kwargs["base_url"] = base_url
 
-    return OpenAI(**client_kwargs)  # type: ignore[arg-type]
+    return OpenAI(**client_kwargs)
 
 
 def _responses_resource(client: OpenAI, timeout: float) -> Any:
-    return client.responses.with_options(timeout=timeout)  # type: ignore[attr-defined]
+    return client.responses.with_options(timeout=timeout)
 
 
 def request_structured_response(
