@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { AppState, SyncStatus } from "./types";
+import { COST_CATEGORIES } from "./finance-data";
+import type { AppState, CostCategory, SyncStatus } from "./types";
 
 const STORAGE_KEY = "gerris-kompass-state-v1";
 
@@ -19,12 +20,46 @@ const isAppState = (value: unknown): value is AppState => {
   );
 };
 
+const finiteOrZero = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+function normalizeState(value: AppState): AppState {
+  const candidate = value as AppState & {
+    incomes?: AppState["incomes"];
+    accountBalances?: Partial<AppState["accountBalances"]>;
+  };
+  return {
+    ...candidate,
+    costs: candidate.costs.map((cost) => {
+      const legacyCategory =
+        (cost.category as string) === "Alltag"
+          ? "Lebensmittel & Haushalt"
+          : cost.category;
+      const category = COST_CATEGORIES.includes(
+        legacyCategory as CostCategory,
+      )
+        ? (legacyCategory as CostCategory)
+        : "Sonstiges";
+      return { ...cost, category };
+    }),
+    incomes: Array.isArray(candidate.incomes) ? candidate.incomes : [],
+    accountBalances: {
+      paypal: finiteOrZero(candidate.accountBalances?.paypal),
+      revolut: finiteOrZero(candidate.accountBalances?.revolut),
+      updatedAt:
+        typeof candidate.accountBalances?.updatedAt === "string"
+          ? candidate.accountBalances.updatedAt
+          : candidate.updatedAt,
+    },
+  };
+}
+
 function readLocalState(): AppState | null {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    return isAppState(parsed) ? parsed : null;
+    return isAppState(parsed) ? normalizeState(parsed) : null;
   } catch {
     return null;
   }
@@ -55,8 +90,9 @@ export function useGerriState(initialState: AppState) {
         if (response.ok && response.status !== 204) {
           const payload: unknown = await response.json();
           if (isAppState(payload)) {
-            setState(payload);
-            writeLocalState(payload);
+            const normalized = normalizeState(payload);
+            setState(normalized);
+            writeLocalState(normalized);
             remoteAvailable.current = true;
             setSyncStatus("synchronisiert");
           }
@@ -134,7 +170,7 @@ export function useGerriState(initialState: AppState) {
       throw new Error("Das Backup hat kein unterstütztes Format.");
     }
     setState({
-      ...parsed,
+      ...normalizeState(parsed),
       revision: parsed.revision + 1,
       updatedAt: new Date().toISOString(),
     });

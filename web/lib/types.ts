@@ -28,21 +28,68 @@ export type Task = {
   confidential: boolean;
 };
 
-export type CostCadence = "once" | "monthly" | "quarterly" | "yearly";
+export type CostCadence =
+  | "once"
+  | "weekly"
+  | "fortnightly"
+  | "monthly"
+  | "bimonthly"
+  | "quarterly"
+  | "semiannual"
+  | "yearly";
 export type CostStatus = "paid" | "due" | "planned";
+export type CostCategory =
+  | "Wohnen"
+  | "Energie & Versorgung"
+  | "Versicherungen"
+  | "Mobilität"
+  | "Kommunikation & Medien"
+  | "Gesundheit"
+  | "Lebensmittel & Haushalt"
+  | "Kind & Familie"
+  | "Bildung & Entwicklung"
+  | "Freizeit & Abos"
+  | "Kredite & Verpflichtungen"
+  | "Steuern & Gebühren"
+  | "Business & Software"
+  | "Sparen & Vorsorge"
+  | "Sonstiges";
+export type CostType = "Fix" | "Variabel";
+export type CostPriority = "Notwendig" | "Wichtig" | "Optional";
 
 export type Cost = {
   id: string;
   title: string;
-  category: "Wohnen" | "Versicherungen" | "Mobilität" | "Alltag" | "Gesundheit" | "Sonstiges";
+  category: CostCategory;
+  subcategory?: string;
+  costType?: CostType;
+  priority?: CostPriority;
   amount: number;
   dueAt: string;
   cadence: CostCadence;
   status: CostStatus;
   payee: string;
+  paymentMethod?: string;
+  account?: string;
   contactEmail: string;
   note: string;
   confidential: true;
+};
+
+export type Income = {
+  id: string;
+  title: string;
+  amount: number;
+  receivedAt: string;
+  cadence: CostCadence;
+  note: string;
+  confidential: true;
+};
+
+export type AccountBalances = {
+  paypal: number;
+  revolut: number;
+  updatedAt: string;
 };
 
 export type DocumentKind = "pdf" | "document" | "sheet" | "folder" | "other";
@@ -97,6 +144,8 @@ export type AppState = {
   rhythmDays: number;
   tasks: Task[];
   costs: Cost[];
+  incomes: Income[];
+  accountBalances: AccountBalances;
   documents: DocumentRef[];
   calendarEvents: CalendarEvent[];
   journal: JournalEntry[];
@@ -132,7 +181,11 @@ export const QUADRANT_LABELS: Record<TaskQuadrant, string> = {
 
 export const COST_CADENCE_LABELS: Record<CostCadence, string> = {
   once: "Einmalig",
+  weekly: "Wöchentlich",
+  fortnightly: "14-täglich",
   monthly: "Monatlich",
+  bimonthly: "Zweimonatlich",
   quarterly: "Vierteljährlich",
+  semiannual: "Halbjährlich",
   yearly: "Jährlich",
 };

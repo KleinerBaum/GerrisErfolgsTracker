@@ -15,7 +15,13 @@ import {
 } from "./quick-actions";
 import { createDemoState } from "../lib/demo-data";
 import {
+  COST_CATEGORIES,
+  COST_SUGGESTIONS_BY_CATEGORY,
+  toMonthlyAmount,
+} from "../lib/finance-data";
+import {
   formatCurrency,
+  formatCurrencyRounded,
   formatDate,
   formatDateLong,
   formatRelativeDate,
@@ -34,14 +40,19 @@ import {
   COST_CADENCE_LABELS,
   LIFE_AREA_LABELS,
   QUADRANT_LABELS,
+  type AccountBalances,
   type AppState,
   type CalendarEvent,
   type CaptureKind,
   type Cost,
   type CostCadence,
+  type CostCategory,
+  type CostPriority,
   type CostStatus,
+  type CostType,
   type DocumentRef,
   type IntegrationConfig,
+  type Income,
   type LifeArea,
   type Task,
   type TaskQuadrant,
@@ -220,6 +231,22 @@ export function LifeOsApp({
       costs: [cost, ...current.costs],
     }));
     setNotice("Kostenposten gespeichert");
+  };
+
+  const saveIncome = (income: Income) => {
+    updateState((current) => ({
+      ...current,
+      incomes: [income, ...current.incomes],
+    }));
+    setNotice("Einnahme gespeichert");
+  };
+
+  const updateAccountBalances = (balances: AccountBalances) => {
+    updateState((current) => ({
+      ...current,
+      accountBalances: balances,
+    }));
+    setNotice("Kontostände aktualisiert");
   };
 
   const saveDocument = (document: DocumentRef) => {
@@ -437,8 +464,10 @@ export function LifeOsApp({
           {view === "finance" ? (
             <FinanceView
               integrations={integrations}
+              onAddIncome={saveIncome}
               onMarkPaid={markCostPaid}
               onNew={() => openCapture("cost")}
+              onUpdateBalances={updateAccountBalances}
               state={state}
             />
           ) : null}
@@ -1279,16 +1308,24 @@ function CalendarView({
 function FinanceView({
   state,
   integrations,
+  onAddIncome,
   onMarkPaid,
   onNew,
+  onUpdateBalances,
 }: {
   state: AppState;
   integrations: IntegrationConfig;
+  onAddIncome: (income: Income) => void;
   onMarkPaid: (costId: string) => void;
   onNew: () => void;
+  onUpdateBalances: (balances: AccountBalances) => void;
 }) {
   const [filter, setFilter] = useState<CostStatus | "all">("all");
   const [query, setQuery] = useState("");
+  const [incomeOpen, setIncomeOpen] = useState(false);
+  const [balancesOpen, setBalancesOpen] = useState(false);
+  const [zoomCategory, setZoomCategory] = useState<CostCategory | null>(null);
+  const [zoomCostId, setZoomCostId] = useState<string | null>(null);
   const visible = state.costs
     .filter((cost) => filter === "all" || cost.status === filter)
     .filter((cost) =>
@@ -1297,113 +1334,391 @@ function FinanceView({
         .includes(query.toLowerCase()),
     )
     .sort((left, right) => right.dueAt.localeCompare(left.dueAt));
-  const paid = state.costs
-    .filter(
-      (cost) =>
-        cost.status === "paid" &&
-        new Date(cost.dueAt).getMonth() === new Date().getMonth(),
-    )
-    .reduce((sum, cost) => sum + cost.amount, 0);
-  const planned = state.costs
-    .filter((cost) => cost.status !== "paid")
-    .reduce((sum, cost) => sum + cost.amount, 0);
-  const fixedMonthly = state.costs
-    .filter((cost) => cost.cadence === "monthly")
-    .reduce((sum, cost) => sum + cost.amount, 0);
-  const budgetLeft = Math.max(0, state.monthlyBudget - paid);
-  const categories = useMemo(() => {
-    const totals = new Map<string, number>();
-    state.costs
-      .filter((cost) => cost.status === "paid")
-      .forEach((cost) =>
-        totals.set(cost.category, (totals.get(cost.category) ?? 0) + cost.amount),
-      );
-    const max = Math.max(...totals.values(), 1);
-    return [...totals.entries()]
-      .sort((left, right) => right[1] - left[1])
-      .map(([name, value]) => ({ name, value, width: (value / max) * 100 }));
-  }, [state.costs]);
+  const sameMonth = (value: string): boolean => {
+    const date = new Date(value);
+    const now = new Date();
+    return (
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth()
+    );
+  };
+  const monthlyIncome = state.incomes.reduce(
+    (sum, income) =>
+      sum +
+      (income.cadence === "once"
+        ? sameMonth(income.receivedAt)
+          ? income.amount
+          : 0
+        : toMonthlyAmount(income.amount, income.cadence)),
+    0,
+  );
+  const recurringCosts = state.costs.filter((cost) => cost.cadence !== "once");
+  const monthlyCosts = recurringCosts.reduce(
+    (sum, cost) => sum + toMonthlyAmount(cost.amount, cost.cadence),
+    0,
+  );
+  const monthlyBalance = monthlyIncome - monthlyCosts;
+  const comparisonMax = Math.max(monthlyIncome, monthlyCosts, 1);
+  const expenseGroups = COST_CATEGORIES.map((category) => {
+    const items = recurringCosts.filter((cost) => cost.category === category);
+    return {
+      category,
+      items,
+      value: items.reduce(
+        (sum, cost) => sum + toMonthlyAmount(cost.amount, cost.cadence),
+        0,
+      ),
+    };
+  })
+    .filter((group) => group.value > 0)
+    .sort((left, right) => right.value - left.value);
+  const selectedGroup =
+    expenseGroups.find((group) => group.category === zoomCategory) ?? null;
+  const selectedCost =
+    selectedGroup?.items.find((cost) => cost.id === zoomCostId) ?? null;
+  const zoomAmount = selectedCost
+    ? toMonthlyAmount(selectedCost.amount, selectedCost.cadence)
+    : selectedGroup?.value ?? monthlyCosts;
+  const zoomLabel = selectedCost
+    ? selectedCost.title
+    : selectedGroup?.category ?? "Laufende Kosten";
+  const upcoming = state.costs
+    .filter((cost) => cost.status !== "paid" && daysFromNow(cost.dueAt) >= 0)
+    .sort((left, right) => left.dueAt.localeCompare(right.dueAt))
+    .slice(0, 6);
+  const accountTotal =
+    state.accountBalances.paypal + state.accountBalances.revolut;
 
   return (
     <div className="view-stack">
       <PageIntro
-        eyebrow="Vergangenheit, Gegenwart und Planung"
-        title="Dein Geld, ruhig und nachvollziehbar."
-        copy="Einmal erfassen, überall wiederfinden: vergangene Ausgaben, laufende Fixkosten und geplante Zahlungen greifen direkt mit Erinnerungen und Kalender zusammen."
+        eyebrow="Finanzielle Orientierung"
+        title="Erst das Ganze sehen. Dann ins Detail gehen."
+        copy="Einnahmen, laufende Kosten und verfügbare Kontostände bilden eine ruhige Gesamtansicht. Einzelbeträge erscheinen erst dort, wo du sie wirklich brauchst."
         action={
-          <button className="button button-primary" onClick={onNew} type="button">
-            Kosten erfassen
-          </button>
+          <div className="button-group">
+            <button
+              className="button button-soft"
+              onClick={() => setIncomeOpen(true)}
+              type="button"
+            >
+              Einnahme hinzufügen
+            </button>
+            <button className="button button-primary" onClick={onNew} type="button">
+              Laufende Kosten erfassen
+            </button>
+          </div>
         }
       />
 
-      <section className="metric-grid">
-        <Metric
-          label="Diesen Monat bezahlt"
-          note={`${Math.round((paid / state.monthlyBudget) * 100)} % deines Budgets`}
-          tone="green"
-          value={formatCurrency(paid)}
-        />
-        <Metric
-          label="Noch eingeplant"
-          note="Alle offenen und geplanten Posten"
-          tone="amber"
-          value={formatCurrency(planned)}
-        />
-        <Metric
-          label="Monatliche Fixkosten"
-          note={`${state.costs.filter((cost) => cost.cadence === "monthly").length} laufende Posten`}
-          tone="blue"
-          value={formatCurrency(fixedMonthly)}
-        />
-        <Metric
-          label="Budget verfügbar"
-          note={`von ${formatCurrency(state.monthlyBudget)}`}
-          tone="violet"
-          value={formatCurrency(budgetLeft)}
-        />
-      </section>
+      <section className="finance-overview-grid" aria-label="Finanzübersicht">
+        <article className="panel cashflow-overview">
+          <header className="finance-card-heading">
+            <div>
+              <span className="eyebrow">Monatlicher Rahmen</span>
+              <h2>Einnahmen und laufende Ausgaben</h2>
+            </div>
+            <span className={`balance-chip ${monthlyBalance < 0 ? "negative" : ""}`}>
+              {monthlyBalance >= 0 ? "Spielraum" : "Lücke"}{" "}
+              {formatCurrencyRounded(Math.abs(monthlyBalance))}
+            </span>
+          </header>
+          <div className="cashflow-comparison">
+            <div className="cashflow-line income">
+              <div>
+                <span>Einnahmen</span>
+                <strong>{formatCurrencyRounded(monthlyIncome)}</strong>
+              </div>
+              <div className="cashflow-track">
+                <i style={{ width: `${(monthlyIncome / comparisonMax) * 100}%` }} />
+              </div>
+            </div>
+            <div className="cashflow-line expense">
+              <div>
+                <span>Laufende Ausgaben</span>
+                <strong>{formatCurrencyRounded(monthlyCosts)}</strong>
+              </div>
+              <div className="cashflow-track">
+                <i style={{ width: `${(monthlyCosts / comparisonMax) * 100}%` }} />
+              </div>
+            </div>
+          </div>
+          <footer className="cashflow-footnote">
+            <span>
+              {state.incomes.length
+                ? `${state.incomes.length} Einnahme${state.incomes.length === 1 ? "" : "n"} erfasst`
+                : "Noch keine Einnahmen erfasst"}
+            </span>
+            <span>
+              {recurringCosts.length} laufende{" "}
+              {recurringCosts.length === 1 ? "Position" : "Positionen"}
+            </span>
+          </footer>
+        </article>
 
-      <div className="content-grid finance-insights">
-        <section className="panel budget-panel">
-          <PanelHeading eyebrow="Monatsrahmen" title="Budgetverlauf" />
-          <div className="budget-visual">
-            <div className="budget-ring">
-              <strong>{Math.min(100, Math.round((paid / state.monthlyBudget) * 100))}%</strong>
-              <span>genutzt</span>
+        <article className="panel account-overview">
+          <header className="finance-card-heading">
+            <div>
+              <span className="eyebrow">Verfügbar</span>
+              <h2>Kontostände</h2>
+            </div>
+            <button
+              className="text-button"
+              onClick={() => setBalancesOpen(true)}
+              type="button"
+            >
+              Bearbeiten
+            </button>
+          </header>
+          <div className="account-list">
+            <div>
+              <span className="account-mark paypal">P</span>
+              <div>
+                <span>PayPal</span>
+                <strong>{formatCurrencyRounded(state.accountBalances.paypal)}</strong>
+              </div>
             </div>
             <div>
-              <strong>{formatCurrency(budgetLeft)}</strong>
-              <span>noch verfügbar</span>
-              <div className="budget-track">
-                <span
-                  style={{
-                    width: `${Math.min(100, (paid / state.monthlyBudget) * 100)}%`,
-                  }}
-                />
+              <span className="account-mark revolut">R</span>
+              <div>
+                <span>Revolut</span>
+                <strong>{formatCurrencyRounded(state.accountBalances.revolut)}</strong>
               </div>
-              <small>
-                Budget lässt sich im nächsten Ausbau individuell je Kategorie
-                steuern.
-              </small>
             </div>
           </div>
-        </section>
-        <section className="panel category-panel">
-          <PanelHeading eyebrow="Verteilung" title="Bezahlte Kosten nach Bereich" />
-          <div className="category-bars">
-            {categories.map((category) => (
-              <div key={category.name}>
-                <span>{category.name}</span>
-                <div>
-                  <i style={{ width: `${category.width}%` }} />
-                </div>
-                <strong>{formatCurrency(category.value)}</strong>
-              </div>
-            ))}
+          <footer>
+            <span>Zusammen verfügbar</span>
+            <strong>{formatCurrencyRounded(accountTotal)}</strong>
+          </footer>
+        </article>
+      </section>
+
+      <section className="panel expense-explorer">
+        <header className="explorer-heading">
+          <div>
+            <span className="eyebrow">Kosten-Zoom</span>
+            <h2>Von der Summe bis zum einzelnen Vertrag</h2>
+            <p>
+              Wähle eine Ebene. Die Übersicht bleibt gerundet, Details zeigen
+              den exakten Betrag.
+            </p>
           </div>
-        </section>
-      </div>
+          <nav aria-label="Aktuelle Kostenebene" className="explorer-breadcrumbs">
+            <button
+              aria-current={!zoomCategory ? "page" : undefined}
+              onClick={() => {
+                setZoomCategory(null);
+                setZoomCostId(null);
+              }}
+              type="button"
+            >
+              Gesamt
+            </button>
+            {selectedGroup ? (
+              <>
+                <span>/</span>
+                <button
+                  aria-current={!selectedCost ? "page" : undefined}
+                  onClick={() => setZoomCostId(null)}
+                  type="button"
+                >
+                  {selectedGroup.category}
+                </button>
+              </>
+            ) : null}
+            {selectedCost ? (
+              <>
+                <span>/</span>
+                <strong>{selectedCost.title}</strong>
+              </>
+            ) : null}
+          </nav>
+        </header>
+
+        <div
+          aria-live="polite"
+          className="expense-stage"
+          key={`${zoomCategory ?? "total"}-${zoomCostId ?? "group"}`}
+        >
+          <div className="expense-orbit" aria-label={`${zoomLabel}: ${formatCurrencyRounded(zoomAmount)} pro Monat`}>
+            <div className="orbit-pulse" />
+            <div className="orbit-core">
+              <span>{zoomLabel}</span>
+              <strong>{formatCurrencyRounded(zoomAmount)}</strong>
+              <small>pro Monat</small>
+            </div>
+          </div>
+
+          <div className="explorer-results">
+            {!selectedGroup ? (
+              <div className="explorer-list">
+                {expenseGroups.map((group, index) => (
+                  <button
+                    key={group.category}
+                    onClick={() => {
+                      setZoomCategory(group.category);
+                      setZoomCostId(null);
+                    }}
+                    style={{ animationDelay: `${index * 45}ms` }}
+                    type="button"
+                  >
+                    <span className="explorer-index">{String(index + 1).padStart(2, "0")}</span>
+                    <span>
+                      <strong>{group.category}</strong>
+                      <small>
+                        {group.items.length}{" "}
+                        {group.items.length === 1 ? "Posten" : "Posten"}
+                      </small>
+                    </span>
+                    <span className="explorer-share">
+                      <i
+                        style={{
+                          width: `${monthlyCosts ? (group.value / monthlyCosts) * 100 : 0}%`,
+                        }}
+                      />
+                    </span>
+                    <strong>{formatCurrencyRounded(group.value)}</strong>
+                    <span aria-hidden="true">›</span>
+                  </button>
+                ))}
+                {!expenseGroups.length ? (
+                  <EmptyState
+                    copy="Erfasse deinen ersten wiederkehrenden Posten – die Kategorien entstehen automatisch."
+                    title="Noch keine laufenden Kosten."
+                  />
+                ) : null}
+              </div>
+            ) : selectedCost ? (
+              <article className="expense-detail-card">
+                <div className="detail-amount">
+                  <span>Exakter Zahlbetrag</span>
+                  <strong>{formatCurrency(selectedCost.amount)}</strong>
+                </div>
+                <dl>
+                  <div>
+                    <dt>Monatswert</dt>
+                    <dd>
+                      {formatCurrency(
+                        toMonthlyAmount(selectedCost.amount, selectedCost.cadence),
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Rhythmus</dt>
+                    <dd>{COST_CADENCE_LABELS[selectedCost.cadence]}</dd>
+                  </div>
+                  <div>
+                    <dt>Nächste Fälligkeit</dt>
+                    <dd>{formatDateLong(selectedCost.dueAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Art</dt>
+                    <dd>{selectedCost.costType ?? "Nicht zugeordnet"}</dd>
+                  </div>
+                  <div>
+                    <dt>Unterkategorie</dt>
+                    <dd>{selectedCost.subcategory ?? selectedCost.category}</dd>
+                  </div>
+                  <div>
+                    <dt>Anbieter</dt>
+                    <dd>{selectedCost.payee || "Nicht hinterlegt"}</dd>
+                  </div>
+                </dl>
+                <button
+                  className="button button-soft"
+                  onClick={() => setZoomCostId(null)}
+                  type="button"
+                >
+                  Zurück zu {selectedGroup.category}
+                </button>
+              </article>
+            ) : (
+              <div className="explorer-list">
+                {selectedGroup.items
+                  .slice()
+                  .sort(
+                    (left, right) =>
+                      toMonthlyAmount(right.amount, right.cadence) -
+                      toMonthlyAmount(left.amount, left.cadence),
+                  )
+                  .map((cost, index) => (
+                    <button
+                      key={cost.id}
+                      onClick={() => setZoomCostId(cost.id)}
+                      style={{ animationDelay: `${index * 45}ms` }}
+                      type="button"
+                    >
+                      <span className="explorer-index">{String(index + 1).padStart(2, "0")}</span>
+                      <span>
+                        <strong>{cost.title}</strong>
+                        <small>
+                          {cost.subcategory ?? COST_CADENCE_LABELS[cost.cadence]}
+                        </small>
+                      </span>
+                      <span className="explorer-share">
+                        <i
+                          style={{
+                            width: `${selectedGroup.value ? (toMonthlyAmount(cost.amount, cost.cadence) / selectedGroup.value) * 100 : 0}%`,
+                          }}
+                        />
+                      </span>
+                      <strong>
+                        {formatCurrencyRounded(
+                          toMonthlyAmount(cost.amount, cost.cadence),
+                        )}
+                      </strong>
+                      <span aria-hidden="true">›</span>
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="panel upcoming-costs-panel">
+        <div className="table-toolbar">
+          <div>
+            <span className="eyebrow">Als Nächstes</span>
+            <h2>Anstehende Ausgaben</h2>
+          </div>
+          <span className="muted-label">
+            {upcoming.length
+              ? `${upcoming.length} Zahlungen im Blick`
+              : "Keine offenen Zahlungen"}
+          </span>
+        </div>
+        <div className="upcoming-costs-list">
+          {upcoming.map((cost) => (
+            <article key={cost.id}>
+              <time dateTime={cost.dueAt}>
+                <strong>{new Date(cost.dueAt).getDate()}</strong>
+                <span>
+                  {new Intl.DateTimeFormat("de-DE", { month: "short" }).format(
+                    new Date(cost.dueAt),
+                  )}
+                </span>
+              </time>
+              <div>
+                <strong>{cost.title}</strong>
+                <span>
+                  {cost.category} · {formatRelativeDate(cost.dueAt)}
+                </span>
+              </div>
+              <strong>{formatCurrencyRounded(cost.amount)}</strong>
+              <button onClick={() => onMarkPaid(cost.id)} type="button">
+                Erledigt
+              </button>
+            </article>
+          ))}
+          {!upcoming.length ? (
+            <EmptyState
+              copy="Sobald ein offener Kostenposten fällig wird, erscheint er hier."
+              title="Alles ist eingeplant."
+            />
+          ) : null}
+        </div>
+      </section>
 
       <section className="panel cost-table-panel">
         <div className="table-toolbar">
@@ -1454,7 +1769,8 @@ function FinanceView({
               <div>
                 <strong>{cost.title}</strong>
                 <small>
-                  {cost.category} · {cost.payee || "Kein Empfänger"}
+                  {cost.category}
+                  {cost.subcategory ? ` · ${cost.subcategory}` : ""}
                 </small>
               </div>
               <span data-label="Fälligkeit">{formatDate(cost.dueAt)}</span>
@@ -1499,6 +1815,223 @@ function FinanceView({
             </article>
           ))}
         </div>
+      </section>
+
+      {incomeOpen ? (
+        <IncomeDialog
+          onClose={() => setIncomeOpen(false)}
+          onSave={(income) => {
+            onAddIncome(income);
+            setIncomeOpen(false);
+          }}
+        />
+      ) : null}
+      {balancesOpen ? (
+        <BalancesDialog
+          balances={state.accountBalances}
+          onClose={() => setBalancesOpen(false)}
+          onSave={(balances) => {
+            onUpdateBalances(balances);
+            setBalancesOpen(false);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function IncomeDialog({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void;
+  onSave: (income: Income) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [amount, setAmount] = useState("");
+  const [receivedAt, setReceivedAt] = useState(isoDateInput());
+  const [cadence, setCadence] = useState<CostCadence>("monthly");
+  const [note, setNote] = useState("");
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const numericAmount = Number.parseFloat(amount.replace(",", "."));
+    if (!title.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return;
+    }
+    onSave({
+      id: uid("income"),
+      title: title.trim(),
+      amount: numericAmount,
+      receivedAt: dateAtNine(receivedAt),
+      cadence,
+      note: note.trim(),
+      confidential: true,
+    });
+  };
+
+  return (
+    <div className="dialog-backdrop" onMouseDown={onClose} role="presentation">
+      <section
+        aria-labelledby="income-dialog-title"
+        aria-modal="true"
+        className="capture-dialog finance-dialog"
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header className="dialog-heading">
+          <div>
+            <span className="eyebrow">Einnahmen</span>
+            <h2 id="income-dialog-title">Einnahme hinzufügen</h2>
+          </div>
+          <button onClick={onClose} type="button">
+            Schließen
+          </button>
+        </header>
+        <form className="capture-form finance-entry-form" onSubmit={submit}>
+          <label>
+            Bezeichnung
+            <input
+              autoFocus
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="z. B. Gehalt oder Erstattung"
+              value={title}
+            />
+          </label>
+          <div className="form-grid">
+            <label>
+              Betrag in Euro
+              <input
+                inputMode="decimal"
+                onChange={(event) => setAmount(event.target.value)}
+                placeholder="0,00"
+                value={amount}
+              />
+            </label>
+            <label>
+              Eingang am
+              <input
+                onChange={(event) => setReceivedAt(event.target.value)}
+                type="date"
+                value={receivedAt}
+              />
+            </label>
+          </div>
+          <label>
+            Rhythmus
+            <select
+              onChange={(event) =>
+                setCadence(event.target.value as CostCadence)
+              }
+              value={cadence}
+            >
+              {(Object.keys(COST_CADENCE_LABELS) as CostCadence[]).map(
+                (value) => (
+                  <option key={value} value={value}>
+                    {COST_CADENCE_LABELS[value]}
+                  </option>
+                ),
+              )}
+            </select>
+          </label>
+          <label>
+            Notiz
+            <textarea
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="Optional"
+              rows={3}
+              value={note}
+            />
+          </label>
+          <div className="dialog-actions">
+            <button className="button button-ghost" onClick={onClose} type="button">
+              Abbrechen
+            </button>
+            <button className="button button-primary" type="submit">
+              Einnahme speichern
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function BalancesDialog({
+  balances,
+  onClose,
+  onSave,
+}: {
+  balances: AccountBalances;
+  onClose: () => void;
+  onSave: (balances: AccountBalances) => void;
+}) {
+  const [paypal, setPaypal] = useState(String(balances.paypal));
+  const [revolut, setRevolut] = useState(String(balances.revolut));
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const paypalValue = Number.parseFloat(paypal.replace(",", "."));
+    const revolutValue = Number.parseFloat(revolut.replace(",", "."));
+    if (!Number.isFinite(paypalValue) || !Number.isFinite(revolutValue)) return;
+    onSave({
+      paypal: paypalValue,
+      revolut: revolutValue,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  return (
+    <div className="dialog-backdrop" onMouseDown={onClose} role="presentation">
+      <section
+        aria-labelledby="balances-dialog-title"
+        aria-modal="true"
+        className="capture-dialog finance-dialog"
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header className="dialog-heading">
+          <div>
+            <span className="eyebrow">Kontostände</span>
+            <h2 id="balances-dialog-title">Verfügbares Guthaben aktualisieren</h2>
+          </div>
+          <button onClick={onClose} type="button">
+            Schließen
+          </button>
+        </header>
+        <form className="capture-form finance-entry-form" onSubmit={submit}>
+          <div className="form-grid">
+            <label>
+              PayPal in Euro
+              <input
+                autoFocus
+                inputMode="decimal"
+                onChange={(event) => setPaypal(event.target.value)}
+                value={paypal}
+              />
+            </label>
+            <label>
+              Revolut in Euro
+              <input
+                inputMode="decimal"
+                onChange={(event) => setRevolut(event.target.value)}
+                value={revolut}
+              />
+            </label>
+          </div>
+          <p className="form-trust">
+            Die Werte werden nur in deinem privaten Kompass gespeichert. Es
+            findet keine automatische Kontoabfrage statt.
+          </p>
+          <div className="dialog-actions">
+            <button className="button button-ghost" onClick={onClose} type="button">
+              Abbrechen
+            </button>
+            <button className="button button-primary" type="submit">
+              Kontostände speichern
+            </button>
+          </div>
+        </form>
       </section>
     </div>
   );
@@ -1873,9 +2406,15 @@ function CaptureDialog({
   const [quadrant, setQuadrant] = useState<TaskQuadrant>("do");
   const [minutes, setMinutes] = useState(20);
   const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState<Cost["category"]>("Alltag");
+  const [category, setCategory] = useState<CostCategory>("Wohnen");
+  const [subcategory, setSubcategory] = useState("");
+  const [costType, setCostType] = useState<CostType>("Fix");
+  const [costPriority, setCostPriority] =
+    useState<CostPriority>("Notwendig");
   const [cadence, setCadence] = useState<CostCadence>("once");
   const [payee, setPayee] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [account, setAccount] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [driveUrl, setDriveUrl] = useState("");
   const [folderPath, setFolderPath] = useState("Persönlich/Wichtige Unterlagen");
@@ -1905,11 +2444,16 @@ function CaptureDialog({
         id: uid("cost"),
         title: title.trim(),
         category,
+        subcategory: subcategory.trim() || undefined,
+        costType,
+        priority: costPriority,
         amount: numericAmount,
         dueAt: dateAtNine(date),
         cadence,
         status: daysFromNow(dateAtNine(date)) <= 3 ? "due" : "planned",
         payee: payee.trim(),
+        paymentMethod: paymentMethod || undefined,
+        account: account || undefined,
         contactEmail: contactEmail.trim(),
         note: "Über Schnellerfassung angelegt",
         confidential: true,
@@ -2070,6 +2614,35 @@ function CaptureDialog({
 
           {kind === "cost" ? (
             <>
+              <label>
+                Vorlage aus der Kosten-Tabelle
+                <select
+                  onChange={(event) => {
+                    const selected = COST_SUGGESTIONS_BY_CATEGORY.flatMap(
+                      (group) => group.items,
+                    ).find((item) => item.id === event.target.value);
+                    if (!selected) return;
+                    setTitle(selected.title);
+                    setCategory(selected.category);
+                    setSubcategory(selected.subcategory);
+                    setCostType(selected.costType);
+                    setCostPriority(selected.priority);
+                    setCadence(selected.cadence);
+                  }}
+                  value=""
+                >
+                  <option value="">Freie Eingabe</option>
+                  {COST_SUGGESTIONS_BY_CATEGORY.map((group) => (
+                    <optgroup key={group.category} label={group.category}>
+                      {group.items.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.title}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
               <div className="form-grid">
                 <label>
                   Betrag in Euro
@@ -2098,15 +2671,10 @@ function CaptureDialog({
                     }
                     value={category}
                   >
-                    {[
-                      "Wohnen",
-                      "Versicherungen",
-                      "Mobilität",
-                      "Alltag",
-                      "Gesundheit",
-                      "Sonstiges",
-                    ].map((value) => (
-                      <option key={value}>{value}</option>
+                    {COST_CATEGORIES.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
                     ))}
                   </select>
                 </label>
@@ -2130,6 +2698,58 @@ function CaptureDialog({
               </div>
               <div className="form-grid">
                 <label>
+                  Unterkategorie
+                  <input
+                    onChange={(event) => setSubcategory(event.target.value)}
+                    placeholder="Optional"
+                    value={subcategory}
+                  />
+                </label>
+                <label>
+                  Kostenart
+                  <select
+                    onChange={(event) =>
+                      setCostType(event.target.value as CostType)
+                    }
+                    value={costType}
+                  >
+                    <option value="Fix">Fix</option>
+                    <option value="Variabel">Variabel</option>
+                  </select>
+                </label>
+              </div>
+              <div className="form-grid">
+                <label>
+                  Priorität
+                  <select
+                    onChange={(event) =>
+                      setCostPriority(event.target.value as CostPriority)
+                    }
+                    value={costPriority}
+                  >
+                    <option value="Notwendig">Notwendig</option>
+                    <option value="Wichtig">Wichtig</option>
+                    <option value="Optional">Optional</option>
+                  </select>
+                </label>
+                <label>
+                  Konto
+                  <select
+                    onChange={(event) => setAccount(event.target.value)}
+                    value={account}
+                  >
+                    <option value="">Nicht festgelegt</option>
+                    <option value="PayPal">PayPal</option>
+                    <option value="Revolut">Revolut</option>
+                    <option value="Girokonto">Girokonto</option>
+                    <option value="Kreditkarte">Kreditkarte</option>
+                    <option value="Bargeld">Bargeld</option>
+                    <option value="Sonstiges">Sonstiges</option>
+                  </select>
+                </label>
+              </div>
+              <div className="form-grid">
+                <label>
                   Empfänger
                   <input
                     onChange={(event) => setPayee(event.target.value)}
@@ -2137,6 +2757,24 @@ function CaptureDialog({
                     value={payee}
                   />
                 </label>
+                <label>
+                  Zahlungsart
+                  <select
+                    onChange={(event) => setPaymentMethod(event.target.value)}
+                    value={paymentMethod}
+                  >
+                    <option value="">Nicht festgelegt</option>
+                    <option value="Lastschrift">Lastschrift</option>
+                    <option value="Dauerauftrag">Dauerauftrag</option>
+                    <option value="Überweisung">Überweisung</option>
+                    <option value="Kreditkarte">Kreditkarte</option>
+                    <option value="PayPal">PayPal</option>
+                    <option value="Bar">Bar</option>
+                    <option value="Sonstige">Sonstige</option>
+                  </select>
+                </label>
+              </div>
+              <div className="form-grid">
                 <label>
                   Kontakt-E-Mail
                   <input

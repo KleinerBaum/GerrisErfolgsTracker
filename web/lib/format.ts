@@ -4,6 +4,14 @@ export const formatCurrency = (value: number): string =>
     currency: "EUR",
   }).format(value);
 
+export const formatCurrencyRounded = (value: number): string =>
+  new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+  }).format(Math.round(value));
+
 export const formatDate = (value: string): string =>
   new Intl.DateTimeFormat("de-DE", {
     weekday: "short",
