@@ -18,7 +18,14 @@ const localBindingConfig = {
         },
       ]
     : [],
-  r2_buckets: [],
+  r2_buckets: hostingConfig.r2
+    ? [
+        {
+          binding: hostingConfig.r2,
+          bucket_name: "gerris-kompass-files",
+        },
+      ]
+    : [],
 };
 
 export default defineConfig(async () => {
