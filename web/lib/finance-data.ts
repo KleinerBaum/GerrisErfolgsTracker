@@ -110,7 +110,7 @@ export const COST_SUGGESTIONS_BY_CATEGORY = COST_CATEGORIES.map((category) => ({
 export const CADENCE_MONTHLY_FACTOR: Record<CostCadence, number> = {
   once: 0,
   weekly: 52 / 12,
-  fortnightly: 26 / 12,
+  biweekly: 26 / 12,
   monthly: 1,
   bimonthly: 1 / 2,
   quarterly: 1 / 3,

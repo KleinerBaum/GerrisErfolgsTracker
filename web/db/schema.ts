@@ -6,3 +6,12 @@ export const userStates = sqliteTable("user_states", {
   stateVersion: integer("state_version").notNull().default(1),
   updatedAt: text("updated_at").notNull(),
 });
+
+export const googleDriveConnections = sqliteTable("google_drive_connections", {
+  ownerEmail: text("owner_email").primaryKey(),
+  googleEmail: text("google_email").notNull(),
+  encryptedRefreshToken: text("encrypted_refresh_token").notNull(),
+  grantedScopes: text("granted_scopes").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});

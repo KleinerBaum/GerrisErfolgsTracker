@@ -14,8 +14,8 @@ export const DEFAULT_INTEGRATIONS: IntegrationConfig = {
   calendarEmbedUrl:
     "https://calendar.google.com/calendar/embed?src=gerrit.fabisch2024%40gmail.com&ctz=Europe%2FBerlin",
   driveFolderUrl:
-    "https://drive.google.com/drive/folders/1D4267CAvCzNyZJC7NQc5zkFqSy-jBGxQ",
-  driveLocalPath: "G:\\Meine Ablage\\Fotos_Dokumente",
+    "https://drive.google.com/drive/folders/1_XCyuIovFJQSQ80zVy3gVkBuM8Tutgwe",
+  driveLocalPath: "G:\\Meine Ablage\\Unterlagen und Dokumente",
   gmailAccount: "gerrit.fabisch2024@gmail.com",
 };
 
@@ -28,12 +28,6 @@ export function createDemoState(ownerName = "Gerri"): AppState {
     monthlyBudget: 1700,
     points: 1240,
     rhythmDays: 5,
-    incomes: [],
-    accountBalances: {
-      paypal: 0,
-      revolut: 0,
-      updatedAt: new Date().toISOString(),
-    },
     tasks: [
       {
         id: "task-focus",
@@ -85,9 +79,6 @@ export function createDemoState(ownerName = "Gerri"): AppState {
         id: "cost-groceries",
         title: "Wocheneinkauf",
         category: "Lebensmittel & Haushalt",
-        subcategory: "Lebensmittel",
-        costType: "Variabel",
-        priority: "Notwendig",
         amount: 68.4,
         dueAt: dayAt(-2, 10),
         cadence: "once",
@@ -101,9 +92,6 @@ export function createDemoState(ownerName = "Gerri"): AppState {
         id: "cost-internet",
         title: "Internet",
         category: "Wohnen",
-        subcategory: "Internet",
-        costType: "Fix",
-        priority: "Notwendig",
         amount: 44.99,
         dueAt: dayAt(3, 9),
         cadence: "monthly",
@@ -116,10 +104,7 @@ export function createDemoState(ownerName = "Gerri"): AppState {
       {
         id: "cost-energy",
         title: "Stromabschlag",
-        category: "Energie & Versorgung",
-        subcategory: "Strom",
-        costType: "Variabel",
-        priority: "Notwendig",
+        category: "Wohnen",
         amount: 72,
         dueAt: dayAt(7, 9),
         cadence: "monthly",
@@ -133,9 +118,6 @@ export function createDemoState(ownerName = "Gerri"): AppState {
         id: "cost-insurance",
         title: "Haftpflichtversicherung",
         category: "Versicherungen",
-        subcategory: "Privathaftpflicht",
-        costType: "Fix",
-        priority: "Notwendig",
         amount: 89,
         dueAt: dayAt(12, 9),
         cadence: "yearly",
@@ -149,9 +131,6 @@ export function createDemoState(ownerName = "Gerri"): AppState {
         id: "cost-transport",
         title: "Mobilität",
         category: "Mobilität",
-        subcategory: "ÖPNV",
-        costType: "Fix",
-        priority: "Wichtig",
         amount: 58,
         dueAt: dayAt(-7, 8),
         cadence: "monthly",
@@ -162,6 +141,12 @@ export function createDemoState(ownerName = "Gerri"): AppState {
         confidential: true,
       },
     ],
+    incomes: [],
+    accountBalances: {
+      paypal: null,
+      revolut: null,
+      updatedAt: null,
+    },
     documents: [
       {
         id: "doc-root",

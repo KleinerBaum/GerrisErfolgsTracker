@@ -9,9 +9,11 @@ Unter `web/` entsteht die eigenständige, responsive Sites-Version des
 ErfolgsTrackers. Sie führt Aufgaben, Kalender, Kosten, Unterlagen und Journal in
 einer ruhigen deutschen Oberfläche zusammen.
 
-- Einklappbare Navigation mit Ordnerstruktur für wichtige Unterlagen.
-- Google-Drive-Verweise mit DIN-A4-Vorschau und direktem Download; Dateiinhalte
-  bleiben in Google Drive.
+- Rekursiv einklappbare Live-Navigation für den Drive-Ordner „Unterlagen und
+  Dokumente“; die Hauptansicht zeigt den direkten Ordnerinhalt.
+- Geschützte Inline-Vorschau für PDFs, Bilder, Texte sowie exportierte
+  Google-Dokumente, -Tabellen und -Präsentationen; Dateiinhalte bleiben in
+  Google Drive.
 - Google-Kalender als private Agenda mit bestätigungspflichtigen
   Zahlungserinnerungen und optionaler eingebetteter Ansicht.
 - Gmail-Entwürfe werden nur nach einer bewussten Nutzeraktion geöffnet.
