@@ -1,4 +1,5 @@
 import type { AppState, IntegrationConfig } from "./types";
+import { APPLICATION_RESEARCH } from "./application-research";
 
 const dayAt = (offset: number, hour = 9, minute = 0): string => {
   const date = new Date();
@@ -213,6 +214,11 @@ export function createDemoState(ownerName = "Gerri"): AppState {
         private: true,
       },
     ],
+    applications: APPLICATION_RESEARCH.map((application) => ({
+      ...application,
+      artifacts: [],
+    })),
+    masterCvDocumentId: null,
     journal: [
       {
         id: "journal-1",

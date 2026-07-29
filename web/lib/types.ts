@@ -4,6 +4,7 @@ export type ViewKey =
   | "calendar"
   | "finance"
   | "documents"
+  | "applications"
   | "journal";
 
 export type LifeArea =
@@ -163,6 +164,66 @@ export type JournalEntry = {
   nextStep: string;
 };
 
+export type ApplicationStatus =
+  | "research"
+  | "planned"
+  | "draft"
+  | "submitted"
+  | "interview"
+  | "offer"
+  | "rejected"
+  | "withdrawn"
+  | "closed";
+
+export type SalaryOutlook = "yes" | "borderline" | "open" | "no";
+
+export type ApplicationResearchTier = "top" | "plausible" | "stretch" | "own";
+
+export type ApplicationArtifactKind =
+  | "cover-letter"
+  | "tailored-cv"
+  | "research"
+  | "job-posting"
+  | "job-screenshot"
+  | "certificate"
+  | "other";
+
+export type ApplicationArtifact = {
+  id: string;
+  kind: ApplicationArtifactKind;
+  documentId: string;
+  label: string;
+  createdAt: string;
+};
+
+export type ApplicationProcess = {
+  id: string;
+  researchRank: number | null;
+  researchTier: ApplicationResearchTier;
+  shortlisted: boolean;
+  jobTitle: string;
+  company: string;
+  location: string;
+  deadline: string | null;
+  publishedTerms: string;
+  compensation: string;
+  salaryOutlook: SalaryOutlook;
+  fitRating: string;
+  researchSummary: string;
+  sourceUrl: string;
+  sourceVerifiedAt: string;
+  status: ApplicationStatus;
+  appliedAt: string | null;
+  applicationChannel: string;
+  appliedTerms: string;
+  contactPerson: string;
+  contactEmail: string;
+  nextStep: string;
+  nextStepAt: string | null;
+  notes: string;
+  artifacts: ApplicationArtifact[];
+};
+
 export type AppState = {
   schemaVersion: 1;
   revision: number;
@@ -177,6 +238,8 @@ export type AppState = {
   accountBalances?: AccountBalances;
   documents: DocumentRef[];
   calendarEvents: CalendarEvent[];
+  applications: ApplicationProcess[];
+  masterCvDocumentId: string | null;
   journal: JournalEntry[];
 };
 
@@ -206,6 +269,25 @@ export const QUADRANT_LABELS: Record<TaskQuadrant, string> = {
   plan: "Einplanen",
   delegate: "Abgeben",
   drop: "Loslassen",
+};
+
+export const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
+  research: "Recherche",
+  planned: "Vorgemerkt",
+  draft: "In Vorbereitung",
+  submitted: "Beworben",
+  interview: "Gespräch",
+  offer: "Angebot",
+  rejected: "Absage",
+  withdrawn: "Zurückgezogen",
+  closed: "Abgeschlossen",
+};
+
+export const SALARY_OUTLOOK_LABELS: Record<SalaryOutlook, string> = {
+  yes: "50k realistisch",
+  borderline: "50k Grenzfall",
+  open: "50k offen",
+  no: "50k nicht erreichbar",
 };
 
 export const COST_CADENCE_LABELS: Record<CostCadence, string> = {

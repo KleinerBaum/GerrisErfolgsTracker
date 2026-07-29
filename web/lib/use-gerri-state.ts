@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { COST_CATEGORIES } from "./finance-data";
+import { mergeApplicationResearch } from "./application-research";
 import type { AppState, CostCategory, SyncStatus } from "./types";
 
 const STORAGE_KEY = "gerris-kompass-state-v1";
@@ -51,6 +52,11 @@ function normalizeState(value: AppState): AppState {
           ? candidate.accountBalances.updatedAt
           : candidate.updatedAt,
     },
+    applications: mergeApplicationResearch(candidate.applications),
+    masterCvDocumentId:
+      typeof candidate.masterCvDocumentId === "string"
+        ? candidate.masterCvDocumentId
+        : null,
   };
 }
 

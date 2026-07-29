@@ -13,6 +13,7 @@ import {
 } from "../lib/google-links";
 import {
   type CalendarEvent,
+  type ApplicationProcess,
   type DocumentKind,
   type DocumentRef,
   type IntegrationConfig,
@@ -69,6 +70,8 @@ export function SidebarQuickActions({
 type QuickActionDialogProps = {
   kind: Exclude<QuickActionKind, "task">;
   documents: DocumentRef[];
+  applicationDraft: ApplicationProcess | null;
+  masterCvDocumentId: string | null;
   integrations: IntegrationConfig;
   onClose: () => void;
   onSaveDocument: (document: DocumentRef) => void;
@@ -101,7 +104,9 @@ const ACTION_COPY: Record<
 export function QuickActionDialog({
   kind,
   documents,
+  applicationDraft,
   integrations,
+  masterCvDocumentId,
   onClose,
   onSaveDocument,
   onSaveEvent,
@@ -153,6 +158,9 @@ export function QuickActionDialog({
         {kind === "application" ? (
           <ApplicationStudio
             account={integrations.gmailAccount}
+            documents={documents}
+            initialApplication={applicationDraft}
+            masterCvDocumentId={masterCvDocumentId}
             toast={toast}
           />
         ) : null}
@@ -1095,23 +1103,52 @@ function safeHttpUrl(value: string): string | null {
 
 function ApplicationStudio({
   account,
+  documents,
+  initialApplication,
+  masterCvDocumentId,
   toast,
 }: {
   account: string;
+  documents: DocumentRef[];
+  initialApplication: ApplicationProcess | null;
+  masterCvDocumentId: string | null;
   toast: (message: string) => void;
 }) {
   const cvRef = useRef<HTMLInputElement>(null);
-  const [jobUrl, setJobUrl] = useState("");
-  const [companyName, setCompanyName] = useState("");
-  const [roleTitle, setRoleTitle] = useState("");
-  const [contactPerson, setContactPerson] = useState("");
-  const [recipientEmail, setRecipientEmail] = useState("");
+  const masterCv = documents.find(
+    (document) =>
+      document.id === masterCvDocumentId && document.storage === "upload",
+  );
+  const [jobUrl, setJobUrl] = useState(initialApplication?.sourceUrl ?? "");
+  const [companyName, setCompanyName] = useState(
+    initialApplication?.company ?? "",
+  );
+  const [roleTitle, setRoleTitle] = useState(
+    initialApplication?.jobTitle ?? "",
+  );
+  const [contactPerson, setContactPerson] = useState(
+    initialApplication?.contactPerson ?? "",
+  );
+  const [recipientEmail, setRecipientEmail] = useState(
+    initialApplication?.contactEmail ?? "",
+  );
   const [cv, setCv] = useState<File | null>(null);
-  const [motivation, setMotivation] = useState("");
+  const [useMasterCv, setUseMasterCv] = useState(Boolean(masterCv));
+  const [motivation, setMotivation] = useState(
+    initialApplication?.researchSummary ?? "",
+  );
   const [achievements, setAchievements] = useState("");
   const [strengths, setStrengths] = useState("");
-  const [constraints, setConstraints] = useState("");
-  const [availability, setAvailability] = useState("");
+  const [constraints, setConstraints] = useState(
+    initialApplication?.notes ?? "",
+  );
+  const [availability, setAvailability] = useState(
+    initialApplication
+      ? [initialApplication.publishedTerms, initialApplication.appliedTerms]
+          .filter(Boolean)
+          .join(" · ")
+      : "",
+  );
   const [style, setStyle] = useState("modern, präzise und professionell");
   const [language, setLanguage] = useState("Deutsch");
   const [result, setResult] = useState<ApplicationPackage | null>(null);
@@ -1121,7 +1158,13 @@ function ApplicationStudio({
 
   const generate = async (event: FormEvent) => {
     event.preventDefault();
-    if (!cv || !jobUrl.trim() || !companyName.trim() || !roleTitle.trim() || busy) {
+    if (
+      (!cv && !(useMasterCv && masterCv)) ||
+      !jobUrl.trim() ||
+      !companyName.trim() ||
+      !roleTitle.trim() ||
+      busy
+    ) {
       return;
     }
     setBusy(true);
@@ -1140,10 +1183,24 @@ function ApplicationStudio({
       language,
     };
     try {
+      let sourceCv = cv;
+      if (!sourceCv && useMasterCv && masterCv?.downloadUrl) {
+        const response = await fetch(masterCv.downloadUrl, {
+          headers: { accept: masterCv.contentType || "application/octet-stream" },
+        });
+        if (!response.ok) {
+          throw new Error("Der Master-CV konnte nicht geladen werden.");
+        }
+        const blob = await response.blob();
+        sourceCv = new File([blob], masterCv.name, {
+          type: masterCv.contentType || blob.type || "application/octet-stream",
+        });
+      }
+      if (!sourceCv) throw new Error("Bitte einen Lebenslauf auswählen.");
       const form = new FormData();
       Object.entries(values).forEach(([key, value]) => form.append(key, value));
       form.append("kind", "application");
-      form.append("cv", cv);
+      form.append("cv", sourceCv);
       const response = await fetch("/api/assistant", {
         method: "POST",
         body: form,
@@ -1363,14 +1420,18 @@ function ApplicationStudio({
         onDrop={(event) => {
           event.preventDefault();
           setCv(event.dataTransfer.files[0] ?? null);
+          setUseMasterCv(false);
         }}
       >
         <input
           accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.md"
           className="visually-hidden"
-          onChange={(event) => setCv(event.target.files?.[0] ?? null)}
+          onChange={(event) => {
+            setCv(event.target.files?.[0] ?? null);
+            setUseMasterCv(false);
+          }}
           ref={cvRef}
-          required
+          required={!masterCv || !useMasterCv}
           type="file"
         />
         <span aria-hidden="true">CV</span>
@@ -1390,6 +1451,27 @@ function ApplicationStudio({
           {cv ? "Ändern" : "Auswählen"}
         </button>
       </label>
+      {masterCv ? (
+        <button
+          aria-pressed={useMasterCv && !cv}
+          className={`master-cv-choice ${useMasterCv && !cv ? "active" : ""}`}
+          onClick={() => {
+            setCv(null);
+            setUseMasterCv(true);
+            if (cvRef.current) cvRef.current.value = "";
+          }}
+          type="button"
+        >
+          <span aria-hidden="true">M</span>
+          <div>
+            <strong>Master-CV verwenden</strong>
+            <small>
+              {masterCv.name} · privat hinterlegt und nur für dieses Paket geladen
+            </small>
+          </div>
+          <b>{useMasterCv && !cv ? "Ausgewählt" : "Auswählen"}</b>
+        </button>
+      ) : null}
 
       <div className="studio-step">
         <span>2</span>
@@ -1475,12 +1557,17 @@ function ApplicationStudio({
         </label>
       </div>
       <p className="form-trust">
-        Lebenslauf und Antworten werden nur für dieses Paket verarbeitet und
-        nicht im Kompass gespeichert. Das System erfindet keine Stationen oder
-        Erfolge und weist vor dem Versand auf offene Angaben hin.
+        Der ausgewählte Lebenslauf und deine Antworten werden nur für dieses
+        Paket verarbeitet. Der Master-CV bleibt unverändert in deiner privaten
+        Ablage; generierte Texte werden nicht automatisch gespeichert. Das
+        System erfindet keine Stationen oder Erfolge.
       </p>
       <div className="dialog-actions">
-        <button className="button button-primary" disabled={busy || !cv} type="submit">
+        <button
+          className="button button-primary"
+          disabled={busy || (!cv && !(useMasterCv && masterCv))}
+          type="submit"
+        >
           {busy ? "Bewerbungspaket wird erstellt …" : "Bewerbungspaket erstellen"}
         </button>
       </div>

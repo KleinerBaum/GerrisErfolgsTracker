@@ -19,6 +19,7 @@ import {
   type DriveExplorerController,
 } from "./drive-explorer";
 import { FinanceView } from "./finance-view";
+import { ApplicationsView } from "./applications-view";
 import { createDemoState } from "../lib/demo-data";
 import { COST_TEMPLATES } from "../lib/finance-catalog";
 import {
@@ -43,6 +44,8 @@ import {
   QUADRANT_LABELS,
   type AccountBalances,
   type AppState,
+  type ApplicationArtifact,
+  type ApplicationProcess,
   type CalendarEvent,
   type CaptureKind,
   type Cost,
@@ -68,6 +71,12 @@ const NAV_ITEMS: Array<{
   { key: "calendar", label: "Kalender", short: "Kalender", mark: "K" },
   { key: "finance", label: "Finanzen", short: "Kosten", mark: "€" },
   { key: "documents", label: "Unterlagen", short: "Ablage", mark: "U" },
+  {
+    key: "applications",
+    label: "Bewerbungen",
+    short: "Bewerbung",
+    mark: "B",
+  },
   { key: "journal", label: "Journal", short: "Journal", mark: "J" },
 ];
 
@@ -77,6 +86,7 @@ const VIEW_TITLES: Record<ViewKey, string> = {
   calendar: "Kalender & Erinnerungen",
   finance: "Kosten im Überblick",
   documents: "Wichtige Unterlagen",
+  applications: "Bewerbungen & nächste Schritte",
   journal: "Journal & Reflexion",
 };
 
@@ -116,6 +126,8 @@ export function LifeOsApp({
   const [quickAction, setQuickAction] = useState<
     Exclude<QuickActionKind, "task"> | null
   >(null);
+  const [applicationDraft, setApplicationDraft] =
+    useState<ApplicationProcess | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] =
     useState<DocumentRef | null>(null);
@@ -159,6 +171,7 @@ export function LifeOsApp({
       if (event.key !== "Escape") return;
       setCaptureOpen(false);
       setQuickAction(null);
+      setApplicationDraft(null);
       setSettingsOpen(false);
       setSelectedDocument(null);
       clearSelectedDriveFile(null);
@@ -189,8 +202,16 @@ export function LifeOsApp({
       openCapture("task");
       return;
     }
+    if (kind === "application") setApplicationDraft(null);
     setCaptureOpen(false);
     setQuickAction(kind);
+  };
+
+  const openApplicationStudio = (application: ApplicationProcess) => {
+    setMobileSidebarOpen(false);
+    setCaptureOpen(false);
+    setApplicationDraft(application);
+    setQuickAction("application");
   };
 
   const completeTask = (taskId: string) => {
@@ -267,6 +288,76 @@ export function LifeOsApp({
       calendarEvents: [event, ...current.calendarEvents],
     }));
     setNotice("Termin gespeichert");
+  };
+
+  const createApplication = (application: ApplicationProcess) => {
+    updateState((current) => ({
+      ...current,
+      applications: [...current.applications, application],
+    }));
+  };
+
+  const updateApplication = (application: ApplicationProcess) => {
+    updateState((current) => ({
+      ...current,
+      applications: current.applications.map((candidate) =>
+        candidate.id === application.id ? application : candidate,
+      ),
+    }));
+  };
+
+  const saveMasterCv = (document: DocumentRef) => {
+    updateState((current) => ({
+      ...current,
+      documents: [document, ...current.documents],
+      masterCvDocumentId: document.id,
+    }));
+  };
+
+  const setMasterCv = (documentId: string | null) => {
+    updateState((current) => ({
+      ...current,
+      masterCvDocumentId: documentId,
+    }));
+    setNotice(documentId ? "Master-CV ausgewählt" : "Master-CV-Verknüpfung gelöst");
+  };
+
+  const attachApplicationArtifact = (
+    applicationId: string,
+    document: DocumentRef,
+    artifact: ApplicationArtifact,
+  ) => {
+    updateState((current) => ({
+      ...current,
+      documents: [document, ...current.documents],
+      applications: current.applications.map((application) =>
+        application.id === applicationId
+          ? {
+              ...application,
+              artifacts: [...application.artifacts, artifact],
+            }
+          : application,
+      ),
+    }));
+  };
+
+  const removeApplicationArtifact = (
+    applicationId: string,
+    artifactId: string,
+  ) => {
+    updateState((current) => ({
+      ...current,
+      applications: current.applications.map((application) =>
+        application.id === applicationId
+          ? {
+              ...application,
+              artifacts: application.artifacts.filter(
+                (artifact) => artifact.id !== artifactId,
+              ),
+            }
+          : application,
+      ),
+    }));
   };
 
   const saveJournal = (
@@ -359,6 +450,30 @@ export function LifeOsApp({
               state.costs.some((cost) => cost.status === "due") ? (
                 <span className="nav-alert" aria-label="Offene Zahlungen">
                   {state.costs.filter((cost) => cost.status === "due").length}
+                </span>
+              ) : null}
+              {item.key === "applications" &&
+              state.applications.some(
+                (application) =>
+                  application.nextStepAt &&
+                  daysFromNow(application.nextStepAt) >= 0 &&
+                  daysFromNow(application.nextStepAt) <= 7 &&
+                  !["rejected", "withdrawn", "closed"].includes(
+                    application.status,
+                  ),
+              ) ? (
+                <span className="nav-alert" aria-label="Anstehende Bewerbungsschritte">
+                  {
+                    state.applications.filter(
+                      (application) =>
+                        application.nextStepAt &&
+                        daysFromNow(application.nextStepAt) >= 0 &&
+                        daysFromNow(application.nextStepAt) <= 7 &&
+                        !["rejected", "withdrawn", "closed"].includes(
+                          application.status,
+                        ),
+                    ).length
+                  }
                 </span>
               ) : null}
             </button>
@@ -481,6 +596,19 @@ export function LifeOsApp({
               toast={setNotice}
             />
           ) : null}
+          {view === "applications" ? (
+            <ApplicationsView
+              onAttachArtifact={attachApplicationArtifact}
+              onCreateApplication={createApplication}
+              onOpenStudio={openApplicationStudio}
+              onRemoveArtifact={removeApplicationArtifact}
+              onSaveMasterCv={saveMasterCv}
+              onSetMasterCv={setMasterCv}
+              onUpdateApplication={updateApplication}
+              state={state}
+              toast={setNotice}
+            />
+          ) : null}
           {view === "journal" ? (
             <JournalView
               onSave={saveJournal}
@@ -493,11 +621,15 @@ export function LifeOsApp({
 
       <button
         className="quick-capture-button"
-        onClick={() => openCapture(view === "finance" ? "cost" : "task")}
+        onClick={() =>
+          view === "applications"
+            ? openQuickAction("application")
+            : openCapture(view === "finance" ? "cost" : "task")
+        }
         type="button"
       >
         <span>+</span>
-        Neu erfassen
+        {view === "applications" ? "Bewerbung erstellen" : "Neu erfassen"}
       </button>
 
       <nav className="mobile-nav" aria-label="Mobile Hauptnavigation">
@@ -533,7 +665,12 @@ export function LifeOsApp({
           documents={state.documents}
           integrations={integrations}
           kind={quickAction}
-          onClose={() => setQuickAction(null)}
+          masterCvDocumentId={state.masterCvDocumentId}
+          applicationDraft={applicationDraft}
+          onClose={() => {
+            setQuickAction(null);
+            setApplicationDraft(null);
+          }}
           onSaveDocument={saveDocument}
           onSaveEvent={saveEvent}
           toast={setNotice}

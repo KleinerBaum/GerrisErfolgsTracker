@@ -25,7 +25,7 @@ test("enthält den vollständigen privaten Organisationsbereich", async () => {
   assert.match(finance, /Revolut/);
   assert.equal((catalog.match(/\{ id: \d+, title:/g) ?? []).length, 48);
   assert.match(app, /DIN-A4-Ansicht/);
-  assert.match(layout, /og-drive\.png/);
+  assert.match(layout, /og\.png/);
   assert.match(layout, /manifest\.webmanifest/);
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /aspect-ratio:\s*210\s*\/\s*297/);
@@ -105,4 +105,75 @@ test("liefert einen geschützten Live-Drive-Explorer mit Inline-Vorschau", async
   assert.match(types, /export type DriveItem/);
   assert.match(folderRoute, /ownerEmail/);
   assert.match(fileRoute, /driveFileResponse/);
+});
+
+test("liefert das Bewerbungsdashboard mit 72 echten Recherchevakanzen", async () => {
+  const [app, applications, research, types, stateHook, actions] =
+    await Promise.all([
+      readFile(new URL("components/life-os-app.tsx", root), "utf8"),
+      readFile(new URL("components/applications-view.tsx", root), "utf8"),
+      readFile(new URL("lib/application-research.ts", root), "utf8"),
+      readFile(new URL("lib/types.ts", root), "utf8"),
+      readFile(new URL("lib/use-gerri-state.ts", root), "utf8"),
+      readFile(new URL("components/quick-actions.tsx", root), "utf8"),
+    ]);
+
+  assert.match(app, /label: "Bewerbungen"/);
+  assert.match(app, /<ApplicationsView/);
+  assert.match(applications, /Bewerbungskennzahlen/);
+  assert.match(applications, /Konditionen meiner Bewerbung/);
+  assert.match(applications, /Erwarteter nächster Schritt/);
+  assert.match(applications, /Screenshot der Ausschreibung/);
+  assert.match(applications, /Master-CV/);
+  assert.match(types, /applications: ApplicationProcess\[\]/);
+  assert.match(types, /masterCvDocumentId: string \| null/);
+  assert.match(stateHook, /mergeApplicationResearch/);
+  assert.match(actions, /Master-CV verwenden/);
+  assert.match(actions, /fetch\(masterCv\.downloadUrl/);
+  assert.equal((research.match(/^\s+\[\s*$/gm) ?? []).length >= 72, true);
+  assert.match(research, /Sachbearbeitung Kommunales Krisenmanagement/);
+  assert.match(research, /Business Project Manager Conversational AI/);
+  assert.match(research, /Informationssicherheitsbeauftragter/);
+});
+
+test("normalisiert einen alten Zustand ohne Bewerbungsfelder abwärtskompatibel", async () => {
+  const { APPLICATION_RESEARCH, mergeApplicationResearch } = await import(
+    "../lib/application-research.ts"
+  );
+  const legacyState = {
+    schemaVersion: 1,
+    tasks: [],
+    costs: [],
+    documents: [],
+    calendarEvents: [],
+    journal: [],
+  };
+  const normalized = mergeApplicationResearch(legacyState.applications);
+
+  assert.equal(normalized.length, 72);
+  assert.equal(normalized.filter((item) => item.shortlisted).length, 15);
+  assert.equal(
+    new Set(normalized.map((item) => item.id)).size,
+    APPLICATION_RESEARCH.length,
+  );
+  assert.equal(normalized[0].status, "research");
+  assert.equal(normalized[0].artifacts.length, 0);
+});
+
+test("hält native Auswahlmenüs in allen App-Bereichen kontrastreich", async () => {
+  const [css, app, actions, applications] = await Promise.all([
+    readFile(new URL("app/globals.css", root), "utf8"),
+    readFile(new URL("components/life-os-app.tsx", root), "utf8"),
+    readFile(new URL("components/quick-actions.tsx", root), "utf8"),
+    readFile(new URL("components/applications-view.tsx", root), "utf8"),
+  ]);
+  const selectCount = (app + actions + applications).match(/<select\b/g)?.length ?? 0;
+
+  assert.equal(selectCount >= 20, true);
+  assert.match(css, /select\s*\{\s*color-scheme:\s*dark/);
+  assert.match(
+    css,
+    /select option,\s*select optgroup\s*\{[^}]*background-color:\s*Canvas[^}]*color:\s*CanvasText[^}]*color-scheme:\s*light/s,
+  );
+  assert.match(css, /select option:disabled\s*\{[^}]*color:\s*GrayText/s);
 });
