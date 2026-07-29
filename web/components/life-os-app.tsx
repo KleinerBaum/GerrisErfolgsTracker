@@ -8,6 +8,11 @@ import {
   type FormEvent,
 } from "react";
 
+import {
+  QuickActionDialog,
+  SidebarQuickActions,
+  type QuickActionKind,
+} from "./quick-actions";
 import { createDemoState } from "../lib/demo-data";
 import {
   formatCurrency,
@@ -81,6 +86,11 @@ const daysFromNow = (value: string): number => {
   return Math.round((target.getTime() - today.getTime()) / 86_400_000);
 };
 
+const formatFileSize = (bytes: number): string =>
+  bytes < 1_048_576
+    ? `${Math.max(1, Math.round(bytes / 1_024))} KB`
+    : `${(bytes / 1_048_576).toFixed(1).replace(".", ",")} MB`;
+
 type LifeOsAppProps = {
   initialState: AppState;
   integrations: IntegrationConfig;
@@ -95,6 +105,9 @@ export function LifeOsApp({
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [captureKind, setCaptureKind] = useState<CaptureKind>("task");
+  const [quickAction, setQuickAction] = useState<
+    Exclude<QuickActionKind, "task"> | null
+  >(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] =
     useState<DocumentRef | null>(null);
@@ -135,6 +148,7 @@ export function LifeOsApp({
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setCaptureOpen(false);
+      setQuickAction(null);
       setSettingsOpen(false);
       setSelectedDocument(null);
       setMobileSidebarOpen(false);
@@ -153,8 +167,19 @@ export function LifeOsApp({
   };
 
   const openCapture = (kind: CaptureKind) => {
+    setQuickAction(null);
     setCaptureKind(kind);
     setCaptureOpen(true);
+  };
+
+  const openQuickAction = (kind: QuickActionKind) => {
+    setMobileSidebarOpen(false);
+    if (kind === "task") {
+      openCapture("task");
+      return;
+    }
+    setCaptureOpen(false);
+    setQuickAction(kind);
   };
 
   const completeTask = (taskId: string) => {
@@ -202,7 +227,19 @@ export function LifeOsApp({
       ...current,
       documents: [document, ...current.documents],
     }));
-    setNotice("Drive-Unterlage verknüpft");
+    setNotice(
+      document.storage === "upload"
+        ? "Datei sicher abgelegt"
+        : "Drive-Unterlage verknüpft",
+    );
+  };
+
+  const saveEvent = (event: CalendarEvent) => {
+    updateState((current) => ({
+      ...current,
+      calendarEvents: [event, ...current.calendarEvents],
+    }));
+    setNotice("Termin gespeichert");
   };
 
   const saveJournal = (
@@ -300,6 +337,8 @@ export function LifeOsApp({
             </button>
           ))}
         </nav>
+
+        <SidebarQuickActions onAction={openQuickAction} />
 
         <div className="sidebar-divider" />
 
@@ -455,6 +494,18 @@ export function LifeOsApp({
           onSaveDocument={saveDocument}
           onSaveJournal={saveJournal}
           onSaveTask={saveTask}
+        />
+      ) : null}
+
+      {quickAction ? (
+        <QuickActionDialog
+          documents={state.documents}
+          integrations={integrations}
+          kind={quickAction}
+          onClose={() => setQuickAction(null)}
+          onSaveDocument={saveDocument}
+          onSaveEvent={saveEvent}
+          toast={setNotice}
         />
       ) : null}
 
@@ -1148,6 +1199,7 @@ function CalendarView({
                   <h3>{event.title}</h3>
                   <p>
                     {formatTime(event.startAt)}–{formatTime(event.endAt)}
+                    {event.location ? ` · ${event.location}` : ""}
                   </p>
                 </div>
               </article>
@@ -1496,9 +1548,9 @@ function DocumentsView({
   return (
     <div className="view-stack">
       <PageIntro
-        eyebrow="Google Drive · Meine Ablage"
+        eyebrow="Private Uploads · Google Drive · Meine Ablage"
         title="Wichtige Unterlagen – lesbar, sortiert, griffbereit."
-        copy="Die Dateien bleiben in deinem Google Drive. Im Kompass werden nur Verweise und Ordnungsinformationen gespeichert; Downloads kommen direkt von Google."
+        copy="Lege Dateien direkt privat ab oder verknüpfe bestehende Google-Drive-Unterlagen. Zielordner, Schlagworte, Notizen und Prüftermine halten alles auffindbar."
         action={
           <div className="button-group">
             <a
@@ -1566,7 +1618,16 @@ function DocumentsView({
 
       <section className="document-grid" aria-label="Unterlagen">
         {visible.map((document) => {
-          const preview = drivePreviewUrl(document.driveUrl, document.fileId);
+          const isUpload = document.storage === "upload";
+          const preview = isUpload
+            ? document.contentType === "application/pdf" ||
+              document.contentType?.startsWith("image/")
+              ? document.downloadUrl
+              : null
+            : drivePreviewUrl(document.driveUrl, document.fileId);
+          const downloadUrl = isUpload
+            ? `${document.downloadUrl ?? document.driveUrl}?download=1`
+            : driveDownloadUrl(document.driveUrl, document.fileId);
           return (
             <article className="document-card" key={document.id}>
               <div className={`document-kind kind-${document.kind}`}>
@@ -1576,7 +1637,9 @@ function DocumentsView({
                     ? "TABELLE"
                     : document.kind === "document"
                       ? "DOK"
-                      : "PDF"}
+                      : document.kind === "pdf"
+                        ? "PDF"
+                        : "DATEI"}
               </div>
               <div>
                 <span className="eyebrow">
@@ -1585,6 +1648,7 @@ function DocumentsView({
                 <h3>{document.name}</h3>
                 <p>
                   Geändert {formatRelativeDate(document.modifiedAt)} ·{" "}
+                  {document.sizeBytes ? `${formatFileSize(document.sizeBytes)} · ` : ""}
                   {document.tags.join(" · ")}
                 </p>
               </div>
@@ -1593,15 +1657,17 @@ function DocumentsView({
                 <button onClick={() => onOpen(document)} type="button">
                   {preview ? "A4-Ansicht" : "Details"}
                 </button>
+                {!isUpload ? (
+                  <a
+                    href={document.driveUrl}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    In Drive
+                  </a>
+                ) : null}
                 <a
-                  href={document.driveUrl}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  In Drive
-                </a>
-                <a
-                  href={driveDownloadUrl(document.driveUrl, document.fileId)}
+                  href={downloadUrl}
                   rel="noreferrer"
                   target="_blank"
                 >
@@ -2177,7 +2243,16 @@ function DocumentViewer({
   document: DocumentRef;
   onClose: () => void;
 }) {
-  const preview = drivePreviewUrl(document.driveUrl, document.fileId);
+  const isUpload = document.storage === "upload";
+  const preview = isUpload
+    ? document.contentType === "application/pdf" ||
+      document.contentType?.startsWith("image/")
+      ? document.downloadUrl ?? null
+      : null
+    : drivePreviewUrl(document.driveUrl, document.fileId);
+  const downloadUrl = isUpload
+    ? `${document.downloadUrl ?? document.driveUrl}?download=1`
+    : driveDownloadUrl(document.driveUrl, document.fileId);
   return (
     <div className="viewer-backdrop" role="presentation">
       <section
@@ -2188,14 +2263,16 @@ function DocumentViewer({
       >
         <header>
           <div>
-            <span className="eyebrow">DIN-A4-Ansicht · Privat</span>
+            <span className="eyebrow">
+              {isUpload ? "Private Dateiablage" : "DIN-A4-Ansicht"} · Privat
+            </span>
             <h2 id="viewer-title">{document.name}</h2>
             <p>{document.folderPath}</p>
           </div>
           <div>
             <a
               className="button button-soft"
-              href={driveDownloadUrl(document.driveUrl, document.fileId)}
+              href={downloadUrl}
               rel="noreferrer"
               target="_blank"
             >
@@ -2220,17 +2297,17 @@ function DocumentViewer({
               <span>DIN A4</span>
               <h3>Noch keine einzelne Drive-Datei verknüpft</h3>
               <p>
-                Dieser Eintrag verweist aktuell auf den Ordner. Verknüpfe über
-                „Unterlage verknüpfen“ den genauen Dateilink, um Vorschau und
-                direkten Download zu aktivieren.
+                {isUpload
+                  ? "Für dieses Dateiformat ist keine direkte Vorschau verfügbar. Der sichere Download bleibt jederzeit möglich."
+                  : "Dieser Eintrag verweist aktuell auf den Ordner. Verknüpfe über „Unterlage verknüpfen“ den genauen Dateilink, um Vorschau und direkten Download zu aktivieren."}
               </p>
               <a
                 className="button button-primary"
-                href={document.driveUrl}
+                href={isUpload ? downloadUrl : document.driveUrl}
                 rel="noreferrer"
                 target="_blank"
               >
-                In Google Drive öffnen
+                {isUpload ? "Datei herunterladen" : "In Google Drive öffnen"}
               </a>
             </div>
           )}

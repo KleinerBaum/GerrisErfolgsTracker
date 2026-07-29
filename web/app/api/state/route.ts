@@ -2,38 +2,11 @@ import { eq } from "drizzle-orm";
 
 import { getDb } from "../../../db";
 import { userStates } from "../../../db/schema";
+import { ownerEmail, sameOrigin } from "../../../lib/server-auth";
 
 export const dynamic = "force-dynamic";
 
 const MAX_STATE_BYTES = 1_500_000;
-
-function ownerEmail(request: Request): string | null {
-  const authenticated = request.headers
-    .get("oai-authenticated-user-email")
-    ?.trim()
-    .toLowerCase();
-  if (authenticated) return authenticated;
-
-  const host = new URL(request.url).hostname;
-  if (
-    process.env.NODE_ENV !== "production" ||
-    host === "localhost" ||
-    host === "127.0.0.1"
-  ) {
-    return "lokale-vorschau@gerris-kompass";
-  }
-  return null;
-}
-
-function sameOrigin(request: Request): boolean {
-  const origin = request.headers.get("origin");
-  if (!origin) return true;
-  try {
-    return new URL(origin).host === new URL(request.url).host;
-  } catch {
-    return false;
-  }
-}
 
 function errorResponse(error: unknown) {
   const message = error instanceof Error ? error.message : "";
