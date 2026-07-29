@@ -33,10 +33,10 @@ export async function generateMetadata(): Promise<Metadata> {
       url: baseUrl,
       images: [
         {
-          url: `${baseUrl}/og-finance.png`,
+          url: `${baseUrl}/og-drive.png`,
           width: 1536,
           height: 1024,
-          alt: "Gerris Kompass – Finanzen im Blick",
+          alt: "Gerris Kompass – Unterlagen klar geordnet und direkt im Blick",
         },
       ],
     },
@@ -44,7 +44,7 @@ export async function generateMetadata(): Promise<Metadata> {
       card: "summary_large_image",
       title,
       description,
-      images: [`${baseUrl}/og-finance.png`],
+      images: [`${baseUrl}/og-drive.png`],
     },
   };
 }

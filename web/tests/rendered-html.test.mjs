@@ -5,9 +5,11 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 
 test("enthält den vollständigen privaten Organisationsbereich", async () => {
-  const [page, app, layout, css] = await Promise.all([
+  const [page, app, finance, catalog, layout, css] = await Promise.all([
     readFile(new URL("app/page.tsx", root), "utf8"),
     readFile(new URL("components/life-os-app.tsx", root), "utf8"),
+    readFile(new URL("components/finance-view.tsx", root), "utf8"),
+    readFile(new URL("lib/finance-catalog.ts", root), "utf8"),
     readFile(new URL("app/layout.tsx", root), "utf8"),
     readFile(new URL("app/globals.css", root), "utf8"),
   ]);
@@ -17,8 +19,13 @@ test("enthält den vollständigen privaten Organisationsbereich", async () => {
   assert.match(app, /Heute im Blick/);
   assert.match(app, /Wichtige Unterlagen/);
   assert.match(app, /Kosten im Überblick/);
+  assert.match(finance, /Einnahmen und Ausgaben/);
+  assert.match(finance, /Laufende Kosten/);
+  assert.match(finance, /PayPal/);
+  assert.match(finance, /Revolut/);
+  assert.equal((catalog.match(/\{ id: \d+, title:/g) ?? []).length, 48);
   assert.match(app, /DIN-A4-Ansicht/);
-  assert.match(layout, /og-finance\.png/);
+  assert.match(layout, /og-drive\.png/);
   assert.match(layout, /manifest\.webmanifest/);
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /aspect-ratio:\s*210\s*\/\s*297/);
@@ -40,7 +47,7 @@ test("liefert Sites-Metadaten, D1-Migration und Produktionsbundle", async () => 
   assert.match(migration, /`owner_email` text PRIMARY KEY NOT NULL/);
   await access(new URL("dist/server/index.js", root));
   await access(new URL("dist/.openai/hosting.json", root));
-  await access(new URL("public/og-finance.png", root));
+  await access(new URL("public/og-drive.png", root));
 });
 
 test("liefert die fünf privaten Schnellaktionen mit Upload und Textassistenz", async () => {
@@ -69,25 +76,33 @@ test("liefert die fünf privaten Schnellaktionen mit Upload und Textassistenz", 
   assert.equal(JSON.parse(hosting).r2, "FILES");
 });
 
-test("liefert eine gestufte Finanzübersicht mit Tabellen-Kostenstruktur", async () => {
-  const [app, financeData, types, stateHook, css] = await Promise.all([
-    readFile(new URL("components/life-os-app.tsx", root), "utf8"),
-    readFile(new URL("lib/finance-data.ts", root), "utf8"),
-    readFile(new URL("lib/types.ts", root), "utf8"),
-    readFile(new URL("lib/use-gerri-state.ts", root), "utf8"),
-    readFile(new URL("app/globals.css", root), "utf8"),
-  ]);
+test("liefert einen geschützten Live-Drive-Explorer mit Inline-Vorschau", async () => {
+  const [explorer, server, schema, types, folderRoute, fileRoute] =
+    await Promise.all([
+      readFile(new URL("components/drive-explorer.tsx", root), "utf8"),
+      readFile(new URL("lib/google-drive-server.ts", root), "utf8"),
+      readFile(new URL("db/schema.ts", root), "utf8"),
+      readFile(new URL("lib/types.ts", root), "utf8"),
+      readFile(
+        new URL("app/api/drive/folders/[folderId]/route.ts", root),
+        "utf8",
+      ),
+      readFile(
+        new URL("app/api/drive/files/[fileId]/route.ts", root),
+        "utf8",
+      ),
+    ]);
 
-  assert.match(app, /Einnahmen und laufende Ausgaben/);
-  assert.match(app, /Kosten-Zoom/);
-  assert.match(app, /Anstehende Ausgaben/);
-  assert.match(app, /PayPal/);
-  assert.match(app, /Revolut/);
-  assert.equal(financeData.match(/suggestion\(/g)?.length, 48);
-  assert.match(types, /incomes: Income\[\]/);
-  assert.match(types, /accountBalances: AccountBalances/);
-  assert.match(stateHook, /normalizeState/);
-  assert.match(stateHook, /Lebensmittel & Haushalt/);
-  assert.match(css, /@keyframes orbit-pulse/);
-  assert.match(css, /prefers-reduced-motion/);
+  assert.match(explorer, /DriveSidebarTree/);
+  assert.match(explorer, /Unterlagen und Dokumente/);
+  assert.match(explorer, /Direkte Vorschau/);
+  assert.match(explorer, /Unterordner öffnen/);
+  assert.match(server, /drive\.readonly/);
+  assert.match(server, /AES-GCM/);
+  assert.match(server, /assertInsideRoot/);
+  assert.match(server, /nextPageToken/);
+  assert.match(schema, /google_drive_connections/);
+  assert.match(types, /export type DriveItem/);
+  assert.match(folderRoute, /ownerEmail/);
+  assert.match(fileRoute, /driveFileResponse/);
 });

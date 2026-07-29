@@ -2,11 +2,15 @@
 
 ## Sites-Webapp (`web/`)
 
-Die Sites-Version nutzt für den ersten sicheren Ausbau keine in der Anwendung
-gespeicherten Google-OAuth-Tokens:
+Die Sites-Version nutzt einen eigenen, minimal berechtigten OAuth-Flow:
 
-- Drive-Dateien werden über ihre Google-Drive-Links verknüpft, in der
-  Google-Vorschau angezeigt und direkt von Google heruntergeladen.
+- Drive-Ordner und -Dateien werden live mit dem Scope
+  `https://www.googleapis.com/auth/drive.readonly` geladen.
+- Refresh-Tokens werden mit AES-GCM verschlüsselt und pro angemeldetem
+  Sites-Benutzer in D1 gespeichert. Tokens werden nie an den Browser
+  ausgeliefert.
+- Der Server beschränkt alle Datei- und Ordnerzugriffe auf den konfigurierten
+  Stammordner „Unterlagen und Dokumente“.
 - Kalendertermine werden lesend über den konfigurierten iCal-Link angezeigt.
 - Zahlungserinnerungen bleiben im privaten D1-Speicher und öffnen bei Bedarf
   einen Google-Kalender-Entwurf. Vor dem Speichern ist die Sichtbarkeit
@@ -15,9 +19,18 @@ gespeicherten Google-OAuth-Tokens:
   versendet keine Nachrichten ohne weitere OAuth-Anbindung.
 
 Die dafür verwendeten Variablen stehen in `web/.env.example`. Der angegebene
-öffentliche iCal-Link darf keine vertraulichen Ereignisse enthalten. Für einen
-späteren bidirektionalen Sync ist ein eigener, minimal berechtigter OAuth-Flow
-mit serverseitigem Token-Speicher erforderlich.
+öffentliche iCal-Link darf keine vertraulichen Ereignisse enthalten.
+
+Für den Sites-Drive-Explorer müssen folgende Laufzeitwerte gesetzt werden:
+
+- `GOOGLE_DRIVE_ROOT_FOLDER_ID`
+- `GOOGLE_DRIVE_CLIENT_ID`
+- `GOOGLE_DRIVE_CLIENT_SECRET`
+- `GOOGLE_DRIVE_REDIRECT_URI`
+- `GOOGLE_DRIVE_TOKEN_KEY` (ein langer, zufälliger geheimer Wert)
+
+Als autorisierte Redirect-URI muss exakt die veröffentlichte Sites-Adresse mit
+dem Pfad `/api/drive/callback` im Google-OAuth-Client eingetragen werden.
 
 ## Überblick / Overview
 Dieser Leitfaden beschreibt die nötigen Schritte in der Google Cloud Console und zeigt, wo die Werte in der App hinterlegt werden. / This guide lists the required Google Cloud Console steps and where to paste the values in the app.
@@ -43,7 +56,9 @@ Aktiviere mindestens die APIs, die du nutzen möchtest (Read-only):
 ## 4) OAuth Client erstellen / Create OAuth client
 1. Navigiere zu **APIs & Services → Credentials**.
 2. Erstelle **OAuth client ID** (Typ: Web application).
-3. Hinterlege Redirect-URIs (z. B. lokal `http://localhost:8501` oder Streamlit Cloud URL).
+3. Hinterlege für die Sites-App exakt
+   `https://<sites-adresse>/api/drive/callback` als Redirect-URI. Lokale
+   Entwicklung kann zusätzlich eine eigene lokale Callback-Adresse erhalten.
 
 ## 5) Werte in die App übernehmen / Paste values into the app
 Lege lokale Secrets an (nicht committen):

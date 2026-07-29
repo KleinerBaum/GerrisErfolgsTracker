@@ -28,32 +28,35 @@ export type Task = {
   confidential: boolean;
 };
 
+export const COST_CATEGORIES = [
+  "Wohnen",
+  "Energie & Versorgung",
+  "Versicherungen",
+  "Mobilität",
+  "Kommunikation & Medien",
+  "Gesundheit",
+  "Lebensmittel & Haushalt",
+  "Kind & Familie",
+  "Bildung & Entwicklung",
+  "Freizeit & Abos",
+  "Kredite & Verpflichtungen",
+  "Steuern & Gebühren",
+  "Business & Software",
+  "Sparen & Vorsorge",
+  "Sonstiges",
+] as const;
+
+export type CostCategory = (typeof COST_CATEGORIES)[number];
 export type CostCadence =
   | "once"
   | "weekly"
-  | "fortnightly"
+  | "biweekly"
   | "monthly"
   | "bimonthly"
   | "quarterly"
   | "semiannual"
   | "yearly";
 export type CostStatus = "paid" | "due" | "planned";
-export type CostCategory =
-  | "Wohnen"
-  | "Energie & Versorgung"
-  | "Versicherungen"
-  | "Mobilität"
-  | "Kommunikation & Medien"
-  | "Gesundheit"
-  | "Lebensmittel & Haushalt"
-  | "Kind & Familie"
-  | "Bildung & Entwicklung"
-  | "Freizeit & Abos"
-  | "Kredite & Verpflichtungen"
-  | "Steuern & Gebühren"
-  | "Business & Software"
-  | "Sparen & Vorsorge"
-  | "Sonstiges";
 export type CostType = "Fix" | "Variabel";
 export type CostPriority = "Notwendig" | "Wichtig" | "Optional";
 
@@ -61,19 +64,19 @@ export type Cost = {
   id: string;
   title: string;
   category: CostCategory;
-  subcategory?: string;
-  costType?: CostType;
-  priority?: CostPriority;
   amount: number;
   dueAt: string;
   cadence: CostCadence;
   status: CostStatus;
   payee: string;
-  paymentMethod?: string;
-  account?: string;
   contactEmail: string;
   note: string;
   confidential: true;
+  active?: boolean;
+  account?: string;
+  costType?: CostType;
+  priority?: CostPriority;
+  subcategory?: string;
 };
 
 export type Income = {
@@ -82,17 +85,43 @@ export type Income = {
   amount: number;
   receivedAt: string;
   cadence: CostCadence;
+  source: string;
   note: string;
-  confidential: true;
 };
 
 export type AccountBalances = {
-  paypal: number;
-  revolut: number;
-  updatedAt: string;
+  paypal: number | null;
+  revolut: number | null;
+  updatedAt: string | null;
 };
 
 export type DocumentKind = "pdf" | "document" | "sheet" | "folder" | "other";
+
+export type DrivePreviewKind = "pdf" | "image" | "text" | null;
+
+export type DriveItem = {
+  id: string;
+  name: string;
+  kind: "folder" | "file";
+  mimeType: string;
+  modifiedAt: string | null;
+  sizeBytes: number | null;
+  webViewLink: string;
+  previewKind: DrivePreviewKind;
+};
+
+export type DriveFolderContent = {
+  folder: DriveItem;
+  breadcrumbs: DriveItem[];
+  items: DriveItem[];
+};
+
+export type DriveConnectionStatus = {
+  configured: boolean;
+  connected: boolean;
+  googleEmail: string | null;
+  root: DriveItem | null;
+};
 
 export type DocumentRef = {
   id: string;
@@ -144,8 +173,8 @@ export type AppState = {
   rhythmDays: number;
   tasks: Task[];
   costs: Cost[];
-  incomes: Income[];
-  accountBalances: AccountBalances;
+  incomes?: Income[];
+  accountBalances?: AccountBalances;
   documents: DocumentRef[];
   calendarEvents: CalendarEvent[];
   journal: JournalEntry[];
@@ -161,7 +190,7 @@ export type IntegrationConfig = {
 
 export type SyncStatus = "lade" | "synchronisiert" | "lokal" | "fehler";
 
-export type CaptureKind = "task" | "cost" | "document" | "journal";
+export type CaptureKind = "task" | "cost" | "income" | "document" | "journal";
 
 export const LIFE_AREA_LABELS: Record<LifeArea, string> = {
   alltag: "Alltag",
@@ -182,7 +211,7 @@ export const QUADRANT_LABELS: Record<TaskQuadrant, string> = {
 export const COST_CADENCE_LABELS: Record<CostCadence, string> = {
   once: "Einmalig",
   weekly: "Wöchentlich",
-  fortnightly: "14-täglich",
+  biweekly: "14-tägig",
   monthly: "Monatlich",
   bimonthly: "Zweimonatlich",
   quarterly: "Vierteljährlich",
