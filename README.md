@@ -14,9 +14,12 @@ einer ruhigen deutschen Oberfläche zusammen.
 - Geschützte Inline-Vorschau für PDFs, Bilder, Texte sowie exportierte
   Google-Dokumente, -Tabellen und -Präsentationen; Dateiinhalte bleiben in
   Google Drive.
-- Google-Kalender als private Agenda mit bestätigungspflichtigen
-  Zahlungserinnerungen und optionaler eingebetteter Ansicht.
-- Gmail-Entwürfe werden nur nach einer bewussten Nutzeraktion geöffnet.
+- Google Tasks ist die verbindliche Aufgabenquelle; Anlage, Abschluss,
+  Wiederöffnung und Löschung werden über die Tasks API synchronisiert.
+- Google Calendar dient als private Agenda mit bestätigungspflichtigen
+  Zahlungserinnerungen; Gmail-Entwürfe werden ausschließlich nach einer
+  bewussten Nutzeraktion über die Gmail API angelegt und niemals automatisch
+  versendet.
 - Kostenbuch für vergangene, laufende und geplante Kosten einschließlich
   Fixkosten, Budget, Kategorien und Fälligkeiten.
 - Private, geräteübergreifende Sites-Persistenz über D1; lokaler Browser-Speicher
@@ -41,9 +44,10 @@ npm test
 
 Die Werte in `web/.env.example` sind ausschließlich Integrationskonfiguration.
 Google OAuth-Client-Secrets oder API-Schlüssel gehören niemals in das
-Repository. Vertrauliche Zahlungstermine werden nicht in den öffentlichen
-iCal-Feed geschrieben; der Kalender-Link erstellt nur einen von Gerri zu
-prüfenden Entwurf.
+Repository. Die vollständige Google-Cloud- und Sites-Konfiguration einschließlich
+OAuth-Weiterleitungs-URL, minimaler Berechtigungen und Migration bestehender
+Aufgaben steht in
+[`docs/google-workspace-sites.md`](docs/google-workspace-sites.md).
 
 Die UI folgt einem klaren, fokussierten Dark-Theme mit dunkelgrünem Primärton (#1C9C82) auf einem dezenten, bildfreien Gradient-Hintergrund, um einen ruhigen, professionellen Eindruck zu vermitteln. Statusinformationen werden textlich und über Typografie/Abstände vermittelt, um Icon-Lärm zu vermeiden. Alle sichtbaren Texte sind ausschließlich auf Deutsch gehalten, damit keine englischen Begriffe mehr auftauchen.
 Die Sidebar konzentriert sich auf die Navigation; Schalter, Build-Infos sowie Sicherheits- und Gamification-Optionen liegen nun in einem kompakten Header-Dropdown rechts neben „E-Mails“ / The sidebar now focuses on navigation, while toggles, build info, and safety/gamification options live in a compact header dropdown placed to the right of “Emails”.

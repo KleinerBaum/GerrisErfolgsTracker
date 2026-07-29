@@ -1,0 +1,1 @@
+ALTER TABLE `google_drive_connections` ADD `google_subject` text;

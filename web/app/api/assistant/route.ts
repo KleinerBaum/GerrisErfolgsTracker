@@ -7,6 +7,17 @@ const OPENAI_URL = `${
   process.env.OPENAI_BASE_URL?.replace(/\/$/, "") ??
   "https://api.openai.com/v1"
 }/responses`;
+const OPENAI_TIMEOUT_MS = 45_000;
+const OPENAI_MAX_ATTEMPTS = 3;
+const RETRYABLE_OPENAI_STATUSES = new Set([
+  408,
+  409,
+  429,
+  500,
+  502,
+  503,
+  504,
+]);
 
 const emailSchema = {
   type: "object",
@@ -149,6 +160,63 @@ function applicationInstructions(): string {
   ].join("\n");
 }
 
+const wait = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+function retryDelay(response: Response, attempt: number): number {
+  const retryAfter = Number.parseFloat(response.headers.get("retry-after") ?? "");
+  if (Number.isFinite(retryAfter) && retryAfter >= 0) {
+    return Math.min(retryAfter * 1_000, 4_000);
+  }
+  return Math.min(500 * 2 ** attempt, 4_000);
+}
+
+async function fetchOpenAI(body: string): Promise<Response> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("Die Textassistenz ist noch nicht konfiguriert.");
+  }
+  const idempotencyKey = crypto.randomUUID();
+
+  for (let attempt = 0; attempt < OPENAI_MAX_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+    try {
+      const response = await fetch(OPENAI_URL, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json",
+          "idempotency-key": idempotencyKey,
+        },
+        body,
+        signal: controller.signal,
+      });
+      if (
+        response.ok ||
+        !RETRYABLE_OPENAI_STATUSES.has(response.status) ||
+        attempt === OPENAI_MAX_ATTEMPTS - 1
+      ) {
+        return response;
+      }
+      const delay = retryDelay(response, attempt);
+      await response.arrayBuffer();
+      await wait(delay);
+    } catch (error) {
+      if (attempt === OPENAI_MAX_ATTEMPTS - 1) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          throw new Error("Die Textassistenz hat zu lange gebraucht.");
+        }
+        throw error;
+      }
+      await wait(Math.min(500 * 2 ** attempt, 4_000));
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw new Error("Die Textassistenz ist vorübergehend nicht erreichbar.");
+}
+
 async function callOpenAI({
   request,
   input,
@@ -166,20 +234,11 @@ async function callOpenAI({
   useWebSearch: boolean;
   maxOutputTokens: number;
 }): Promise<unknown> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error("Die Textassistenz ist noch nicht konfiguriert.");
-  }
   const email = ownerEmail(request);
   if (!email) throw new Error("Anmeldung erforderlich.");
 
-  const response = await fetch(OPENAI_URL, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
+  const response = await fetchOpenAI(
+    JSON.stringify({
       model: process.env.OPENAI_MODEL?.trim() || "gpt-5.6-sol",
       instructions,
       input,
@@ -198,7 +257,7 @@ async function callOpenAI({
         },
       },
     }),
-  });
+  );
 
   if (!response.ok) {
     throw new Error(`Textassistenz nicht verfügbar (${response.status}).`);

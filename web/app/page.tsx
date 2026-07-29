@@ -23,20 +23,15 @@ export default async function HomePage() {
     requestHeaders.get("oai-authenticated-user-full-name"),
     requestHeaders.get("oai-authenticated-user-full-name-encoding"),
   );
+  const driveRootId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID?.trim();
   const integrations = {
+    ...DEFAULT_INTEGRATIONS,
     calendarId:
-      process.env.GOOGLE_CALENDAR_ID || DEFAULT_INTEGRATIONS.calendarId,
-    calendarEmbedUrl:
-      process.env.GOOGLE_CALENDAR_EMBED_URL ||
-      DEFAULT_INTEGRATIONS.calendarEmbedUrl,
-    driveFolderUrl:
-      process.env.GOOGLE_DRIVE_FOLDER_URL ||
-      DEFAULT_INTEGRATIONS.driveFolderUrl,
-    driveLocalPath:
-      process.env.GOOGLE_DRIVE_LOCAL_PATH ||
-      DEFAULT_INTEGRATIONS.driveLocalPath,
-    gmailAccount:
-      process.env.GMAIL_ACCOUNT || DEFAULT_INTEGRATIONS.gmailAccount,
+      process.env.GOOGLE_CALENDAR_ID?.trim() ||
+      DEFAULT_INTEGRATIONS.calendarId,
+    driveFolderUrl: driveRootId
+      ? `https://drive.google.com/drive/folders/${encodeURIComponent(driveRootId)}`
+      : DEFAULT_INTEGRATIONS.driveFolderUrl,
   };
 
   return (

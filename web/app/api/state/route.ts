@@ -92,19 +92,31 @@ export async function PUT(request: Request) {
       );
     }
 
+    const persistedPayload = {
+      ...(payload as Record<string, unknown>),
+      tasks: state.tasks.filter(
+        (task) =>
+          !task ||
+          typeof task !== "object" ||
+          !("taskListId" in task) ||
+          typeof task.taskListId !== "string" ||
+          !task.taskListId,
+      ),
+    };
+    const stateJson = JSON.stringify(persistedPayload);
     const updatedAt = new Date().toISOString();
     await getDb()
       .insert(userStates)
       .values({
         ownerEmail: email,
-        stateJson: raw,
+        stateJson,
         stateVersion: state.revision,
         updatedAt,
       })
       .onConflictDoUpdate({
         target: userStates.ownerEmail,
         set: {
-          stateJson: raw,
+          stateJson,
           stateVersion: state.revision,
           updatedAt,
         },

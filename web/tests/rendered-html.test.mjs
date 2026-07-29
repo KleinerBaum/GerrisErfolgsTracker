@@ -47,6 +47,12 @@ test("liefert Sites-Metadaten, D1-Migration und Produktionsbundle", async () => 
   assert.match(migration, /`owner_email` text PRIMARY KEY NOT NULL/);
   await access(new URL("dist/server/index.js", root));
   await access(new URL("dist/.openai/hosting.json", root));
+  await access(
+    new URL("dist/.openai/drizzle/0002_lovely_steel_serpent.sql", root),
+  );
+  await access(
+    new URL("dist/.openai/drizzle/0003_chunky_shooting_star.sql", root),
+  );
   await access(new URL("public/og-drive.png", root));
 });
 
@@ -98,13 +104,177 @@ test("liefert einen geschützten Live-Drive-Explorer mit Inline-Vorschau", async
   assert.match(explorer, /Direkte Vorschau/);
   assert.match(explorer, /Unterordner öffnen/);
   assert.match(server, /drive\.readonly/);
-  assert.match(server, /AES-GCM/);
   assert.match(server, /assertInsideRoot/);
   assert.match(server, /nextPageToken/);
   assert.match(schema, /google_drive_connections/);
   assert.match(types, /export type DriveItem/);
   assert.match(folderRoute, /ownerEmail/);
   assert.match(fileRoute, /driveFileResponse/);
+});
+
+test("bündelt Google Workspace sicher und dokumentiert die Sites-Konfiguration", async () => {
+  const [
+    envExample,
+    guide,
+    workspaceServer,
+    tasksServer,
+    calendarServer,
+    gmailServer,
+    schema,
+    googleConnectRoute,
+    googleCallbackRoute,
+    tasksRoute,
+    taskRoute,
+    taskStatusRoute,
+    taskListsRoute,
+    taskProvisionRoute,
+    tasksClient,
+    lifeOsApp,
+    calendarRoute,
+    gmailDraftRoute,
+    taskMigration,
+    accountBindingMigration,
+    stateRoute,
+  ] = await Promise.all([
+    readFile(new URL(".env.example", root), "utf8"),
+    readFile(new URL("../docs/google-workspace-sites.md", root), "utf8"),
+    readFile(new URL("lib/google-workspace-server.ts", root), "utf8"),
+    readFile(new URL("lib/google-tasks-server.ts", root), "utf8"),
+    readFile(new URL("lib/google-calendar-server.ts", root), "utf8"),
+    readFile(new URL("lib/google-gmail-server.ts", root), "utf8"),
+    readFile(new URL("db/schema.ts", root), "utf8"),
+    readFile(new URL("app/api/google/connect/route.ts", root), "utf8"),
+    readFile(new URL("app/api/google/callback/route.ts", root), "utf8"),
+    readFile(new URL("app/api/tasks/route.ts", root), "utf8"),
+    readFile(new URL("app/api/tasks/[taskId]/route.ts", root), "utf8"),
+    readFile(new URL("app/api/tasks/status/route.ts", root), "utf8"),
+    readFile(new URL("app/api/tasks/lists/route.ts", root), "utf8"),
+    readFile(new URL("app/api/tasks/provision/route.ts", root), "utf8"),
+    readFile(new URL("lib/google-tasks-client.ts", root), "utf8"),
+    readFile(new URL("components/life-os-app.tsx", root), "utf8"),
+    readFile(new URL("app/api/calendar/route.ts", root), "utf8"),
+    readFile(new URL("app/api/gmail/drafts/route.ts", root), "utf8"),
+    readFile(new URL("drizzle/0002_lovely_steel_serpent.sql", root), "utf8"),
+    readFile(new URL("drizzle/0003_chunky_shooting_star.sql", root), "utf8"),
+    readFile(new URL("app/api/state/route.ts", root), "utf8"),
+  ]);
+
+  assert.match(envExample, /^GOOGLE_CLIENT_ID=$/m);
+  assert.match(
+    envExample,
+    /^GOOGLE_REDIRECT_URI=https:\/\/gerris-kompass\.gerrit22\.chatgpt\.site\/api\/google\/callback$/m,
+  );
+  assert.match(envExample, /^GOOGLE_TASKS_LIST_NAME=Gerris Kompass$/m);
+  assert.match(envExample, /^GOOGLE_CALENDAR_ID=primary$/m);
+  assert.match(envExample, /^GOOGLE_CLIENT_SECRET=$/m);
+  assert.match(envExample, /^GOOGLE_TOKEN_KEY=$/m);
+  assert.match(envExample, /^OPENAI_API_KEY=$/m);
+  assert.doesNotMatch(envExample, /GOOGLE_CALENDAR_ICAL_URL|@gmail\.com/i);
+
+  for (const scope of [
+    "https://www.googleapis.com/auth/tasks",
+    "https://www.googleapis.com/auth/calendar.events.owned",
+    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/gmail.compose",
+  ]) {
+    assert.match(guide, new RegExp(scope.replaceAll(".", "\\.")));
+    assert.match(workspaceServer, new RegExp(scope.replaceAll(".", "\\.")));
+  }
+  assert.match(guide, /sieben\s+Tagen/i);
+  assert.match(guide, /Service Account/);
+  assert.match(guide, /nur für den Eigentümer/i);
+  assert.match(guide, /GOOGLE_CALENDAR_ICAL_URL/);
+  assert.match(guide, /erneut \*\*privat\*\* bereitgestellt/);
+
+  assert.match(workspaceServer, /GOOGLE_CLIENT_ID/);
+  assert.match(workspaceServer, /GOOGLE_CLIENT_SECRET/);
+  assert.match(workspaceServer, /GOOGLE_REDIRECT_URI/);
+  assert.match(workspaceServer, /GOOGLE_TOKEN_KEY/);
+  assert.match(workspaceServer, /include_granted_scopes:\s*"true"/);
+  assert.match(workspaceServer, /code_challenge_method:\s*"S256"/);
+  assert.match(workspaceServer, /AES-GCM/);
+  assert.match(workspaceServer, /crypto\.subtle\.verify/);
+  assert.match(workspaceServer, /oauth2\.googleapis\.com\/revoke/);
+  assert.match(workspaceServer, /existing\.googleSubject !== profileSubject/);
+  assert.match(
+    workspaceServer,
+    /existing\.googleEmail\.trim\(\)\.toLowerCase\(\) !== profileEmail/,
+  );
+  assert.match(workspaceServer, /if \(identityChanged\)/);
+  assert.match(
+    workspaceServer,
+    /\.delete\(googleTaskMetadata\)[\s\S]*\.delete\(googleTaskSettings\)/,
+  );
+  assert.match(tasksServer, /https:\/\/tasks\.googleapis\.com\/tasks\/v1/);
+  assert.match(tasksServer, /process\.env\.GOOGLE_TASKS_LIST_NAME/);
+  assert.match(tasksServer, /TASK_LIST_LEASE_PREFIX/);
+  assert.match(tasksServer, /TASK_LIST_LEASE_MS = 120_000/);
+  assert.match(tasksServer, /onConflictDoNothing\(\)/);
+  assert.match(
+    tasksServer,
+    /eq\(googleTaskSettings\.taskListId,\s*observed\.taskListId\)/,
+  );
+  assert.match(
+    tasksServer,
+    /eq\(googleTaskSettings\.taskListId,\s*leaseMarker\)/,
+  );
+  assert.match(calendarServer, /https:\/\/www\.googleapis\.com\/calendar\/v3/);
+  assert.match(calendarServer, /process\.env\.GOOGLE_CALENDAR_ID/);
+  assert.match(gmailServer, /gmail\/v1\/users\/me\/drafts/);
+  assert.doesNotMatch(gmailServer, /drafts\/send|messages\/send/);
+  assert.match(schema, /google_task_settings/);
+  assert.match(schema, /google_task_metadata/);
+  assert.match(schema, /googleSubject:\s*text\("google_subject"\)/);
+  assert.match(taskMigration, /CREATE TABLE `google_task_settings`/);
+  assert.match(taskMigration, /CREATE TABLE `google_task_metadata`/);
+  assert.match(
+    accountBindingMigration,
+    /ADD `google_subject` text/,
+  );
+  assert.match(stateRoute, /taskListId/);
+
+  assert.match(googleConnectRoute, /createGoogleOAuthState/);
+  assert.match(googleCallbackRoute, /finishGoogleOAuth/);
+  assert.match(googleCallbackRoute, /let clearCookie = false/);
+  assert.ok(
+    googleCallbackRoute.indexOf("payload.state !== state") <
+      googleCallbackRoute.indexOf('url.searchParams.get("error")'),
+    "OAuth-State muss vor einer Provider-Fehlerantwort validiert werden",
+  );
+  assert.match(
+    googleCallbackRoute,
+    /clearCookie \? \{ "set-cookie": CLEAR_COOKIE \} : \{\}/,
+  );
+  assert.match(tasksRoute, /export async function GET/);
+  assert.match(tasksRoute, /export async function POST/);
+  assert.match(taskRoute, /export async function PATCH/);
+  assert.match(taskRoute, /export async function DELETE/);
+  assert.doesNotMatch(tasksRoute, /provisionGerrisTaskList/);
+  assert.doesNotMatch(taskRoute, /provisionGerrisTaskList/);
+  assert.doesNotMatch(taskStatusRoute, /provisionGerrisTaskList|ensureGerrisTaskList/);
+  assert.doesNotMatch(taskListsRoute, /provisionGerrisTaskList|ensureGerrisTaskList/);
+  assert.match(taskProvisionRoute, /export async function POST/);
+  assert.doesNotMatch(taskProvisionRoute, /export async function GET/);
+  assert.match(taskProvisionRoute, /sameOrigin\(request\)/);
+  assert.match(taskProvisionRoute, /provisionGerrisTaskList/);
+  assert.match(tasksClient, /fetch\("\/api\/tasks\/provision", \{ method: "POST" \}\)/);
+  assert.match(lifeOsApp, /await provisionGoogleTasks\(\)/);
+  const resolverStart = tasksServer.indexOf(
+    "export async function findGerrisTaskList",
+  );
+  const reservationStart = tasksServer.indexOf(
+    "async function reserveTaskListProvisioning",
+  );
+  assert.ok(resolverStart >= 0 && reservationStart > resolverStart);
+  assert.doesNotMatch(
+    tasksServer.slice(resolverStart, reservationStart),
+    /\.insert\(|\.update\(|\.delete\(|method:\s*"POST"/,
+    "Der von GET verwendete Listen-Resolver muss Google und D1 nur lesen.",
+  );
+  assert.match(calendarRoute, /export async function GET/);
+  assert.match(calendarRoute, /export async function POST/);
+  assert.doesNotMatch(calendarRoute, /calendar\/ical|GOOGLE_CALENDAR_ICAL_URL/);
+  assert.match(gmailDraftRoute, /export async function POST/);
 });
 
 test("liefert das Bewerbungsdashboard mit 72 echten Recherchevakanzen", async () => {

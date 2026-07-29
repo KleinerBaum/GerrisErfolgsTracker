@@ -1384,6 +1384,11 @@ main {
   font-weight: 700;
 }
 
+.integration-disabled {
+  color: var(--text-faint);
+  font-size: 0.64rem;
+}
+
 .quiet-copy {
   color: var(--text-faint);
   font-size: 0.75rem;
@@ -1566,9 +1571,125 @@ main {
   padding-block: 6px;
 }
 
+.google-source-card,
+.migration-card {
+  align-items: center;
+  background:
+    linear-gradient(120deg, rgba(53, 199, 154, 0.08), transparent 55%),
+    var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  display: flex;
+  gap: 22px;
+  justify-content: space-between;
+  padding: 18px 20px;
+}
+
+.google-source-card.is-connected {
+  border-color: rgba(53, 199, 154, 0.2);
+}
+
+.google-source-card h2 {
+  font-size: 0.95rem;
+  margin-top: 4px;
+}
+
+.google-source-card p,
+.migration-card p {
+  color: var(--text-faint);
+  font-size: 0.68rem;
+  margin-top: 3px;
+}
+
+.migration-card {
+  background:
+    linear-gradient(120deg, var(--amber-soft), transparent 55%),
+    var(--surface);
+  border-color: rgba(233, 185, 110, 0.18);
+}
+
+.migration-card strong {
+  font-size: 0.8rem;
+}
+
+.google-inline-error {
+  align-items: center;
+  background: rgba(229, 130, 130, 0.09);
+  border: 1px solid rgba(229, 130, 130, 0.16);
+  border-radius: var(--radius-md);
+  color: #efaaaa;
+  display: flex;
+  font-size: 0.7rem;
+  gap: 15px;
+  justify-content: space-between;
+  padding: 11px 14px;
+}
+
+.google-inline-error a {
+  color: white;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.task-card-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.task-card-actions .button {
+  width: auto;
+}
+
+.task-delete-button {
+  background: transparent;
+  border: 0;
+  color: var(--text-faint);
+  font-size: 0.62rem;
+  padding: 6px;
+}
+
 .completed-panel > p {
   color: var(--text-faint);
   font-size: 0.75rem;
+}
+
+.completed-task-list {
+  display: grid;
+  margin-top: 15px;
+}
+
+.completed-task-list article {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 15px;
+  justify-content: space-between;
+  min-height: 58px;
+}
+
+.completed-task-list strong,
+.completed-task-list small {
+  display: block;
+}
+
+.completed-task-list strong {
+  font-size: 0.74rem;
+}
+
+.completed-task-list small {
+  color: var(--text-faint);
+  font-size: 0.6rem;
+  margin-top: 2px;
+}
+
+.completed-task-list button {
+  background: transparent;
+  border: 0;
+  color: var(--green);
+  font-size: 0.62rem;
+  font-weight: 700;
 }
 
 .calendar-layout {
@@ -1688,7 +1809,10 @@ main {
   margin-top: 2px;
 }
 
-.reminder-list a {
+.reminder-list a,
+.reminder-list button {
+  background: transparent;
+  border: 0;
   color: var(--green);
   font-size: 0.63rem;
   font-weight: 700;
@@ -3944,6 +4068,61 @@ main {
   border-top: 1px solid var(--line);
 }
 
+.google-account-summary {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 10px 0 8px;
+  padding: 12px 14px;
+}
+
+.google-account-summary strong {
+  font-size: 0.76rem;
+}
+
+.google-account-summary p {
+  color: var(--text-faint);
+  font-size: 0.63rem;
+  margin-top: 2px;
+}
+
+.settings-integration-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.settings-integration-links a {
+  color: var(--green);
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.disconnect-google {
+  background: transparent;
+  border: 0;
+  color: var(--text-faint);
+  font-size: 0.62rem;
+  margin-top: 14px;
+  padding: 2px;
+}
+
+.inline-action-error,
+.inline-action-hint {
+  color: #efaaaa;
+  flex-basis: 100%;
+  font-size: 0.65rem;
+}
+
+.inline-action-hint {
+  color: var(--text-faint);
+}
+
 .danger-zone {
   align-items: center;
   display: flex;
@@ -4987,6 +5166,18 @@ main {
   .finance-intro {
     align-items: stretch;
     display: grid;
+  }
+
+  .google-source-card,
+  .migration-card,
+  .google-account-summary {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .google-source-card .button,
+  .migration-card .button {
+    width: 100%;
   }
 
   .finance-intro .button-group,

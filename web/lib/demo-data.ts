@@ -11,13 +11,11 @@ const dayAt = (offset: number, hour = 9, minute = 0): string => {
 const dateOnly = (offset: number): string => dayAt(offset).slice(0, 10);
 
 export const DEFAULT_INTEGRATIONS: IntegrationConfig = {
-  calendarId: "gerrit.fabisch2024@gmail.com",
-  calendarEmbedUrl:
-    "https://calendar.google.com/calendar/embed?src=gerrit.fabisch2024%40gmail.com&ctz=Europe%2FBerlin",
-  driveFolderUrl:
-    "https://drive.google.com/drive/folders/1_XCyuIovFJQSQ80zVy3gVkBuM8Tutgwe",
-  driveLocalPath: "G:\\Meine Ablage\\Unterlagen und Dokumente",
-  gmailAccount: "gerrit.fabisch2024@gmail.com",
+  calendarId: "primary",
+  calendarEmbedUrl: "https://calendar.google.com/calendar/u/0/r",
+  driveFolderUrl: "https://drive.google.com/drive/my-drive",
+  driveLocalPath: "Google Drive",
+  gmailAccount: "0",
 };
 
 export function createDemoState(ownerName = "Gerri"): AppState {

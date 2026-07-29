@@ -19,13 +19,22 @@ export type TaskQuadrant = "do" | "plan" | "delegate" | "drop";
 
 export type Task = {
   id: string;
+  taskListId?: string;
+  legacyId?: string | null;
   title: string;
+  notes?: string;
   area: LifeArea;
   quadrant: TaskQuadrant;
   dueAt: string | null;
   estimateMinutes: number;
   progress: number;
   completed: boolean;
+  completedAt?: string | null;
+  updatedAt?: string | null;
+  etag?: string | null;
+  webViewLink?: string | null;
+  assigned?: boolean;
+  parentId?: string | null;
   confidential: boolean;
 };
 
@@ -233,6 +242,7 @@ export type AppState = {
   points: number;
   rhythmDays: number;
   tasks: Task[];
+  pendingTaskImports?: Task[];
   costs: Cost[];
   incomes?: Income[];
   accountBalances?: AccountBalances;

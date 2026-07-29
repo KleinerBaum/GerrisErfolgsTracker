@@ -1,9 +1,9 @@
-import { driveErrorResponse, driveStatus } from "../../../../lib/google-drive-server";
 import {
   GoogleAuthorizationError,
   googleErrorResponse,
+  googleWorkspaceStatus,
+  ownerEmail,
 } from "../../../../lib/google-workspace-server";
-import { ownerEmail } from "../../../../lib/server-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -13,18 +13,17 @@ export async function GET(request: Request) {
     return googleErrorResponse(
       new GoogleAuthorizationError(
         "Anmeldung erforderlich.",
-        "drive",
+        "tasks",
         "authentication_required",
         false,
       ),
-      "drive",
     );
   }
   try {
-    return Response.json(await driveStatus(email), {
+    return Response.json(await googleWorkspaceStatus(email), {
       headers: { "cache-control": "private, no-store" },
     });
   } catch (error) {
-    return driveErrorResponse(error);
+    return googleErrorResponse(error);
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -35,8 +36,20 @@ import {
   drivePreviewUrl,
   extractDriveFileId,
   inferDocumentKind,
-  paymentCalendarUrl,
 } from "../lib/google-links";
+import {
+  bootstrapGoogleTasks,
+  createGoogleTask,
+  deleteGoogleTask,
+  getGoogleTasksStatus,
+  getGoogleWorkspaceStatus,
+  GoogleClientError,
+  listGoogleTasks,
+  provisionGoogleTasks,
+  updateGoogleTask,
+  type GoogleTasksStatus,
+  type GoogleWorkspaceStatus,
+} from "../lib/google-tasks-client";
 import {
   COST_CATEGORIES,
   COST_CADENCE_LABELS,
@@ -134,15 +147,140 @@ export function LifeOsApp({
   const [notice, setNotice] = useState("");
   const [externalEvents, setExternalEvents] = useState<CalendarEvent[]>([]);
   const [calendarLive, setCalendarLive] = useState(false);
+  const [taskStatus, setTaskStatus] = useState<GoogleTasksStatus | null>(null);
+  const [workspaceStatus, setWorkspaceStatus] =
+    useState<GoogleWorkspaceStatus | null>(null);
+  const [taskSyncing, setTaskSyncing] = useState(false);
+  const [taskError, setTaskError] = useState("");
+  const [taskConnectUrl, setTaskConnectUrl] = useState("");
+  const [taskActionId, setTaskActionId] = useState("");
+  const taskInitialLoadStarted = useRef(false);
   const driveExplorer = useDriveExplorer();
   const clearSelectedDriveFile = driveExplorer.selectFile;
   const {
     state,
+    ready,
     syncStatus,
     updateState,
     exportBackup,
     importBackup,
   } = useGerriState(initialState);
+  const pendingLegacyTasks = state.pendingTaskImports ?? [];
+
+  const replaceTasks = useCallback(
+    (tasks: Task[]) => {
+      updateState((current) => ({ ...current, tasks }));
+    },
+    [updateState],
+  );
+
+  const rememberGoogleError = useCallback(
+    (caught: unknown, fallback: string) => {
+      setTaskError(caught instanceof Error ? caught.message : fallback);
+      if (caught instanceof GoogleClientError && caught.connectUrl) {
+        setTaskConnectUrl(caught.connectUrl);
+      }
+    },
+    [],
+  );
+
+  const refreshWorkspaceStatus = useCallback(async () => {
+    try {
+      setWorkspaceStatus(await getGoogleWorkspaceStatus());
+    } catch {
+      setWorkspaceStatus(null);
+    }
+  }, []);
+
+  const refreshTasks = useCallback(async () => {
+    setTaskSyncing(true);
+    setTaskError("");
+    try {
+      let nextStatus = await getGoogleTasksStatus();
+      if (nextStatus.authorized) {
+        const provisioned = await provisionGoogleTasks();
+        nextStatus = { ...nextStatus, taskList: provisioned.taskList };
+      }
+      setTaskStatus(nextStatus);
+      setTaskConnectUrl(nextStatus.connectUrl);
+      if (!nextStatus.authorized) return;
+      replaceTasks(await listGoogleTasks());
+    } catch (caught) {
+      rememberGoogleError(caught, "Google Tasks konnte nicht geladen werden.");
+    } finally {
+      setTaskSyncing(false);
+    }
+  }, [rememberGoogleError, replaceTasks]);
+
+  useEffect(() => {
+    if (!ready || taskInitialLoadStarted.current) return;
+    taskInitialLoadStarted.current = true;
+    let active = true;
+    const load = async () => {
+      setTaskSyncing(true);
+      const cachedTasks = [
+        ...state.tasks,
+        ...(state.pendingTaskImports ?? []),
+      ].filter(
+        (task, index, tasks) =>
+          tasks.findIndex((candidate) => candidate.id === task.id) === index,
+      );
+      try {
+        const [loadedTaskStatus, nextWorkspaceStatus] = await Promise.all([
+          getGoogleTasksStatus(),
+          getGoogleWorkspaceStatus().catch(() => null),
+        ]);
+        let nextStatus = loadedTaskStatus;
+        if (!active) return;
+        if (nextStatus.authorized) {
+          const provisioned = await provisionGoogleTasks();
+          nextStatus = { ...nextStatus, taskList: provisioned.taskList };
+        }
+        if (!active) return;
+        setTaskStatus(nextStatus);
+        setWorkspaceStatus(nextWorkspaceStatus);
+        setTaskConnectUrl(nextStatus.connectUrl);
+        if (!nextStatus.authorized) return;
+        const googleTasks = await listGoogleTasks();
+        if (!active) return;
+        const googleIds = new Set(
+          googleTasks.flatMap((task) =>
+            [task.id, task.legacyId].filter(
+              (value): value is string => typeof value === "string" && value.length > 0,
+            ),
+          ),
+        );
+        const pendingTasks = cachedTasks.filter(
+          (task) => !task.taskListId && !googleIds.has(task.id),
+        );
+        updateState((current) => ({
+          ...current,
+          tasks: googleTasks,
+          pendingTaskImports: pendingTasks,
+        }));
+        setTaskError("");
+      } catch (caught) {
+        if (active) {
+          rememberGoogleError(
+            caught,
+            "Google Tasks konnte nicht geladen werden.",
+          );
+        }
+      } finally {
+        if (active) setTaskSyncing(false);
+      }
+    };
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [
+    ready,
+    rememberGoogleError,
+    state.pendingTaskImports,
+    state.tasks,
+    updateState,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -155,7 +293,10 @@ export function LifeOsApp({
         };
         if (!active) return;
         setExternalEvents(Array.isArray(payload.events) ? payload.events : []);
-        setCalendarLive(payload.source === "google-ical");
+        setCalendarLive(
+          payload.source === "google-calendar" ||
+            payload.source === "google-calendar-api",
+        );
       } catch {
         if (active) setCalendarLive(false);
       }
@@ -214,17 +355,86 @@ export function LifeOsApp({
     setQuickAction("application");
   };
 
-  const completeTask = (taskId: string) => {
-    updateState((current) => ({
-      ...current,
-      points: current.points + 15,
-      tasks: current.tasks.map((task) =>
-        task.id === taskId
-          ? { ...task, completed: true, progress: 100 }
-          : task,
-      ),
-    }));
-    setNotice("Aufgabe erledigt · 15 Punkte gesammelt");
+  const completeTask = async (taskId: string) => {
+    const task = state.tasks.find((candidate) => candidate.id === taskId);
+    if (!task || task.completed || taskActionId) return;
+    setTaskActionId(taskId);
+    setTaskError("");
+    try {
+      const updated = await updateGoogleTask(task, {
+        completed: true,
+        progress: 100,
+      });
+      updateState((current) => ({
+        ...current,
+        points: current.points + 15,
+        tasks: current.tasks.map((candidate) =>
+          candidate.id === taskId ? updated : candidate,
+        ),
+      }));
+      setNotice("In Google Tasks erledigt · 15 Punkte gesammelt");
+    } catch (caught) {
+      setNotice(
+        caught instanceof Error
+          ? caught.message
+          : "Die Aufgabe konnte nicht abgeschlossen werden.",
+      );
+      rememberGoogleError(
+        caught,
+        "Die Aufgabe konnte nicht abgeschlossen werden.",
+      );
+    } finally {
+      setTaskActionId("");
+    }
+  };
+
+  const reopenTask = async (taskId: string) => {
+    const task = state.tasks.find((candidate) => candidate.id === taskId);
+    if (!task || !task.completed || taskActionId) return;
+    setTaskActionId(taskId);
+    setTaskError("");
+    try {
+      const updated = await updateGoogleTask(task, {
+        completed: false,
+        progress: 0,
+      });
+      updateState((current) => ({
+        ...current,
+        tasks: current.tasks.map((candidate) =>
+          candidate.id === taskId ? updated : candidate,
+        ),
+      }));
+      setNotice("Aufgabe in Google Tasks wieder geöffnet");
+    } catch (caught) {
+      rememberGoogleError(caught, "Die Aufgabe konnte nicht geöffnet werden.");
+    } finally {
+      setTaskActionId("");
+    }
+  };
+
+  const removeTask = async (taskId: string) => {
+    const task = state.tasks.find((candidate) => candidate.id === taskId);
+    if (!task || taskActionId) return;
+    const deletePrompt = task.assigned
+      ? `„${task.title}“ wurde dir über einen anderen Google-Dienst zugewiesen. Wirklich auch aus Google Tasks löschen?`
+      : `„${task.title}“ dauerhaft aus Google Tasks löschen?`;
+    if (!window.confirm(deletePrompt)) {
+      return;
+    }
+    setTaskActionId(taskId);
+    setTaskError("");
+    try {
+      await deleteGoogleTask(task);
+      updateState((current) => ({
+        ...current,
+        tasks: current.tasks.filter((candidate) => candidate.id !== taskId),
+      }));
+      setNotice("Aufgabe aus Google Tasks gelöscht");
+    } catch (caught) {
+      rememberGoogleError(caught, "Die Aufgabe konnte nicht gelöscht werden.");
+    } finally {
+      setTaskActionId("");
+    }
   };
 
   const markCostPaid = (costId: string) => {
@@ -238,12 +448,52 @@ export function LifeOsApp({
     setNotice("Zahlung als erledigt markiert");
   };
 
-  const saveTask = (task: Task) => {
-    updateState((current) => ({
-      ...current,
-      tasks: [task, ...current.tasks],
-    }));
-    setNotice("Aufgabe gespeichert");
+  const saveTask = async (task: Task): Promise<boolean> => {
+    if (taskActionId) return false;
+    setTaskActionId("neu");
+    setTaskError("");
+    try {
+      const created = await createGoogleTask(task);
+      updateState((current) => ({
+        ...current,
+        tasks: [created, ...current.tasks],
+      }));
+      setNotice("Aufgabe in Google Tasks gespeichert");
+      return true;
+    } catch (caught) {
+      rememberGoogleError(
+        caught,
+        "Die Aufgabe konnte nicht in Google Tasks gespeichert werden.",
+      );
+      return false;
+    } finally {
+      setTaskActionId("");
+    }
+  };
+
+  const migrateLegacyTasks = async () => {
+    if (!pendingLegacyTasks.length || taskActionId) return;
+    setTaskActionId("migration");
+    setTaskError("");
+    try {
+      const result = await bootstrapGoogleTasks(pendingLegacyTasks);
+      const googleTasks = await listGoogleTasks();
+      updateState((current) => ({
+        ...current,
+        tasks: googleTasks,
+        pendingTaskImports: [],
+      }));
+      setNotice(
+        `${result.imported} Aufgaben in Google Tasks übernommen · ${result.reused} wiederverwendet`,
+      );
+    } catch (caught) {
+      rememberGoogleError(
+        caught,
+        "Die bisherigen Aufgaben konnten nicht übernommen werden.",
+      );
+    } finally {
+      setTaskActionId("");
+    }
   };
 
   const saveCost = (cost: Cost) => {
@@ -283,11 +533,51 @@ export function LifeOsApp({
   };
 
   const saveEvent = (event: CalendarEvent) => {
-    updateState((current) => ({
-      ...current,
-      calendarEvents: [event, ...current.calendarEvents],
-    }));
-    setNotice("Termin gespeichert");
+    setExternalEvents((current) => [
+      event,
+      ...current.filter((candidate) => candidate.id !== event.id),
+    ]);
+    setCalendarLive(true);
+  };
+
+  const planCostInGoogleCalendar = async (cost: Cost) => {
+    const start = new Date(cost.dueAt);
+    start.setHours(9, 0, 0, 0);
+    const event: CalendarEvent = {
+      id: uid("event"),
+      title: `Zahlung erinnern: ${cost.title}`,
+      startAt: start.toISOString(),
+      endAt: new Date(start.getTime() + 15 * 60_000).toISOString(),
+      source: "kompass",
+      kind: "payment",
+      private: true,
+      note: "Private Erinnerung aus Gerris Kompass",
+      reminderMinutes: 1_440,
+    };
+    try {
+      const response = await fetch("/api/calendar", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(event),
+      });
+      const payload = (await response.json()) as {
+        event?: CalendarEvent;
+        error?: string;
+      };
+      if (!response.ok || !payload.event) {
+        throw new Error(
+          payload.error || "Die Erinnerung konnte nicht gespeichert werden.",
+        );
+      }
+      saveEvent(payload.event);
+      setNotice("Private Zahlungserinnerung in Google Kalender gespeichert");
+    } catch (caught) {
+      setNotice(
+        caught instanceof Error
+          ? caught.message
+          : "Die Erinnerung konnte nicht gespeichert werden.",
+      );
+    }
   };
 
   const createApplication = (application: ApplicationProcess) => {
@@ -557,13 +847,25 @@ export function LifeOsApp({
               onCompleteTask={completeTask}
               onNavigate={navigate}
               state={state}
+              taskStatus={taskStatus}
+              workspaceStatus={workspaceStatus}
             />
           ) : null}
           {view === "tasks" ? (
             <TasksView
+              actionId={taskActionId}
+              connectUrl={taskConnectUrl}
+              error={taskError}
+              onDeleteTask={removeTask}
               onCompleteTask={completeTask}
+              onMigrate={() => void migrateLegacyTasks()}
               onNew={() => openCapture("task")}
+              onRefresh={() => void refreshTasks()}
+              onReopenTask={reopenTask}
+              pendingLegacyCount={pendingLegacyTasks.length}
               state={state}
+              status={taskStatus}
+              syncing={taskSyncing}
             />
           ) : null}
           {view === "calendar" ? (
@@ -571,6 +873,7 @@ export function LifeOsApp({
               calendarLive={calendarLive}
               externalEvents={externalEvents}
               integrations={integrations}
+              onPlanCost={planCostInGoogleCalendar}
               state={state}
             />
           ) : null}
@@ -580,6 +883,7 @@ export function LifeOsApp({
               onMarkPaid={markCostPaid}
               onNewCost={() => openCapture("cost")}
               onNewIncome={() => openCapture("income")}
+              onPlanCost={planCostInGoogleCalendar}
               onUpdateBalances={updateAccountBalances}
               state={state}
             />
@@ -685,6 +989,7 @@ export function LifeOsApp({
           onImport={(raw) => {
             try {
               importBackup(raw);
+              void refreshTasks();
               setNotice("Backup erfolgreich importiert");
             } catch {
               setNotice("Dieses Backup konnte nicht gelesen werden");
@@ -696,10 +1001,14 @@ export function LifeOsApp({
             );
             if (!confirmed) return;
             const reset = createDemoState(state.ownerName);
+            reset.tasks = state.tasks;
+            reset.pendingTaskImports = state.pendingTaskImports;
             updateState(() => reset);
-            setNotice("Beispieldaten zurückgesetzt");
+            setNotice("Beispieldaten zurückgesetzt · Google Tasks bleibt erhalten");
           }}
+          onRefreshGoogle={() => void refreshWorkspaceStatus()}
           syncCopy={syncCopy}
+          workspaceStatus={workspaceStatus}
         />
       ) : null}
 
@@ -723,7 +1032,9 @@ type TodayViewProps = {
   state: AppState;
   externalEvents: CalendarEvent[];
   integrations: IntegrationConfig;
-  onCompleteTask: (taskId: string) => void;
+  taskStatus: GoogleTasksStatus | null;
+  workspaceStatus: GoogleWorkspaceStatus | null;
+  onCompleteTask: (taskId: string) => Promise<void>;
   onNavigate: (view: ViewKey) => void;
 };
 
@@ -731,6 +1042,8 @@ function TodayView({
   state,
   externalEvents,
   integrations,
+  taskStatus,
+  workspaceStatus,
   onCompleteTask,
   onNavigate,
 }: TodayViewProps) {
@@ -863,7 +1176,13 @@ function TodayView({
                 <button
                   aria-label={`${task.title} erledigen`}
                   className="complete-control"
-                  onClick={() => onCompleteTask(task.id)}
+                  disabled={!taskStatus?.authorized}
+                  onClick={() => void onCompleteTask(task.id)}
+                  title={
+                    taskStatus?.authorized
+                      ? "In Google Tasks erledigen"
+                      : "Zuerst Google Tasks verbinden"
+                  }
                   type="button"
                 >
                   {index + 1}
@@ -961,25 +1280,56 @@ function TodayView({
         <section className="panel integration-overview" aria-labelledby="sources-title">
           <PanelHeading eyebrow="Verbunden" title="Deine Quellen" />
           <IntegrationRow
+            action={
+              taskStatus?.authorized
+                ? "Öffnen"
+                : taskStatus?.configured
+                  ? "Verbinden"
+                  : "Ansehen"
+            }
+            detail="Führende Quelle für alle Aufgaben"
+            href={
+              taskStatus?.authorized
+                ? "https://tasks.google.com/"
+                : taskStatus?.configured && taskStatus.connectUrl
+                  ? taskStatus.connectUrl
+                  : "https://tasks.google.com/"
+            }
+            label="Google Tasks"
+            status={taskStatus?.authorized ? "aktuell" : "bereit"}
+          />
+          <IntegrationRow
             action="Öffnen"
             detail="Persönlich · Dateien bleiben in Drive"
             href={integrations.driveFolderUrl}
             label="Google Drive"
-            status="verknüpft"
+            status={
+              workspaceStatus?.capabilities.drive.granted
+                ? "verknüpft"
+                : "bereit"
+            }
           />
           <IntegrationRow
             action="Ansehen"
             detail={integrations.calendarId}
             href={integrations.calendarEmbedUrl}
             label="Google Kalender"
-            status={externalEvents.length ? "aktuell" : "bereit"}
+            status={
+              workspaceStatus?.capabilities.calendar.granted
+                ? "aktuell"
+                : "bereit"
+            }
           />
           <IntegrationRow
             action="Postfach"
             detail={integrations.gmailAccount}
             href={`https://mail.google.com/mail/u/${encodeURIComponent(integrations.gmailAccount)}/#inbox`}
             label="Gmail"
-            status="direkt"
+            status={
+              workspaceStatus?.capabilities.gmail.granted
+                ? "Entwürfe"
+                : "bereit"
+            }
           />
         </section>
       </div>
@@ -1066,30 +1416,126 @@ function IntegrationRow({
 
 function TasksView({
   state,
+  status,
+  syncing,
+  error,
+  connectUrl,
+  pendingLegacyCount,
+  actionId,
   onCompleteTask,
+  onReopenTask,
+  onDeleteTask,
+  onRefresh,
+  onMigrate,
   onNew,
 }: {
   state: AppState;
-  onCompleteTask: (taskId: string) => void;
+  status: GoogleTasksStatus | null;
+  syncing: boolean;
+  error: string;
+  connectUrl: string;
+  pendingLegacyCount: number;
+  actionId: string;
+  onCompleteTask: (taskId: string) => Promise<void>;
+  onReopenTask: (taskId: string) => Promise<void>;
+  onDeleteTask: (taskId: string) => Promise<void>;
+  onRefresh: () => void;
+  onMigrate: () => void;
   onNew: () => void;
 }) {
   const [filter, setFilter] = useState<TaskQuadrant | "all">("all");
   const visible = state.tasks.filter(
     (task) => !task.completed && (filter === "all" || task.quadrant === filter),
   );
+  const completed = state.tasks.filter((task) => task.completed);
+  const sourceCopy = status?.authorized
+    ? `${status.googleEmail || "Google-Konto"} · ${status.taskList?.title || "Gerris Kompass"}`
+    : status?.configured
+      ? "Google-Konto noch nicht für Aufgaben freigegeben"
+      : "OAuth-Laufzeitwerte in Sites fehlen noch";
 
   return (
     <div className="view-stack">
       <PageIntro
         action={
-          <button className="button button-primary" onClick={onNew} type="button">
+          <button
+            className="button button-primary"
+            disabled={!status?.authorized}
+            onClick={onNew}
+            title={
+              status?.authorized
+                ? "Neue Google-Aufgabe erfassen"
+                : "Zuerst Google Tasks verbinden"
+            }
+            type="button"
+          >
             Aufgabe erfassen
           </button>
         }
         eyebrow="Fokus statt Überforderung"
         title="Was ist der sinnvollste nächste Schritt?"
-        copy="Aufgaben werden nach Wirkung und Dringlichkeit sortiert. Erledigen aktualisiert Fortschritt und Rhythmus automatisch."
+        copy="Google Tasks ist die führende Aufgabenquelle. Der Kompass ergänzt Eisenhower-Bereich, Lebensbereich, Aufwand und Fortschritt privat."
       />
+
+      <section
+        className={`google-source-card ${status?.authorized ? "is-connected" : ""}`}
+        aria-label="Google-Tasks-Verbindung"
+      >
+        <div>
+          <span className="eyebrow">Aufgabenquelle</span>
+          <h2>{status?.authorized ? "Google Tasks ist verbunden" : "Google Tasks verbinden"}</h2>
+          <p>{sourceCopy}</p>
+        </div>
+        <div className="button-group">
+          {status?.authorized ? (
+            <button
+              className="button button-soft"
+              disabled={syncing}
+              onClick={onRefresh}
+              type="button"
+            >
+              {syncing ? "Wird abgeglichen …" : "Jetzt abgleichen"}
+            </button>
+          ) : status?.configured && connectUrl ? (
+            <a className="button button-primary" href={connectUrl}>
+              Google Tasks verbinden
+            </a>
+          ) : null}
+        </div>
+      </section>
+
+      {pendingLegacyCount && status?.authorized ? (
+        <section className="migration-card" aria-label="Aufgaben übernehmen">
+          <div>
+            <strong>
+              {pendingLegacyCount} bisherige Kompass-Aufgaben gefunden
+            </strong>
+            <p>
+              Übernimm sie einmalig und idempotent in die Liste „Gerris Kompass“.
+              Danach ist Google Tasks die einzige Aufgabenquelle.
+            </p>
+          </div>
+          <button
+            className="button button-primary"
+            disabled={actionId === "migration"}
+            onClick={onMigrate}
+            type="button"
+          >
+            {actionId === "migration"
+              ? "Wird übernommen …"
+              : "Jetzt in Google Tasks übernehmen"}
+          </button>
+        </section>
+      ) : null}
+
+      {error ? (
+        <div className="google-inline-error" role="alert">
+          <span>{error}</span>
+          {status?.configured && connectUrl ? (
+            <a href={connectUrl}>Berechtigung erneuern</a>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="filter-row" role="group" aria-label="Aufgaben filtern">
         <button
@@ -1139,7 +1585,10 @@ function TasksView({
                   <article className="task-card" key={task.id}>
                     <div className="task-card-top">
                       <span>{LIFE_AREA_LABELS[task.area]}</span>
-                      {task.confidential ? <small>Privat</small> : null}
+                      <small>
+                        {status?.authorized ? "Google Tasks" : "Lokaler Altbestand"}
+                        {task.confidential ? " · Privat" : ""}
+                      </small>
                     </div>
                     <h3>{task.title}</h3>
                     <p>
@@ -1150,13 +1599,36 @@ function TasksView({
                       <span style={{ width: `${task.progress}%` }} />
                       <small>{task.progress}%</small>
                     </div>
-                    <button
-                      className="button button-soft button-full"
-                      onClick={() => onCompleteTask(task.id)}
-                      type="button"
-                    >
-                      Als erledigt markieren
-                    </button>
+                    <div className="task-card-actions">
+                      <button
+                        className="button button-soft"
+                        disabled={Boolean(actionId) || !status?.authorized}
+                        onClick={() => void onCompleteTask(task.id)}
+                        type="button"
+                      >
+                        {actionId === task.id
+                          ? "Wird aktualisiert …"
+                          : "Als erledigt markieren"}
+                      </button>
+                      {task.webViewLink ? (
+                        <a
+                          className="button button-ghost"
+                          href={task.webViewLink}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          In Google
+                        </a>
+                      ) : null}
+                      <button
+                        className="task-delete-button"
+                        disabled={Boolean(actionId) || !status?.authorized}
+                        onClick={() => void onDeleteTask(task.id)}
+                        type="button"
+                      >
+                        Löschen
+                      </button>
+                    </div>
                   </article>
                 ))}
                 {!tasks.length ? (
@@ -1180,6 +1652,39 @@ function TasksView({
           Erledigte Aufgaben bleiben im Verlauf erhalten und fließen in deinen
           Rhythmus ein.
         </p>
+        {completed.length ? (
+          <div className="completed-task-list">
+            {completed.slice(0, 20).map((task) => (
+              <article key={task.id}>
+                <div>
+                  <strong>{task.title}</strong>
+                  <small>
+                    {status?.authorized ? "Google Tasks" : "Lokaler Altbestand"}
+                    {task.completedAt
+                      ? ` · ${formatDate(task.completedAt)}`
+                      : ""}
+                  </small>
+                </div>
+                <div className="button-group">
+                  <button
+                    disabled={Boolean(actionId) || !status?.authorized}
+                    onClick={() => void onReopenTask(task.id)}
+                    type="button"
+                  >
+                    Wieder öffnen
+                  </button>
+                  <button
+                    disabled={Boolean(actionId) || !status?.authorized}
+                    onClick={() => void onDeleteTask(task.id)}
+                    type="button"
+                  >
+                    Löschen
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
       </section>
     </div>
   );
@@ -1190,13 +1695,15 @@ function CalendarView({
   externalEvents,
   integrations,
   calendarLive,
+  onPlanCost,
 }: {
   state: AppState;
   externalEvents: CalendarEvent[];
   integrations: IntegrationConfig;
   calendarLive: boolean;
+  onPlanCost: (cost: Cost) => Promise<void>;
 }) {
-  const [embedOpen, setEmbedOpen] = useState(false);
+  const [planningCostId, setPlanningCostId] = useState("");
   const [now] = useState(() => Date.now());
   const events = [...externalEvents, ...state.calendarEvents]
     .filter((event) => new Date(event.endAt).getTime() >= now - 86_400_000)
@@ -1239,7 +1746,7 @@ function CalendarView({
         />
         <Metric
           label="Google-Abgleich"
-          note={calendarLive ? "iCal-Lesezugriff aktiv" : "Embed ist verfügbar"}
+          note={calendarLive ? "Calendar API verbunden" : "OAuth-Verbindung nötig"}
           tone="blue"
           value={calendarLive ? "Aktuell" : "Bereit"}
         />
@@ -1288,8 +1795,8 @@ function CalendarView({
             <strong>Maximaler Vertraulichkeitsfaktor</strong>
             <p>
               Beträge und Zahlungsdetails werden hier gespeichert. Der
-              Kalender-Link öffnet nur einen Entwurf; prüfe dort vor dem Speichern
-              die Sichtbarkeit „Privat“.
+              Kalender erhält nach deiner Bestätigung nur Titel und Fälligkeitsdatum;
+              die Sichtbarkeit wird serverseitig auf „Privat“ gesetzt.
             </p>
           </div>
           <div className="reminder-list">
@@ -1300,46 +1807,45 @@ function CalendarView({
                   <strong>{cost.title}</strong>
                   <small>{formatCurrency(cost.amount)}</small>
                 </div>
-                <a
-                  href={paymentCalendarUrl(cost)}
-                  rel="noreferrer"
-                  target="_blank"
+                <button
+                  disabled={Boolean(planningCostId)}
+                  onClick={async () => {
+                    setPlanningCostId(cost.id);
+                    await onPlanCost(cost);
+                    setPlanningCostId("");
+                  }}
+                  type="button"
                 >
-                  In Kalender vorbereiten
-                </a>
+                  {planningCostId === cost.id
+                    ? "Wird gespeichert …"
+                    : "Privat in Google speichern"}
+                </button>
               </article>
             ))}
           </div>
         </section>
       </div>
 
-      <section className="panel embed-panel">
+      <section className="panel calendar-api-panel">
         <div className="embed-heading">
           <div>
-            <span className="eyebrow">Google Kalender</span>
-            <h2>Eingebettete Monatsansicht</h2>
+            <span className="eyebrow">Private Verbindung</span>
+            <h2>Termine bleiben unter deiner Kontrolle</h2>
             <p>
-              Diese Ansicht wird direkt von Google geladen und ist standardmäßig
-              geschlossen.
+              Die Agenda wird serverseitig über die Calendar API geladen. Der
+              frühere öffentliche iCal-Zugriff und ein eingebetteter Kalender
+              werden nicht mehr benötigt.
             </p>
           </div>
-          <button
+          <a
             className="button button-soft"
-            onClick={() => setEmbedOpen((current) => !current)}
-            type="button"
+            href={integrations.calendarEmbedUrl}
+            rel="noreferrer"
+            target="_blank"
           >
-            {embedOpen ? "Ansicht schließen" : "Ansicht laden"}
-          </button>
+            Google Kalender öffnen
+          </a>
         </div>
-        {embedOpen ? (
-          <div className="calendar-embed-wrap">
-            <iframe
-              loading="lazy"
-              src={integrations.calendarEmbedUrl}
-              title="Google Kalender von Gerri"
-            />
-          </div>
-        ) : null}
       </section>
     </div>
   );
@@ -1699,7 +2205,7 @@ type CaptureDialogProps = {
   initialKind: CaptureKind;
   integrations: IntegrationConfig;
   onClose: () => void;
-  onSaveTask: (task: Task) => void;
+  onSaveTask: (task: Task) => Promise<boolean>;
   onSaveCost: (cost: Cost) => void;
   onSaveIncome: (income: Income) => void;
   onSaveDocument: (document: DocumentRef) => void;
@@ -1743,12 +2249,16 @@ function CaptureDialog({
   const [mood, setMood] = useState(3);
   const [win, setWin] = useState("");
   const [nextStep, setNextStep] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (kind === "task") {
-      if (!title.trim()) return;
-      onSaveTask({
+      if (!title.trim() || saving) return;
+      setSaving(true);
+      setSubmitError("");
+      const saved = await onSaveTask({
         id: uid("task"),
         title: title.trim(),
         area,
@@ -1759,6 +2269,15 @@ function CaptureDialog({
         completed: false,
         confidential: area !== "alltag",
       });
+      setSaving(false);
+      if (!saved) {
+        setSubmitError(
+          "Bitte verbinde Google Tasks oder erneuere die Berechtigung. Es wurde keine lokale Aufgabenkopie angelegt.",
+        );
+        return;
+      }
+      onClose();
+      return;
     } else if (kind === "cost") {
       const numericAmount = Number.parseFloat(amount.replace(",", "."));
       if (!title.trim() || !Number.isFinite(numericAmount)) return;
@@ -2231,12 +2750,19 @@ function CaptureDialog({
             </>
           ) : null}
 
+          {submitError ? (
+          <p className="form-error" role="alert">{submitError}</p>
+          ) : null}
           <div className="dialog-actions">
             <button className="button button-ghost" onClick={onClose} type="button">
               Abbrechen
             </button>
-            <button className="button button-primary" type="submit">
-              Speichern
+            <button
+              className="button button-primary"
+              disabled={saving}
+              type="submit"
+            >
+              {saving ? "Wird gespeichert …" : "Speichern"}
             </button>
           </div>
         </form>
@@ -2325,19 +2851,80 @@ function DocumentViewer({
 function SettingsDialog({
   integrations,
   syncCopy,
+  workspaceStatus,
   onClose,
   onExport,
   onImport,
   onReset,
+  onRefreshGoogle,
 }: {
   integrations: IntegrationConfig;
   syncCopy: string;
+  workspaceStatus: GoogleWorkspaceStatus | null;
   onClose: () => void;
   onExport: () => void;
   onImport: (raw: string) => void;
   onReset: () => void;
+  onRefreshGoogle: () => void;
 }) {
   const importRef = useRef<HTMLInputElement>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [googleError, setGoogleError] = useState("");
+  const capabilityRows: Array<{
+    key: keyof GoogleWorkspaceStatus["capabilities"];
+    label: string;
+    detail: string;
+  }> = [
+    {
+      key: "tasks",
+      label: "Google Tasks",
+      detail: "Führende Quelle für alle Aufgaben",
+    },
+    {
+      key: "calendar",
+      label: "Google Kalender",
+      detail: "Termine lesen und privat erstellen",
+    },
+    {
+      key: "drive",
+      label: "Google Drive",
+      detail: "Stammordner schreibgeschützt öffnen",
+    },
+    {
+      key: "gmail",
+      label: "Gmail",
+      detail: "Nur bearbeitbare Entwürfe erstellen, nie senden",
+    },
+  ];
+
+  const disconnectGoogle = async () => {
+    if (
+      disconnecting ||
+      !window.confirm(
+        "Google-Verbindung wirklich trennen? Deine Daten bleiben bei Google erhalten; private Kompass-Zusatzangaben zu Aufgaben werden gelöscht.",
+      )
+    ) {
+      return;
+    }
+    setDisconnecting(true);
+    setGoogleError("");
+    try {
+      const response = await fetch("/api/google/disconnect", { method: "POST" });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Google konnte nicht getrennt werden.");
+      }
+      window.location.reload();
+    } catch (caught) {
+      setGoogleError(
+        caught instanceof Error
+          ? caught.message
+          : "Google konnte nicht getrennt werden.",
+      );
+      setDisconnecting(false);
+    }
+  };
+
   return (
     <div className="dialog-backdrop" onMouseDown={onClose} role="presentation">
       <section
@@ -2361,41 +2948,100 @@ function SettingsDialog({
           <div>
             <strong>Nur für dich freigegeben</strong>
             <p>
-              {syncCopy}. Aufgaben, Kosten und Journal bleiben im privaten
-              Sites-Speicher. Drive-Dateien verbleiben bei Google.
+              {syncCopy}. Aufgaben werden in Google Tasks geführt; Eisenhower-
+              Metadaten, Kosten und Journal bleiben im privaten Sites-Speicher.
+              Noch nicht übernommene Altaufgaben bleiben bis zur Migration lokal.
+              Drive-Dateien verbleiben bei Google.
             </p>
           </div>
         </div>
         <div className="settings-section">
           <span className="eyebrow">Integrationen</span>
-          <IntegrationRow
-            action="Ordner"
-            detail="Referenzen und direkte Downloads"
-            href={integrations.driveFolderUrl}
-            label="Google Drive"
-            status="verknüpft"
-          />
-          <IntegrationRow
-            action="Kalender"
-            detail={integrations.calendarId}
-            href={integrations.calendarEmbedUrl}
-            label="Google Kalender"
-            status="Lesezugriff"
-          />
-          <IntegrationRow
-            action="Gmail"
-            detail="Entwürfe öffnen erst nach deiner Aktion"
-            href={`https://mail.google.com/mail/u/${encodeURIComponent(integrations.gmailAccount)}/#inbox`}
-            label="Gmail"
-            status="direkt"
-          />
+          <div className="google-account-summary">
+            <div>
+              <strong>
+                {workspaceStatus?.connected
+                  ? workspaceStatus.googleEmail || "Google-Konto verbunden"
+                  : workspaceStatus?.configured
+                    ? "Google-Konto noch nicht verbunden"
+                    : "Google OAuth in Sites noch nicht eingerichtet"}
+              </strong>
+              <p>
+                Berechtigungen werden schrittweise nur für die gewählte Funktion
+                angefragt.
+              </p>
+            </div>
+            <button
+              className="button button-ghost"
+              onClick={onRefreshGoogle}
+              type="button"
+            >
+              Status prüfen
+            </button>
+          </div>
+          {capabilityRows.map((row) => {
+            const capability = workspaceStatus?.capabilities[row.key];
+            const status = capability?.granted
+              ? "Verbunden"
+              : workspaceStatus?.configured
+                ? "Berechtigung fehlt"
+                : "Konfiguration fehlt";
+            return (
+              <article className="integration-row" key={row.key}>
+                <span className="integration-initial">{row.label.slice(0, 1)}</span>
+                <div>
+                  <strong>{row.label}</strong>
+                  <small>{row.detail}</small>
+                </div>
+                <span className="status-chip">{status}</span>
+                {workspaceStatus?.configured && capability?.connectUrl ? (
+                  <a href={capability.connectUrl}>
+                    {capability.granted ? "Neu erlauben" : "Verbinden"}
+                  </a>
+                ) : (
+                  <span className="integration-disabled">Sites prüfen</span>
+                )}
+              </article>
+            );
+          })}
+          <div className="settings-integration-links">
+            <a href={integrations.driveFolderUrl} rel="noreferrer" target="_blank">
+              Drive-Ordner öffnen
+            </a>
+            <a
+              href={integrations.calendarEmbedUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Google Kalender öffnen
+            </a>
+            <a
+              href={`https://mail.google.com/mail/u/${encodeURIComponent(integrations.gmailAccount)}/#drafts`}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Gmail-Entwürfe öffnen
+            </a>
+          </div>
+          {workspaceStatus?.connected ? (
+            <button
+              className="disconnect-google"
+              disabled={disconnecting}
+              onClick={() => void disconnectGoogle()}
+              type="button"
+            >
+              {disconnecting ? "Verbindung wird getrennt …" : "Google-Verbindung trennen"}
+            </button>
+          ) : null}
+          {googleError ? <p className="form-error" role="alert">{googleError}</p> : null}
         </div>
         <div className="settings-section">
           <span className="eyebrow">Datensicherung</span>
           <h3>Deine Daten mitnehmen</h3>
           <p>
-            Exportiere jederzeit ein lesbares JSON-Backup. Beim Import wird das
-            Format geprüft, bevor etwas ersetzt wird.
+            Exportiere jederzeit ein lesbares JSON-Backup. Google Tasks bleibt
+            führend; das Backup enthält nur den letzten Aufgabenstand und die
+            privaten Kompass-Zusatzdaten.
           </p>
           <div className="button-group">
             <button className="button button-soft" onClick={onExport} type="button">

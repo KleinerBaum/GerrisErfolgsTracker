@@ -7,10 +7,7 @@ import {
   type FormEvent,
 } from "react";
 
-import {
-  calendarEventUrl,
-  gmailDraftUrl,
-} from "../lib/google-links";
+import { gmailDraftUrl } from "../lib/google-links";
 import {
   type CalendarEvent,
   type ApplicationProcess,
@@ -490,11 +487,13 @@ function EventForm({
   const [note, setNote] = useState("");
   const [kind, setKind] = useState<CalendarEvent["kind"]>("appointment");
   const [reminder, setReminder] = useState(30);
-  const [openGoogle, setOpenGoogle] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [connectUrl, setConnectUrl] = useState("");
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!title.trim() || !date || !time) return;
+    if (!title.trim() || !date || !time || busy) return;
     const start = new Date(`${date}T${time}:00`);
     const end = new Date(start.getTime() + duration * 60_000);
     const calendarEvent: CalendarEvent = {
@@ -509,12 +508,38 @@ function EventForm({
       note: note.trim(),
       reminderMinutes: reminder,
     };
-    onSave(calendarEvent);
-    if (openGoogle) {
-      window.open(calendarEventUrl(calendarEvent), "_blank", "noopener");
+    setBusy(true);
+    setError("");
+    setConnectUrl("");
+    try {
+      const response = await fetch("/api/calendar", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(calendarEvent),
+      });
+      const payload = (await response.json()) as {
+        event?: CalendarEvent;
+        error?: string;
+        connectUrl?: string;
+      };
+      if (!response.ok || !payload.event) {
+        setConnectUrl(payload.connectUrl || "");
+        throw new Error(
+          payload.error || "Der Termin konnte nicht gespeichert werden.",
+        );
+      }
+      onSave(payload.event);
+      toast("Termin privat in Google Kalender gespeichert");
+      onClose();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Der Termin konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setBusy(false);
     }
-    toast("Termin im Kompass gespeichert");
-    onClose();
   };
 
   return (
@@ -608,26 +633,22 @@ function EventForm({
           value={note}
         />
       </label>
-      <label className="check-row">
-        <input
-          checked={openGoogle}
-          onChange={(event) => setOpenGoogle(event.target.checked)}
-          type="checkbox"
-        />
-        <span>
-          Nach dem Speichern zusätzlich einen Entwurf in Google Kalender öffnen
-        </span>
-      </label>
       <p className="form-trust">
-        Der Termin wird privat im Kompass gespeichert. Google erhält erst Daten,
-        wenn du den optionalen Kalenderentwurf selbst öffnest und speicherst.
+        Der Termin wird erst nach deiner Bestätigung privat in Google Kalender
+        gespeichert. Im Kompass entsteht keine zweite Terminkopie.
       </p>
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="dialog-actions">
         <button className="button button-ghost" onClick={onClose} type="button">
           Abbrechen
         </button>
-        <button className="button button-primary" type="submit">
-          Termin speichern
+        {connectUrl ? (
+          <a className="button button-soft" href={connectUrl}>
+            Google Kalender verbinden
+          </a>
+        ) : null}
+        <button className="button button-primary" disabled={busy} type="submit">
+          {busy ? "Wird in Google gespeichert …" : "Privat in Google speichern"}
         </button>
       </div>
     </form>
@@ -703,6 +724,98 @@ function isEmailDraft(value: unknown): value is EmailDraft {
     typeof draft.body === "string" &&
     typeof draft.followUpSuggestion === "string" &&
     Array.isArray(draft.assumptions)
+  );
+}
+
+function GmailDraftAction({
+  account,
+  to,
+  subject,
+  body,
+  toast,
+}: {
+  account: string;
+  to: string;
+  subject: string;
+  body: string;
+  toast: (message: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [connectUrl, setConnectUrl] = useState("");
+
+  const createDraft = async () => {
+    if (busy || !to.trim() || !subject.trim() || !body.trim()) return;
+    setBusy(true);
+    setError("");
+    setConnectUrl("");
+    try {
+      const response = await fetch("/api/gmail/drafts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ to, subject, body }),
+      });
+      const payload = (await response.json()) as {
+        draftId?: string;
+        draft?: { id?: string };
+        webUrl?: string;
+        error?: string;
+        connectUrl?: string;
+      };
+      if (!response.ok || !(payload.draftId || payload.draft?.id)) {
+        setConnectUrl(payload.connectUrl || "");
+        throw new Error(
+          payload.error || "Der Gmail-Entwurf konnte nicht gespeichert werden.",
+        );
+      }
+      toast("Entwurf sicher in Gmail gespeichert");
+      window.open(
+        payload.webUrl ||
+          `https://mail.google.com/mail/u/${encodeURIComponent(account)}/#drafts`,
+        "_blank",
+        "noopener",
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Der Gmail-Entwurf konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        className="button button-primary"
+        disabled={busy || !to.trim() || !subject.trim() || !body.trim()}
+        onClick={() => void createDraft()}
+        title={
+          to.trim()
+            ? "Bearbeitbaren Gmail-Entwurf speichern"
+            : "Zuerst eine Empfängeradresse eintragen"
+        }
+        type="button"
+      >
+        {busy ? "Wird in Gmail gespeichert …" : "Als Gmail-Entwurf speichern"}
+      </button>
+      {connectUrl ? (
+        <a className="button button-soft" href={connectUrl}>
+          Gmail verbinden
+        </a>
+      ) : null}
+      {error ? (
+        <span className="inline-action-error" role="alert">
+          {error}
+        </span>
+      ) : !to.trim() ? (
+        <span className="inline-action-hint">
+          Für einen gespeicherten Gmail-Entwurf ist die Empfängeradresse nötig.
+        </span>
+      ) : null}
+    </>
   );
 }
 
@@ -827,8 +940,15 @@ function EmailComposer({
           >
             Kopieren
           </button>
+          <GmailDraftAction
+            account={account}
+            body={draft.body}
+            subject={draft.subject}
+            toast={toast}
+            to={recipientEmail}
+          />
           <a
-            className="button button-primary"
+            className="button button-ghost"
             href={gmailDraftUrl({
               account,
               to: recipientEmail,
@@ -838,7 +958,7 @@ function EmailComposer({
             rel="noreferrer"
             target="_blank"
           >
-            In Gmail öffnen
+            Nur im Gmail-Fenster öffnen
           </a>
         </div>
       </div>
@@ -1311,19 +1431,28 @@ function ApplicationStudio({
             Herunterladen
           </button>
           {activeTab === "applicationEmailBody" ? (
-            <a
-              className="button button-primary"
-              href={gmailDraftUrl({
-                account,
-                to: recipientEmail,
-                subject: result.applicationEmailSubject,
-                body: result.applicationEmailBody,
-              })}
-              rel="noreferrer"
-              target="_blank"
-            >
-              In Gmail öffnen
-            </a>
+            <>
+              <GmailDraftAction
+                account={account}
+                body={result.applicationEmailBody}
+                subject={result.applicationEmailSubject}
+                toast={toast}
+                to={recipientEmail}
+              />
+              <a
+                className="button button-ghost"
+                href={gmailDraftUrl({
+                  account,
+                  to: recipientEmail,
+                  subject: result.applicationEmailSubject,
+                  body: result.applicationEmailBody,
+                })}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Nur im Gmail-Fenster öffnen
+              </a>
+            </>
           ) : null}
         </div>
         <details className="quality-check-panel" open={result.openQuestions.length > 0}>

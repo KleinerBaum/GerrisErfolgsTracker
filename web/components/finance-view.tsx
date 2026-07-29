@@ -17,10 +17,7 @@ import {
   type IntegrationConfig,
 } from "../lib/types";
 import { formatCurrency, formatDate } from "../lib/format";
-import {
-  gmailComposeUrl,
-  paymentCalendarUrl,
-} from "../lib/google-links";
+import { gmailComposeUrl } from "../lib/google-links";
 
 const MONTHLY_FACTORS: Record<CostCadence, number> = {
   once: 0,
@@ -58,6 +55,7 @@ type FinanceViewProps = {
   onMarkPaid: (costId: string) => void;
   onNewCost: () => void;
   onNewIncome: () => void;
+  onPlanCost: (cost: Cost) => Promise<void>;
   onUpdateBalances: (balances: AccountBalances) => void;
 };
 
@@ -67,6 +65,7 @@ export function FinanceView({
   onMarkPaid,
   onNewCost,
   onNewIncome,
+  onPlanCost,
   onUpdateBalances,
 }: FinanceViewProps) {
   const [filter, setFilter] = useState<CostStatus | "all">("all");
@@ -75,6 +74,7 @@ export function FinanceView({
   const [balancesOpen, setBalancesOpen] = useState(false);
   const [paypalInput, setPaypalInput] = useState("");
   const [revolutInput, setRevolutInput] = useState("");
+  const [planningCostId, setPlanningCostId] = useState("");
 
   const incomes = state.incomes ?? [];
   const balances = state.accountBalances ?? {
@@ -555,13 +555,17 @@ export function FinanceView({
                   </button>
                 ) : null}
                 {cost.status !== "paid" ? (
-                  <a
-                    href={paymentCalendarUrl(cost)}
-                    rel="noreferrer"
-                    target="_blank"
+                  <button
+                    disabled={Boolean(planningCostId)}
+                    onClick={async () => {
+                      setPlanningCostId(cost.id);
+                      await onPlanCost(cost);
+                      setPlanningCostId("");
+                    }}
+                    type="button"
                   >
-                    Kalender
-                  </a>
+                    {planningCostId === cost.id ? "Speichert …" : "Kalender"}
+                  </button>
                 ) : null}
                 {cost.contactEmail ? (
                   <a

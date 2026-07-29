@@ -148,6 +148,13 @@ export function useDriveExplorer(): DriveExplorerController {
   );
 
   const disconnect = useCallback(async () => {
+    if (
+      !window.confirm(
+        "Die gemeinsame Google-Verbindung für Drive, Tasks, Kalender und Gmail trennen? Deine Google-Daten bleiben erhalten; private Kompass-Zusatzangaben zu Aufgaben werden gelöscht.",
+      )
+    ) {
+      return;
+    }
     try {
       const response = await fetch("/api/drive/disconnect", { method: "POST" });
       await jsonResponse<{ ok: boolean }>(response);
@@ -476,7 +483,7 @@ export function DriveExplorer({
         <div className="drive-account">
           <span>{controller.status.googleEmail}</span>
           <button onClick={() => void controller.disconnect()} type="button">
-            Verbindung trennen
+            Google-Verbindung trennen
           </button>
         </div>
       </header>

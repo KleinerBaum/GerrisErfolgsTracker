@@ -28,9 +28,13 @@ function normalizeState(value: AppState): AppState {
   const candidate = value as AppState & {
     incomes?: AppState["incomes"];
     accountBalances?: Partial<AppState["accountBalances"]>;
+    pendingTaskImports?: AppState["pendingTaskImports"];
   };
   return {
     ...candidate,
+    pendingTaskImports: Array.isArray(candidate.pendingTaskImports)
+      ? candidate.pendingTaskImports
+      : [],
     costs: candidate.costs.map((cost) => {
       const legacyCategory =
         (cost.category as string) === "Alltag"
@@ -71,9 +75,19 @@ function readLocalState(): AppState | null {
   }
 }
 
+function stateForPersistence(state: AppState): AppState {
+  return {
+    ...state,
+    tasks: state.tasks.filter((task) => !task.taskListId),
+  };
+}
+
 function writeLocalState(state: AppState) {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(stateForPersistence(state)),
+    );
   } catch {
     // Der private Server-Speicher bleibt die führende Quelle.
   }
@@ -129,7 +143,7 @@ export function useGerriState(initialState: AppState) {
         const response = await fetch("/api/state", {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify(state),
+          body: JSON.stringify(stateForPersistence(state)),
         });
         if (response.ok) {
           remoteAvailable.current = true;
@@ -175,8 +189,17 @@ export function useGerriState(initialState: AppState) {
     if (!isAppState(parsed)) {
       throw new Error("Das Backup hat kein unterstütztes Format.");
     }
+    const normalized = normalizeState(parsed);
+    const pendingTaskImports = [
+      ...(normalized.pendingTaskImports ?? []),
+      ...normalized.tasks.filter((task) => !task.taskListId),
+    ].filter(
+      (task, index, tasks) =>
+        tasks.findIndex((candidate) => candidate.id === task.id) === index,
+    );
     setState({
-      ...normalizeState(parsed),
+      ...normalized,
+      pendingTaskImports,
       revision: parsed.revision + 1,
       updatedAt: new Date().toISOString(),
     });
@@ -184,6 +207,7 @@ export function useGerriState(initialState: AppState) {
 
   return {
     state,
+    ready,
     syncStatus,
     updateState,
     replaceState: setState,

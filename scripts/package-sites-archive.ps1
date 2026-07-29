@@ -38,7 +38,8 @@ if ($status.Count -gt 0) {
     throw "Refusing to package an uncommitted source tree.`n$($status -join [Environment]::NewLine)"
 }
 
-$hostingMetadata = Join-Path $repositoryRoot ".openai\hosting.json"
+$webRoot = Join-Path $repositoryRoot "web"
+$hostingMetadata = Join-Path $webRoot ".openai\hosting.json"
 if (-not (Test-Path -LiteralPath $hostingMetadata -PathType Leaf)) {
     throw "Missing Sites metadata: $hostingMetadata"
 }
@@ -51,22 +52,10 @@ finally {
     Pop-Location
 }
 
-$standaloneRoot = Join-Path $repositoryRoot "web\dist\standalone"
-$launcher = Join-Path $standaloneRoot "server.js"
-$serverEntrypoint = Join-Path $standaloneRoot "dist\server\index.js"
-if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
-    throw "Missing vinext standalone launcher: $launcher"
-}
+$buildRoot = Join-Path $webRoot "dist"
+$serverEntrypoint = Join-Path $buildRoot "server\index.js"
 if (-not (Test-Path -LiteralPath $serverEntrypoint -PathType Leaf)) {
     throw "Missing vinext server entrypoint: $serverEntrypoint"
-}
-
-$requiredStandaloneEntries = @("package.json", "server.js", "dist", "node_modules")
-foreach ($entry in $requiredStandaloneEntries) {
-    $entryPath = Join-Path $standaloneRoot $entry
-    if (-not (Test-Path -LiteralPath $entryPath)) {
-        throw "Missing vinext standalone artifact: $entryPath"
-    }
 }
 
 $headAfterBuildOutput = & git -C $repositoryRoot rev-parse --verify HEAD
@@ -83,35 +72,50 @@ if ($LASTEXITCODE -ne 0) {
     throw "The build modified tracked source files; refusing to package them."
 }
 
-$sourceEpochOutput = & git -C $repositoryRoot show -s --format=%ct $commitSha
-if ($LASTEXITCODE -ne 0) {
-    throw "Unable to read the source commit timestamp."
-}
-$sourceEpoch = [long](($sourceEpochOutput | Select-Object -First 1).Trim())
-
 $archiveDirectory = Join-Path $repositoryRoot "dist"
 [System.IO.Directory]::CreateDirectory($archiveDirectory) | Out-Null
 $archivePath = Join-Path $archiveDirectory "sites-vinext-${commitSha}.tar.gz"
+$stageRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("gerris-sites-" + [System.Guid]::NewGuid())
+$stageDist = Join-Path $stageRoot "dist"
 
-$tarArguments = @(
-    "-czf", $archivePath,
-    "--format=pax",
-    "--mtime=@$sourceEpoch",
-    "--exclude=*.map"
-)
+try {
+    [System.IO.Directory]::CreateDirectory($stageDist) | Out-Null
+    Copy-Item -Path (Join-Path $buildRoot "*") -Destination $stageDist -Recurse -Force
 
-$tarVersion = (& tar --version 2>&1 | Select-Object -First 1) -as [string]
-if ($LASTEXITCODE -ne 0) {
-    throw "The tar executable is required to package the Sites archive."
+    $stageMetadata = Join-Path $stageDist ".openai"
+    [System.IO.Directory]::CreateDirectory($stageMetadata) | Out-Null
+    Copy-Item -LiteralPath $hostingMetadata -Destination (Join-Path $stageMetadata "hosting.json")
+
+    $drizzleRoot = Join-Path $webRoot "drizzle"
+    if (Test-Path -LiteralPath $drizzleRoot -PathType Container) {
+        Copy-Item -LiteralPath $drizzleRoot -Destination (Join-Path $stageMetadata "drizzle") -Recurse
+    }
+
+    Invoke-CheckedCommand tar "-C" $stageRoot "-czf" $archivePath "dist"
+    $archiveEntries = @(& tar -tzf $archivePath)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to inspect the Sites archive."
+    }
+    foreach ($requiredEntry in @(
+        "dist/server/index.js",
+        "dist/.openai/hosting.json"
+    )) {
+        if ($archiveEntries -notcontains $requiredEntry) {
+            throw "Missing Sites archive entry: $requiredEntry"
+        }
+    }
+    if (Test-Path -LiteralPath $drizzleRoot -PathType Container) {
+        foreach ($migration in Get-ChildItem -LiteralPath $drizzleRoot -Filter "*.sql" -File) {
+            $migrationEntry = "dist/.openai/drizzle/$($migration.Name)"
+            if ($archiveEntries -notcontains $migrationEntry) {
+                throw "Missing Sites migration in archive: $migrationEntry"
+            }
+        }
+    }
+    Write-Output $archivePath
 }
-if ($tarVersion -match "GNU tar") {
-    $tarArguments += @("--sort=name", "--owner=0", "--group=0", "--numeric-owner")
+finally {
+    if (Test-Path -LiteralPath $stageRoot) {
+        Remove-Item -LiteralPath $stageRoot -Recurse -Force
+    }
 }
-
-$tarArguments += @(
-    "-C", $repositoryRoot, ".openai/hosting.json",
-    "-C", $standaloneRoot, "package.json", "server.js", "dist", "node_modules"
-)
-
-Invoke-CheckedCommand tar @tarArguments
-Write-Output $archivePath
