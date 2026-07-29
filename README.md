@@ -3,6 +3,46 @@
 
 Streamlit-App mit Eisenhower-ToDo-Board, Gamification und optionaler OpenAI-Integration für KI-gestützte Vorschläge (Auto-Kategorisierung, Motivation). Ohne API-Key greifen Fallback-Texte und die App bleibt voll funktionsfähig.
 
+## Gerris Kompass – neue Sites-Webapp
+
+Unter `web/` entsteht die eigenständige, responsive Sites-Version des
+ErfolgsTrackers. Sie führt Aufgaben, Kalender, Kosten, Unterlagen und Journal in
+einer ruhigen deutschen Oberfläche zusammen.
+
+- Einklappbare Navigation mit Ordnerstruktur für wichtige Unterlagen.
+- Google-Drive-Verweise mit DIN-A4-Vorschau und direktem Download; Dateiinhalte
+  bleiben in Google Drive.
+- Google-Kalender als private Agenda mit bestätigungspflichtigen
+  Zahlungserinnerungen und optionaler eingebetteter Ansicht.
+- Gmail-Entwürfe werden nur nach einer bewussten Nutzeraktion geöffnet.
+- Kostenbuch für vergangene, laufende und geplante Kosten einschließlich
+  Fixkosten, Budget, Kategorien und Fälligkeiten.
+- Private, geräteübergreifende Sites-Persistenz über D1; lokaler Browser-Speicher
+  dient nur als Offline-Rückfall.
+
+Lokaler Start:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Qualitätsprüfung:
+
+```bash
+cd web
+npm run lint
+npm run typecheck
+npm test
+```
+
+Die Werte in `web/.env.example` sind ausschließlich Integrationskonfiguration.
+Google OAuth-Client-Secrets oder API-Schlüssel gehören niemals in das
+Repository. Vertrauliche Zahlungstermine werden nicht in den öffentlichen
+iCal-Feed geschrieben; der Kalender-Link erstellt nur einen von Gerri zu
+prüfenden Entwurf.
+
 Die UI folgt einem klaren, fokussierten Dark-Theme mit dunkelgrünem Primärton (#1C9C82) auf einem dezenten, bildfreien Gradient-Hintergrund, um einen ruhigen, professionellen Eindruck zu vermitteln. Statusinformationen werden textlich und über Typografie/Abstände vermittelt, um Icon-Lärm zu vermeiden. Alle sichtbaren Texte sind ausschließlich auf Deutsch gehalten, damit keine englischen Begriffe mehr auftauchen.
 Die Sidebar konzentriert sich auf die Navigation; Schalter, Build-Infos sowie Sicherheits- und Gamification-Optionen liegen nun in einem kompakten Header-Dropdown rechts neben „E-Mails“ / The sidebar now focuses on navigation, while toggles, build info, and safety/gamification options live in a compact header dropdown placed to the right of “Emails”.
 

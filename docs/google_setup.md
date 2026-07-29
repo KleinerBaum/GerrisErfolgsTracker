@@ -1,5 +1,24 @@
 # Google Workspace Setup
 
+## Sites-Webapp (`web/`)
+
+Die Sites-Version nutzt für den ersten sicheren Ausbau keine in der Anwendung
+gespeicherten Google-OAuth-Tokens:
+
+- Drive-Dateien werden über ihre Google-Drive-Links verknüpft, in der
+  Google-Vorschau angezeigt und direkt von Google heruntergeladen.
+- Kalendertermine werden lesend über den konfigurierten iCal-Link angezeigt.
+- Zahlungserinnerungen bleiben im privaten D1-Speicher und öffnen bei Bedarf
+  einen Google-Kalender-Entwurf. Vor dem Speichern ist die Sichtbarkeit
+  **Privat** zu prüfen.
+- Gmail-Aktionen öffnen einen vorausgefüllten Entwurf; die App liest oder
+  versendet keine Nachrichten ohne weitere OAuth-Anbindung.
+
+Die dafür verwendeten Variablen stehen in `web/.env.example`. Der angegebene
+öffentliche iCal-Link darf keine vertraulichen Ereignisse enthalten. Für einen
+späteren bidirektionalen Sync ist ein eigener, minimal berechtigter OAuth-Flow
+mit serverseitigem Token-Speicher erforderlich.
+
 ## Überblick / Overview
 Dieser Leitfaden beschreibt die nötigen Schritte in der Google Cloud Console und zeigt, wo die Werte in der App hinterlegt werden. / This guide lists the required Google Cloud Console steps and where to paste the values in the app.
 
