@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
 } from "react";
 
@@ -1070,19 +1071,86 @@ function TodayView({
         new Date(cost.dueAt).getMonth() === new Date().getMonth(),
     )
     .reduce((sum, cost) => sum + cost.amount, 0);
-  const nextEvents = [...externalEvents, ...state.calendarEvents]
+  const events = [...externalEvents, ...state.calendarEvents]
     .filter((event) => new Date(event.endAt).getTime() >= now)
-    .sort((left, right) => left.startAt.localeCompare(right.startAt))
-    .slice(0, 3);
+    .sort((left, right) => left.startAt.localeCompare(right.startAt));
+  const nextEvents = events.slice(0, 3);
   const focusMinutes = focusTasks.reduce(
     (sum, task) => sum + task.estimateMinutes,
     0,
   );
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const tomorrowStart = new Date(todayStart);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  const weekEnd = new Date(todayStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const todayEvents = events.filter((event) => {
+    const start = new Date(event.startAt);
+    return start >= todayStart && start < tomorrowStart;
+  });
+  const weekEvents = events.filter((event) => {
+    const start = new Date(event.startAt);
+    return start >= todayStart && start < weekEnd;
+  });
+  const openCosts = state.costs.filter((cost) => cost.status !== "paid");
+  const documentFiles = state.documents.filter(
+    (document) => document.kind !== "folder",
+  );
+  const documentFolders = state.documents.filter(
+    (document) => document.kind === "folder",
+  );
+  const documentsToReview = state.documents.filter((document) => {
+    const markedForReview = document.tags.some(
+      (tag) => tag.trim().toLocaleLowerCase("de-DE") === "prüfen",
+    );
+    const reviewIsNear =
+      Boolean(document.reviewAt) &&
+      daysFromNow(document.reviewAt ?? "") >= 0 &&
+      daysFromNow(document.reviewAt ?? "") <= 14;
+    return markedForReview || reviewIsNear;
+  });
+  const latestDocument = [...state.documents].sort((left, right) =>
+    right.modifiedAt.localeCompare(left.modifiedAt),
+  )[0];
+  const shortlistedApplications = state.applications.filter(
+    (application) =>
+      application.shortlisted &&
+      !["closed", "rejected", "withdrawn"].includes(application.status),
+  );
+  const activeApplications = state.applications.filter((application) =>
+    ["draft", "submitted", "interview", "offer"].includes(application.status),
+  );
+  const interviewApplications = state.applications.filter(
+    (application) => application.status === "interview",
+  );
+  const journalThisWeek = state.journal.filter((entry) => {
+    const entryDate = new Date(`${entry.date}T12:00:00`);
+    const difference = now - entryDate.getTime();
+    return difference >= 0 && difference < 7 * 86_400_000;
+  });
+  const averageMood = state.journal.length
+    ? state.journal.reduce((sum, entry) => sum + entry.mood, 0) /
+      state.journal.length
+    : null;
+  const focusShare = openTasks.length
+    ? Math.round((focusTasks.length / openTasks.length) * 100)
+    : 0;
+  const upcomingCostTotal = upcomingCosts.reduce(
+    (sum, cost) => sum + cost.amount,
+    0,
+  );
+  const averageMoodLabel =
+    averageMood === null
+      ? "—"
+      : averageMood.toFixed(1).replace(".", ",");
+  const moodShare =
+    averageMood === null ? 0 : Math.round((averageMood / 5) * 100);
 
   return (
     <div className="view-stack">
-      <section className="welcome-grid">
-        <div className="welcome-copy">
+      <section className="welcome-copy">
+        <div className="welcome-message">
           <span className="eyebrow">Guten Tag, {state.ownerName}</span>
           <h1 tabIndex={-1}>Ein klarer Tag beginnt mit dem nächsten Schritt.</h1>
           <p>
@@ -1090,73 +1158,266 @@ function TodayView({
               ? `${focusTasks.length} sinnvolle Aufgaben, etwa ${focusMinutes} Minuten Fokus und ${upcomingCosts.length} anstehende Zahlungen sind für dich vorbereitet.`
               : "Heute ist Raum für einen ruhigen Neustart. Erfasse genau einen nächsten Schritt."}
           </p>
-          <div className="welcome-actions">
-            <button
-              className="button button-primary"
-              onClick={() => onNavigate("tasks")}
-              type="button"
-            >
-              Fokus öffnen
-            </button>
-            <button
-              className="button button-soft"
-              onClick={() => onNavigate("calendar")}
-              type="button"
-            >
-              Tag ansehen
-            </button>
-          </div>
         </div>
-        <div className="coach-card">
-          <span className="coach-label">Gerri Coach</span>
-          <blockquote>
-            „Nicht alles heute. Aber das Richtige als Nächstes.“
-          </blockquote>
-          <p>
-            Beginne mit „{focusTasks[0]?.title ?? "einem kleinen Schritt"}“. Danach
-            darfst du neu entscheiden.
-          </p>
-          <div className="rhythm-row">
-            <span>{state.rhythmDays}/7 Tage im Rhythmus</span>
-            <div>
-              {Array.from({ length: 7 }, (_, index) => (
-                <i
-                  className={index < state.rhythmDays ? "done" : ""}
-                  key={index}
-                />
-              ))}
-            </div>
-          </div>
+        <div className="welcome-actions">
+          <button
+            className="button button-primary"
+            onClick={() => onNavigate("tasks")}
+            type="button"
+          >
+            Fokus öffnen
+          </button>
+          <button
+            className="button button-soft"
+            onClick={() => onNavigate("calendar")}
+            type="button"
+          >
+            Tag ansehen
+          </button>
         </div>
       </section>
 
-      <section className="metric-grid" aria-label="Tagesüberblick">
-        <Metric
-          label="Offene Aufgaben"
-          note={`${focusTasks.length} im Fokus`}
-          tone="green"
-          value={String(openTasks.length)}
-        />
-        <Metric
-          label="Nächste 14 Tage"
-          note={`${upcomingCosts.length} Zahlungen`}
-          tone="amber"
-          value={formatCurrency(
-            upcomingCosts.reduce((sum, cost) => sum + cost.amount, 0),
-          )}
-        />
-        <Metric
-          label="Diesen Monat bezahlt"
-          note="Fortschritt dokumentiert"
-          tone="blue"
-          value={formatCurrency(paidThisMonth)}
-        />
-        <Metric
-          label="Tagesrhythmus"
-          note="Jeder kleine Schritt zählt"
-          tone="violet"
-          value={`${state.rhythmDays}/7`}
-        />
+      <section className="core-kpi-grid" aria-label="Kernkennzahlen nach Bereichen">
+        <CoreKpiGroup
+          copy={`Beginne mit „${focusTasks[0]?.title ?? "einem kleinen Schritt"}“.`}
+          eyebrow="Gerri Coach"
+          id="tasks-kpis-title"
+          onOpen={() => onNavigate("tasks")}
+          title="Ziele & Fokus"
+          tone="goals"
+        >
+          <div className="kpi-goals-layout">
+            <div
+              aria-label={`${focusShare} Prozent der offenen Aufgaben sind im Fokus`}
+              className="kpi-target-ring"
+              role="img"
+              style={{ "--target-progress": `${focusShare}%` } as CSSProperties}
+            >
+              <div>
+                <span>Im Fokus</span>
+                <strong>{focusTasks.length}</strong>
+                <small>von {openTasks.length} offen</small>
+              </div>
+            </div>
+            <dl className="kpi-support-stats">
+              <div>
+                <dt>Offene Aufgaben</dt>
+                <dd>{openTasks.length}</dd>
+                <small>In Google Tasks</small>
+              </div>
+              <div>
+                <dt>Fokuszeit</dt>
+                <dd>{focusMinutes} Min.</dd>
+                <small>Für die nächsten Schritte</small>
+              </div>
+            </dl>
+          </div>
+        </CoreKpiGroup>
+
+        <CoreKpiGroup
+          copy="Termine und Fokuszeiten ohne Kalenderrauschen."
+          eyebrow="Deine Zeit"
+          id="calendar-kpis-title"
+          onOpen={() => onNavigate("calendar")}
+          title="Kalender"
+          tone="calendar"
+        >
+          <div className="kpi-calendar-layout">
+            <div className="kpi-deadline">
+              <span>Nächster Termin</span>
+              <strong>
+                {events[0] ? (
+                  <time dateTime={events[0].startAt}>
+                    {formatTime(events[0].startAt)}
+                  </time>
+                ) : (
+                  "Frei"
+                )}
+              </strong>
+              <small>
+                {events[0]
+                  ? `${formatRelativeDate(events[0].startAt)} · ${events[0].title}`
+                  : "Noch kein fester Zeitpunkt"}
+              </small>
+            </div>
+            <dl className="kpi-calendar-counts">
+              <div>
+                <dt>Heute</dt>
+                <dd>{todayEvents.length}</dd>
+                <small>Termine und Fokus</small>
+              </div>
+              <div>
+                <dt>7 Tage</dt>
+                <dd>{weekEvents.length}</dd>
+                <small>Geplante Termine</small>
+              </div>
+            </dl>
+          </div>
+        </CoreKpiGroup>
+
+        <CoreKpiGroup
+          copy="Anstehende Zahlungen auf einen Blick."
+          eyebrow="Privat"
+          id="finance-kpis-title"
+          onOpen={() => onNavigate("finance")}
+          title="Finanzen"
+          tone="finance"
+        >
+          <div className="kpi-finance-layout">
+            <div className="kpi-money-primary">
+              <span>Nächste 14 Tage</span>
+              <strong>{formatCurrency(upcomingCostTotal)}</strong>
+              <small>{upcomingCosts.length} anstehende Zahlungen</small>
+              <div
+                aria-hidden="true"
+                className={`kpi-money-segments${upcomingCosts.length ? "" : " empty"}`}
+              >
+                {upcomingCosts.slice(0, 5).map((cost) => (
+                  <i
+                    key={cost.id}
+                    style={{ flexGrow: Math.max(cost.amount, 1) }}
+                  />
+                ))}
+              </div>
+            </div>
+            <dl className="kpi-ledger">
+              <div>
+                <dt>Offen</dt>
+                <dd>{openCosts.length}</dd>
+                <small>Geplant oder fällig</small>
+              </div>
+              <div>
+                <dt>Bezahlt im Monat</dt>
+                <dd>{formatCurrency(paidThisMonth)}</dd>
+                <small>Bereits dokumentiert</small>
+              </div>
+            </dl>
+          </div>
+        </CoreKpiGroup>
+
+        <CoreKpiGroup
+          copy="Ablage, Prüfpunkte und Aktualität."
+          eyebrow="Deine Ablage"
+          id="documents-kpis-title"
+          onOpen={() => onNavigate("documents")}
+          title="Unterlagen"
+          tone="documents"
+        >
+          <div className="kpi-documents-layout">
+            <div className="kpi-folder-summary">
+              <div aria-hidden="true" className="kpi-folder-shape">
+                <i />
+                <i />
+                <i />
+              </div>
+              <div>
+                <strong>{documentFiles.length}</strong>
+                <span>Unterlagen</span>
+                <small>{documentFolders.length} Ordner verknüpft</small>
+              </div>
+            </div>
+            <dl className="kpi-document-facts">
+              <div>
+                <dt>Zu prüfen</dt>
+                <dd>{documentsToReview.length}</dd>
+                <small>Markiert oder terminiert</small>
+              </div>
+              <div>
+                <dt>Zuletzt aktualisiert</dt>
+                <dd>
+                  {latestDocument ? formatDate(latestDocument.modifiedAt) : "—"}
+                </dd>
+                <small>{latestDocument?.name ?? "Noch keine Unterlage"}</small>
+              </div>
+            </dl>
+          </div>
+        </CoreKpiGroup>
+
+        <CoreKpiGroup
+          copy="Shortlist, aktive Prozesse und Gespräche."
+          eyebrow="Deine Chancen"
+          id="applications-kpis-title"
+          onOpen={() => onNavigate("applications")}
+          title="Bewerbungen"
+          tone="applications"
+        >
+          <ol
+            aria-label="Bewerbungsprozess von der Shortlist bis zum Gespräch"
+            className="kpi-application-pipeline"
+          >
+            <li>
+              <div>
+                <span>Vorgemerkt</span>
+                <small>Auf deiner Shortlist</small>
+              </div>
+              <strong>{shortlistedApplications.length}</strong>
+            </li>
+            <li>
+              <div>
+                <span>In Bearbeitung</span>
+                <small>Entwurf bis Angebot</small>
+              </div>
+              <strong>{activeApplications.length}</strong>
+            </li>
+            <li>
+              <div>
+                <span>Gespräche</span>
+                <small>Aktuelle Interviews</small>
+              </div>
+              <strong>{interviewApplications.length}</strong>
+            </li>
+          </ol>
+        </CoreKpiGroup>
+
+        <CoreKpiGroup
+          copy="Fortschritt, Stimmung und persönlicher Rhythmus."
+          eyebrow="Deine Reflexion"
+          id="journal-kpis-title"
+          onOpen={() => onNavigate("journal")}
+          title="Journal"
+          tone="journal"
+        >
+          <div className="kpi-journal-layout">
+            <div
+              aria-label={
+                averageMood === null
+                  ? "Noch keine Stimmung erfasst"
+                  : `Durchschnittliche Stimmung ${averageMoodLabel} von 5`
+              }
+              className="kpi-mood-ring"
+              role="img"
+              style={{ "--mood-progress": `${moodShare}%` } as CSSProperties}
+            >
+              <div>
+                <strong>{averageMoodLabel}</strong>
+                <span>von 5</span>
+              </div>
+            </div>
+            <div className="kpi-rhythm-summary">
+              <div>
+                <span>Tagesrhythmus</span>
+                <strong>{state.rhythmDays}/7 Tage</strong>
+                <div
+                  aria-label={`${state.rhythmDays} von 7 Tagen im Rhythmus`}
+                  className="kpi-rhythm-dots"
+                  role="img"
+                >
+                  {Array.from({ length: 7 }, (_, index) => (
+                    <i
+                      className={index < state.rhythmDays ? "done" : ""}
+                      key={index}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="kpi-journal-count">
+                <strong>{state.journal.length}</strong>
+                <span>Einträge</span>
+                <small>{journalThisWeek.length} in 7 Tagen</small>
+              </div>
+            </div>
+          </div>
+        </CoreKpiGroup>
       </section>
 
       <div className="content-grid two-one">
@@ -1357,6 +1618,47 @@ function Metric({
   );
 }
 
+function CoreKpiGroup({
+  id,
+  eyebrow,
+  title,
+  copy,
+  tone,
+  onOpen,
+  children,
+}: {
+  id: string;
+  eyebrow: string;
+  title: string;
+  copy: string;
+  tone: string;
+  onOpen: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      aria-labelledby={id}
+      className={`core-kpi-group core-kpi-${tone}`}
+    >
+      <header className="core-kpi-header">
+        <div>
+          <span className="eyebrow">{eyebrow}</span>
+          <h2 id={id}>{title}</h2>
+          <p>{copy}</p>
+        </div>
+        <button
+          aria-label={`${title} öffnen`}
+          onClick={onOpen}
+          type="button"
+        >
+          Öffnen <span aria-hidden="true">→</span>
+        </button>
+      </header>
+      <div className="core-kpi-visual">{children}</div>
+    </section>
+  );
+}
+
 function PanelHeading({
   eyebrow,
   title,
@@ -1472,7 +1774,7 @@ function TasksView({
             Aufgabe erfassen
           </button>
         }
-        eyebrow="Fokus statt Überforderung"
+        eyebrow="Gerri Coach"
         title="Was ist der sinnvollste nächste Schritt?"
         copy="Google Tasks ist die führende Aufgabenquelle. Der Kompass ergänzt Eisenhower-Bereich, Lebensbereich, Aufwand und Fortschritt privat."
       />

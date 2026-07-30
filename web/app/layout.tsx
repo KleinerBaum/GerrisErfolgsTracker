@@ -4,9 +4,9 @@ import type { ReactNode } from "react";
 
 import "./globals.css";
 
-const title = "Gerris Kompass · Bewerbungen im Blick";
+const title = "Gerris Kompass · Heute im Blick";
 const description =
-  "Privates Selbstmanagement für Bewerbungen, Aufgaben, Termine, Kosten, Unterlagen und Reflexion.";
+  "Privater Überblick über Ziele, Termine, Finanzen, Unterlagen, Bewerbungen und Reflexion.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -33,10 +33,10 @@ export async function generateMetadata(): Promise<Metadata> {
       url: baseUrl,
       images: [
         {
-          url: `${baseUrl}/og.png`,
-          width: 1672,
-          height: 941,
-          alt: "Gerris Kompass – Bewerbungen, nächste Schritte und Lebenslauf im Blick",
+          url: `${baseUrl}/og-core-kpis.png`,
+          width: 1731,
+          height: 909,
+          alt: "Gerris Kompass – Ziele, Termine, Finanzen, Unterlagen, Bewerbungen und Reflexion im Blick",
         },
       ],
     },
@@ -44,7 +44,7 @@ export async function generateMetadata(): Promise<Metadata> {
       card: "summary_large_image",
       title,
       description,
-      images: [`${baseUrl}/og.png`],
+      images: [`${baseUrl}/og-core-kpis.png`],
     },
   };
 }

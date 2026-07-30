@@ -25,11 +25,45 @@ test("enthält den vollständigen privaten Organisationsbereich", async () => {
   assert.match(finance, /Revolut/);
   assert.equal((catalog.match(/\{ id: \d+, title:/g) ?? []).length, 48);
   assert.match(app, /DIN-A4-Ansicht/);
-  assert.match(layout, /og\.png/);
+  assert.match(layout, /og-core-kpis\.png/);
   assert.match(layout, /manifest\.webmanifest/);
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /aspect-ratio:\s*210\s*\/\s*297/);
   assert.doesNotMatch(page + app + layout, /codex-preview|Starter Project/);
+});
+
+test("stellt die Kernkennzahlen als sechs semantisch unterschiedliche Bereiche dar", async () => {
+  const [app, css, layout] = await Promise.all([
+    readFile(new URL("components/life-os-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+    readFile(new URL("app/layout.tsx", root), "utf8"),
+  ]);
+
+  const groups = [
+    ...app.matchAll(/<CoreKpiGroup[\s\S]*?<\/CoreKpiGroup>/g),
+  ].map((match) => match[0]);
+
+  assert.equal(groups.length, 6);
+  assert.match(app, /aria-label="Kernkennzahlen nach Bereichen"/);
+  assert.match(app, /eyebrow="Gerri Coach"/);
+  assert.match(app, /title="Ziele & Fokus"/);
+  assert.match(app, /title="Kalender"/);
+  assert.match(app, /title="Finanzen"/);
+  assert.match(app, /title="Unterlagen"/);
+  assert.match(app, /title="Bewerbungen"/);
+  assert.match(app, /title="Journal"/);
+  assert.match(app, /className="kpi-target-ring"/);
+  assert.match(app, /className="kpi-deadline"/);
+  assert.match(app, /kpi-money-segments/);
+  assert.match(app, /className="kpi-folder-shape"/);
+  assert.match(app, /className="kpi-application-pipeline"/);
+  assert.match(app, /className="kpi-mood-ring"/);
+  assert.match(app, /className="kpi-rhythm-dots"/);
+  assert.match(css, /\.core-kpi-grid/);
+  assert.match(css, /\.core-kpi-group/);
+  assert.match(css, /grid-template-columns: repeat\(auto-fit/);
+  assert.match(layout, /og-core-kpis\.png/);
+  await access(new URL("public/og-core-kpis.png", root));
 });
 
 test("liefert Sites-Metadaten, D1-Migration und Produktionsbundle", async () => {
