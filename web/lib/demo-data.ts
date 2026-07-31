@@ -225,6 +225,17 @@ export function createDemoState(ownerName = "Gerri"): AppState {
         text: "Die wichtigsten Dinge waren klarer als gedacht.",
         win: "Einen offenen Punkt abgeschlossen.",
         nextStep: "Morgen mit einer kleinen Aufgabe starten.",
+        weekPlan: "Die wichtigsten offenen Punkte ruhig nacheinander klären.",
+        reviewedAreas: [
+          "tasks",
+          "calendar",
+          "applications",
+          "finance",
+          "documents",
+        ],
+        closedAt: dayAt(-1, 20),
+        plannedTaskId: null,
+        linkedApplicationIds: [],
       },
     ],
   };

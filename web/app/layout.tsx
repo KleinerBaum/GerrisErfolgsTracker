@@ -6,7 +6,7 @@ import "./globals.css";
 
 const title = "Gerris Kompass · Heute im Blick";
 const description =
-  "Privater Überblick über Ziele, Termine, Finanzen, Unterlagen, Bewerbungen und Reflexion.";
+  "Privater Überblick über Ziele, Termine, Finanzen, Unterlagen, Bewerbungen und den täglichen Tagesabschluss.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -33,10 +33,10 @@ export async function generateMetadata(): Promise<Metadata> {
       url: baseUrl,
       images: [
         {
-          url: `${baseUrl}/og-core-kpis.png`,
+          url: `${baseUrl}/og.png`,
           width: 1731,
-          height: 909,
-          alt: "Gerris Kompass – Ziele, Termine, Finanzen, Unterlagen, Bewerbungen und Reflexion im Blick",
+          height: 908,
+          alt: "Gerris Kompass – Kalender, Tages-Guides, Ziele, Finanzen, Unterlagen, Bewerbungen und Tagebuch im Blick",
         },
       ],
     },
@@ -44,7 +44,7 @@ export async function generateMetadata(): Promise<Metadata> {
       card: "summary_large_image",
       title,
       description,
-      images: [`${baseUrl}/og-core-kpis.png`],
+      images: [`${baseUrl}/og.png`],
     },
   };
 }

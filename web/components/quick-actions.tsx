@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -9,10 +10,15 @@ import {
 
 import { gmailDraftUrl } from "../lib/google-links";
 import {
+  CalendarClientError,
+  listGoogleCalendars,
+} from "../lib/google-calendar-client";
+import {
   type CalendarEvent,
   type ApplicationProcess,
   type DocumentKind,
   type DocumentRef,
+  type GoogleCalendar,
   type IntegrationConfig,
 } from "../lib/types";
 
@@ -487,9 +493,39 @@ function EventForm({
   const [note, setNote] = useState("");
   const [kind, setKind] = useState<CalendarEvent["kind"]>("appointment");
   const [reminder, setReminder] = useState(30);
+  const [calendars, setCalendars] = useState<GoogleCalendar[]>([]);
+  const [calendarId, setCalendarId] = useState("primary");
+  const [calendarSelectionLoading, setCalendarSelectionLoading] = useState(true);
+  const [calendarSelectionConnectUrl, setCalendarSelectionConnectUrl] =
+    useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [connectUrl, setConnectUrl] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const loaded = (await listGoogleCalendars()).filter(
+          (calendar) => calendar.accessRole === "owner",
+        );
+        if (!active) return;
+        setCalendars(loaded);
+        const preferred = loaded.find((calendar) => calendar.primary) || loaded[0];
+        if (preferred) setCalendarId(preferred.id);
+      } catch (caught) {
+        if (active && caught instanceof CalendarClientError) {
+          setCalendarSelectionConnectUrl(caught.connectUrl);
+        }
+      } finally {
+        if (active) setCalendarSelectionLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -504,6 +540,7 @@ function EventForm({
       source: "kompass",
       kind,
       private: true,
+      calendarId,
       location: location.trim(),
       note: note.trim(),
       reminderMinutes: reminder,
@@ -588,7 +625,22 @@ function EventForm({
           </select>
         </label>
       </div>
-      <div className="form-grid">
+      <div className="form-grid three">
+        <label>
+          Zielkalender
+          <select
+            disabled={calendarSelectionLoading}
+            onChange={(event) => setCalendarId(event.target.value)}
+            value={calendarId}
+          >
+            {!calendars.length ? <option value="primary">Hauptkalender</option> : null}
+            {calendars.map((calendar) => (
+              <option key={calendar.id} value={calendar.id}>
+                {calendar.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           Art des Termins
           <select
@@ -637,6 +689,12 @@ function EventForm({
         Der Termin wird erst nach deiner Bestätigung privat in Google Kalender
         gespeichert. Im Kompass entsteht keine zweite Terminkopie.
       </p>
+      {calendarSelectionConnectUrl ? (
+        <p className="form-progress">
+          Die Kalenderauswahl benötigt einmalig eine ergänzte Google-Freigabe. Bis
+          dahin wird sicher der Hauptkalender verwendet.
+        </p>
+      ) : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="dialog-actions">
         <button className="button button-ghost" onClick={onClose} type="button">
@@ -645,6 +703,11 @@ function EventForm({
         {connectUrl ? (
           <a className="button button-soft" href={connectUrl}>
             Google Kalender verbinden
+          </a>
+        ) : null}
+        {!connectUrl && calendarSelectionConnectUrl ? (
+          <a className="button button-soft" href={calendarSelectionConnectUrl}>
+            Kalenderauswahl freischalten
           </a>
         ) : null}
         <button className="button button-primary" disabled={busy} type="submit">

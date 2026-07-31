@@ -1,8 +1,34 @@
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
+import ts from "typescript";
 
 const root = new URL("../", import.meta.url);
+
+async function readRepositoryGuide() {
+  try {
+    await access(new URL("../pyproject.toml", root));
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+  return readFile(new URL("../docs/google-workspace-sites.md", root), "utf8");
+}
+
+async function importTypeScriptModule(url) {
+  const source = await readFile(url, "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  return import(
+    `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
+  );
+}
 
 test("enthält den vollständigen privaten Organisationsbereich", async () => {
   const [page, app, finance, catalog, layout, css] = await Promise.all([
@@ -25,11 +51,26 @@ test("enthält den vollständigen privaten Organisationsbereich", async () => {
   assert.match(finance, /Revolut/);
   assert.equal((catalog.match(/\{ id: \d+, title:/g) ?? []).length, 48);
   assert.match(app, /DIN-A4-Ansicht/);
-  assert.match(layout, /og-core-kpis\.png/);
+  assert.match(layout, /og\.png/);
   assert.match(layout, /manifest\.webmanifest/);
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /aspect-ratio:\s*210\s*\/\s*297/);
   assert.doesNotMatch(page + app + layout, /codex-preview|Starter Project/);
+});
+
+test("formatiert Termine in der festen deutschen App-Zeitzone", async () => {
+  const format = await importTypeScriptModule(new URL("lib/format.ts", root));
+
+  assert.equal(format.APP_TIME_ZONE, "Europe/Berlin");
+  assert.equal(format.formatTime("2026-08-02T10:00:00.000Z"), "12:00");
+  assert.equal(format.isoDateInput("2026-07-31T22:30:00.000Z"), "2026-08-01");
+  assert.equal(
+    format.calendarDayDifference(
+      "2026-08-01T00:15:00.000+02:00",
+      "2026-07-31T21:45:00.000Z",
+    ),
+    1,
+  );
 });
 
 test("stellt die Kernkennzahlen als sechs semantisch unterschiedliche Bereiche dar", async () => {
@@ -51,7 +92,7 @@ test("stellt die Kernkennzahlen als sechs semantisch unterschiedliche Bereiche d
   assert.match(app, /title="Finanzen"/);
   assert.match(app, /title="Unterlagen"/);
   assert.match(app, /title="Bewerbungen"/);
-  assert.match(app, /title="Journal"/);
+  assert.match(app, /title="Tagebuch"/);
   assert.match(app, /className="kpi-target-ring"/);
   assert.match(app, /className="kpi-deadline"/);
   assert.match(app, /kpi-money-segments/);
@@ -62,8 +103,112 @@ test("stellt die Kernkennzahlen als sechs semantisch unterschiedliche Bereiche d
   assert.match(css, /\.core-kpi-grid/);
   assert.match(css, /\.core-kpi-group/);
   assert.match(css, /grid-template-columns: repeat\(auto-fit/);
-  assert.match(layout, /og-core-kpis\.png/);
-  await access(new URL("public/og-core-kpis.png", root));
+  assert.match(layout, /og\.png/);
+  await access(new URL("public/og.png", root));
+});
+
+test("macht das Tagebuch zum abwärtskompatiblen täglichen Abschluss", async () => {
+  const [app, diaryView, diaryModel, types, state, css, layout] =
+    await Promise.all([
+      readFile(new URL("components/life-os-app.tsx", root), "utf8"),
+      readFile(new URL("components/diary-view.tsx", root), "utf8"),
+      readFile(new URL("lib/diary.ts", root), "utf8"),
+      readFile(new URL("lib/types.ts", root), "utf8"),
+      readFile(new URL("lib/use-gerri-state.ts", root), "utf8"),
+      readFile(new URL("app/globals.css", root), "utf8"),
+      readFile(new URL("app/layout.tsx", root), "utf8"),
+    ]);
+
+  assert.match(app, /label: "Tagebuch", short: "Tagebuch", mark: "T"/);
+  assert.match(app, /journal: "Tagebuch & Tagesabschluss"/);
+  assert.doesNotMatch(app, /label: "Journal"|title="Journal"/);
+  assert.match(diaryView, /3–5 Minuten am Abend/);
+  assert.match(diaryView, /Was war heute\?/);
+  assert.match(diaryView, /Ist alles Neue im Kompass\?/);
+  assert.match(diaryView, /Was zählt morgen und diese Woche\?/);
+  assert.match(diaryView, /Alle aktuell offenen Themen/);
+  assert.match(diaryView, /Kritische Planungspunkte zuerst bearbeiten/);
+  assert.match(diaryView, /Privat oder Fachkalender wählen/);
+  assert.match(diaryView, /Bewerbungsakte aktualisieren/);
+  assert.match(diaryView, /createEmptyApplication/);
+  assert.match(diaryView, /onCreateApplication\(application\)/);
+  assert.match(diaryView, /direkt in Google Tasks auf morgen datiert/);
+  assert.match(diaryView, /Nur\s+ausdrücklich gewählte Aufgaben und Termine/);
+  assert.match(
+    diaryModel,
+    /"tasks",\s*"calendar",\s*"applications",\s*"finance",\s*"documents"/,
+  );
+  assert.match(diaryModel, /upsertDiaryEntry/);
+  assert.match(diaryModel, /existing\?\.id/);
+  assert.match(types, /weekPlan\?: string/);
+  assert.match(types, /reviewedAreas\?: DiaryReviewArea\[\]/);
+  assert.match(types, /linkedApplicationIds\?: string\[\]/);
+  assert.match(state, /normalizeDiaryEntries\(candidate\.journal\)/);
+  assert.match(css, /\.diary-close-layout/);
+  assert.match(css, /\.diary-review-checklist/);
+  assert.match(layout, /Tagebuch im Blick/);
+});
+
+test("übernimmt alte Journal-Einträge und führt Nachträge ohne Datenverlust zusammen", async () => {
+  const { DIARY_REVIEW_AREAS, normalizeDiaryEntries, upsertDiaryEntry } =
+    await importTypeScriptModule(new URL("lib/diary.ts", root));
+  const oldEntry = {
+    id: "journal-alt",
+    date: "2026-07-30",
+    mood: 4,
+    text: "Alter Tagesgedanke",
+    win: "Etwas abgeschlossen",
+    nextStep: "Morgen weiter",
+  };
+
+  const normalized = normalizeDiaryEntries([oldEntry]);
+  assert.equal(normalized.length, 1);
+  assert.equal(normalized[0].id, "journal-alt");
+  assert.deepEqual(normalized[0].reviewedAreas, []);
+
+  const closed = upsertDiaryEntry(
+    normalized,
+    {
+      text: oldEntry.text,
+      mood: oldEntry.mood,
+      win: oldEntry.win,
+      nextStep: oldEntry.nextStep,
+      weekPlan: "Woche ordnen",
+      reviewedAreas: [...DIARY_REVIEW_AREAS],
+      closeDay: true,
+      plannedTaskId: "task-1",
+    },
+    oldEntry.date,
+    "2026-07-30T20:00:00.000Z",
+    () => "darf-nicht-verwendet-werden",
+  );
+  assert.equal(closed.created, false);
+  assert.equal(closed.entries.length, 1);
+  assert.equal(closed.entries[0].id, oldEntry.id);
+  assert.equal(closed.entries[0].closedAt, "2026-07-30T20:00:00.000Z");
+  assert.deepEqual(closed.entries[0].reviewedAreas, DIARY_REVIEW_AREAS);
+
+  const withQuickNote = upsertDiaryEntry(
+    closed.entries,
+    {
+      text: "Später Nachtrag",
+      mood: 3,
+      win: "",
+      nextStep: "",
+      appendToDay: true,
+    },
+    oldEntry.date,
+    "2026-07-30T21:00:00.000Z",
+    () => "ebenfalls-nicht-verwendet",
+  );
+  assert.match(withQuickNote.entries[0].text, /Alter Tagesgedanke/);
+  assert.match(withQuickNote.entries[0].text, /Später Nachtrag/);
+  assert.equal(withQuickNote.entries[0].win, oldEntry.win);
+  assert.equal(withQuickNote.entries[0].closedAt, closed.entries[0].closedAt);
+  assert.deepEqual(
+    withQuickNote.entries[0].reviewedAreas,
+    DIARY_REVIEW_AREAS,
+  );
 });
 
 test("liefert Sites-Metadaten, D1-Migration und Produktionsbundle", async () => {
@@ -111,12 +256,15 @@ test("liefert die fünf privaten Schnellaktionen mit Upload und Textassistenz", 
   assert.match(actions, /Lokale Vorlage/);
   assert.match(assistantRoute, /store:\s*false/);
   assert.match(assistantRoute, /json_schema/);
+  assert.match(assistantRoute, /journal-analysis/);
+  assert.match(assistantRoute, /redactObviousCredentials/);
+  assert.match(assistantRoute, /useWebSearch:\s*false/);
   assert.match(uploadRoute, /MAX_FILE_BYTES/);
   assert.match(types, /storage\?: "drive" \| "upload"/);
   assert.equal(JSON.parse(hosting).r2, "FILES");
 });
 
-test("liefert einen geschützten Live-Drive-Explorer mit Inline-Vorschau", async () => {
+test("liefert einen geschützten Live-Drive-Explorer mit Vollbild-Vorschau", async () => {
   const [explorer, server, schema, types, folderRoute, fileRoute] =
     await Promise.all([
       readFile(new URL("components/drive-explorer.tsx", root), "utf8"),
@@ -135,7 +283,7 @@ test("liefert einen geschützten Live-Drive-Explorer mit Inline-Vorschau", async
 
   assert.match(explorer, /DriveSidebarTree/);
   assert.match(explorer, /Unterlagen und Dokumente/);
-  assert.match(explorer, /Direkte Vorschau/);
+  assert.match(explorer, /Vollständige Vorschau/);
   assert.match(explorer, /Unterordner öffnen/);
   assert.match(server, /drive\.readonly/);
   assert.match(server, /assertInsideRoot/);
@@ -171,7 +319,7 @@ test("bündelt Google Workspace sicher und dokumentiert die Sites-Konfiguration"
     stateRoute,
   ] = await Promise.all([
     readFile(new URL(".env.example", root), "utf8"),
-    readFile(new URL("../docs/google-workspace-sites.md", root), "utf8"),
+    readRepositoryGuide(),
     readFile(new URL("lib/google-workspace-server.ts", root), "utf8"),
     readFile(new URL("lib/google-tasks-server.ts", root), "utf8"),
     readFile(new URL("lib/google-calendar-server.ts", root), "utf8"),
@@ -211,14 +359,18 @@ test("bündelt Google Workspace sicher und dokumentiert die Sites-Konfiguration"
     "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/gmail.compose",
   ]) {
-    assert.match(guide, new RegExp(scope.replaceAll(".", "\\.")));
+    if (guide !== null) {
+      assert.match(guide, new RegExp(scope.replaceAll(".", "\\.")));
+    }
     assert.match(workspaceServer, new RegExp(scope.replaceAll(".", "\\.")));
   }
-  assert.match(guide, /sieben\s+Tagen/i);
-  assert.match(guide, /Service Account/);
-  assert.match(guide, /nur für den Eigentümer/i);
-  assert.match(guide, /GOOGLE_CALENDAR_ICAL_URL/);
-  assert.match(guide, /erneut \*\*privat\*\* bereitgestellt/);
+  if (guide !== null) {
+    assert.match(guide, /sieben\s+Tagen/i);
+    assert.match(guide, /Service Account/);
+    assert.match(guide, /nur für den Eigentümer/i);
+    assert.match(guide, /GOOGLE_CALENDAR_ICAL_URL/);
+    assert.match(guide, /erneut \*\*privat\*\* bereitgestellt/);
+  }
 
   assert.match(workspaceServer, /GOOGLE_CLIENT_ID/);
   assert.match(workspaceServer, /GOOGLE_CLIENT_SECRET/);

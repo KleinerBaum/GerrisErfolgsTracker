@@ -153,15 +153,300 @@ export type DocumentRef = {
 
 export type CalendarEvent = {
   id: string;
+  googleEventId?: string;
   title: string;
   startAt: string;
   endAt: string;
   source: "google" | "kompass";
   kind: "appointment" | "focus" | "payment";
   private: boolean;
+  calendarId?: string;
+  allDay?: boolean;
   location?: string;
   note?: string;
   reminderMinutes?: number;
+  etag?: string;
+  updatedAt?: string;
+  managed?: boolean;
+  managedCalendarKey?: ManagedCalendarKey;
+  sourceType?: PlanningSourceType;
+  sourceId?: string;
+  sourceOccurrence?: string;
+  desiredHash?: string;
+};
+
+export type GoogleCalendar = {
+  id: string;
+  name: string;
+  description?: string;
+  backgroundColor: string;
+  foregroundColor: string;
+  primary: boolean;
+  selected: boolean;
+  accessRole: "freeBusyReader" | "reader" | "writer" | "owner";
+  timeZone: string;
+};
+
+export const MANAGED_CALENDAR_NAMES = {
+  focus: "Fokus & Aufgaben & Fristen",
+  applications: "Bewerbungen",
+  birthdays_holidays: "Geburtstage und Feiertage",
+  private: "Privat",
+} as const;
+
+export type ManagedCalendarKey = keyof typeof MANAGED_CALENDAR_NAMES;
+export type ManagedCalendarStatus =
+  | "missing"
+  | "ambiguous"
+  | "ready"
+  | "private_unverified"
+  | "error";
+
+export type ManagedCalendar = {
+  key: ManagedCalendarKey;
+  name: string;
+  calendarId: string | null;
+  status: ManagedCalendarStatus;
+  matchCount: number;
+  accessRole: GoogleCalendar["accessRole"] | null;
+  privateAclVerified: boolean | null;
+  lastCheckedAt: string | null;
+  error: string | null;
+};
+
+export type PlanningSourceType =
+  | "task"
+  | "cost"
+  | "document"
+  | "application"
+  | "day-intent"
+  | "open-topic"
+  | "calendar"
+  | "sync";
+
+export type CalendarLink = {
+  sourceType: PlanningSourceType;
+  sourceId: string;
+  sourceOccurrence: string;
+  calendarId: string;
+  googleEventId: string;
+  etag: string | null;
+  desiredHash: string;
+  observedStartAt: string | null;
+  observedEndAt: string | null;
+  syncStatus: "pending" | "synced" | "conflict" | "failed";
+  lastSyncedAt: string | null;
+  error: string | null;
+};
+
+export type PlanningHealthState =
+  | "unknown"
+  | "stale"
+  | "incomplete"
+  | "conflicted"
+  | "healthy"
+  | "intentionally_free";
+
+export type PlanningGapSeverity = "critical" | "important";
+export type PlanningGapStatus = "open" | "snoozed" | "resolved";
+export type PlanningGapKind =
+  | "calendar_connection_unknown"
+  | "calendar_selection_empty"
+  | "calendar_load_failed"
+  | "calendar_stale"
+  | "calendar_day_empty"
+  | "calendar_conflict"
+  | "calendar_buffer_missing"
+  | "calendar_overload"
+  | "task_undated"
+  | "task_focus_missing"
+  | "application_next_step_missing"
+  | "application_schedule_missing"
+  | "payment_reminder_missing"
+  | "document_review_missing"
+  | "decision_open"
+  | "open_topic_schedule_missing"
+  | "managed_calendar_missing"
+  | "managed_calendar_duplicate"
+  | "private_calendar_unverified"
+  | "sync_failed"
+  | "calendar_event_changed"
+  | "calendar_event_deleted";
+
+export type PlanningGap = {
+  id: string;
+  kind: PlanningGapKind;
+  severity: PlanningGapSeverity;
+  status: PlanningGapStatus;
+  title: string;
+  detail: string;
+  sourceType: PlanningSourceType;
+  sourceId: string;
+  date: string | null;
+  dueAt: string | null;
+  firstSeenAt?: string;
+  lastSeenAt?: string;
+  snoozedUntil?: string | null;
+  resolutionNote?: string | null;
+  googleTaskId?: string | null;
+};
+
+export type DayIntentKind = "intentionally_free" | "vacation" | "sick";
+
+export type DayIntent = {
+  date: string;
+  kind: DayIntentKind;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OpenTopicGroup =
+  | "decision"
+  | "next_step"
+  | "waiting"
+  | "scheduled";
+export type OpenTopicStatus = "open" | "snoozed" | "resolved";
+export type CalendarTargetChoice = "private" | "specialist";
+
+export type OpenTopic = {
+  id: string;
+  group: OpenTopicGroup;
+  status: OpenTopicStatus;
+  title: string;
+  detail: string;
+  nextStep: string;
+  dueAt: string | null;
+  sourceType: PlanningSourceType;
+  sourceId: string;
+  evidence: string;
+  confidence: number | null;
+  requiresCalendarTarget: boolean;
+  calendarTarget: CalendarTargetChoice | null;
+  snoozedUntil: string | null;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+};
+
+export type DecisionRecord = {
+  id: string;
+  topicId: string | null;
+  sourceJournalId: string | null;
+  title: string;
+  decision: string;
+  calendarTarget: CalendarTargetChoice | null;
+  appliedAt: string | null;
+  createdAt: string;
+};
+
+export type SyncOutboxOperation =
+  | "calendar_create"
+  | "calendar_patch"
+  | "calendar_delete";
+export type SyncOutboxStatus = "pending" | "processing" | "done" | "failed";
+
+export type SyncOutboxItem = {
+  id: string;
+  dedupeKey: string;
+  operation: SyncOutboxOperation;
+  sourceType: PlanningSourceType;
+  sourceId: string;
+  sourceOccurrence: string;
+  payloadJson: string;
+  status: SyncOutboxStatus;
+  attemptCount: number;
+  nextAttemptAt: string;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SyncRun = {
+  id: string;
+  mode: "dry-run" | "safe";
+  reason: string;
+  status: "running" | "succeeded" | "partial" | "failed";
+  desiredCount: number;
+  createCount: number;
+  patchCount: number;
+  deleteCount: number;
+  conflictCount: number;
+  retryCount: number;
+  summary: string;
+  startedAt: string;
+  finishedAt: string | null;
+};
+
+export type PlanningDaySummary = {
+  date: string;
+  state: "planned" | "gap" | "intentionally_free";
+  intent: DayIntentKind | null;
+  planBlockCount: number;
+  hardEventCount: number;
+  focusMinutes: number;
+  conflictCount: number;
+  gapIds: string[];
+};
+
+export type PlanningHealthReport = {
+  state: PlanningHealthState;
+  title: string;
+  message: string;
+  generatedAt: string;
+  calendarFetchedAt: string | null;
+  calendarConnected: boolean;
+  selectedCalendarIds: string[];
+  criticalCount: number;
+  importantCount: number;
+  gaps: PlanningGap[];
+  days: PlanningDaySummary[];
+  managedCalendars: ManagedCalendar[];
+  dayIntents: DayIntent[];
+  openTopics: OpenTopic[];
+  automationMode: "dry-run" | "safe";
+  lastSyncRun: SyncRun | null;
+};
+
+export type JournalAnalysisSuggestionKind =
+  | "decision"
+  | "next_step"
+  | "waiting"
+  | "calendar";
+
+export type JournalAnalysisSuggestion = {
+  kind: JournalAnalysisSuggestionKind;
+  title: string;
+  detail: string;
+  evidence: string;
+  confidence: number;
+  proposedNextStep: string;
+  proposedDueAt: string | null;
+  requiresCalendarTarget: boolean;
+};
+
+export type JournalAnalysisResult = {
+  summary: string;
+  suggestions: JournalAnalysisSuggestion[];
+};
+
+export type DiaryReviewArea =
+  | "tasks"
+  | "calendar"
+  | "applications"
+  | "finance"
+  | "documents";
+
+export type DiarySnapshot = {
+  openTasks: number;
+  overdueTasks: number;
+  tomorrowTasks: number;
+  tomorrowEvents: number;
+  weekEvents: number;
+  activeApplications: number;
+  upcomingApplicationSteps: number;
+  dueCosts: number;
+  documentsToReview: number;
 };
 
 export type JournalEntry = {
@@ -171,6 +456,26 @@ export type JournalEntry = {
   text: string;
   win: string;
   nextStep: string;
+  weekPlan?: string;
+  reviewedAreas?: DiaryReviewArea[];
+  closedAt?: string | null;
+  plannedTaskId?: string | null;
+  linkedApplicationIds?: string[];
+  snapshot?: DiarySnapshot;
+};
+
+export type DiarySaveInput = {
+  text: string;
+  mood: number;
+  win: string;
+  nextStep: string;
+  weekPlan?: string;
+  reviewedAreas?: DiaryReviewArea[];
+  closeDay?: boolean;
+  plannedTaskId?: string | null;
+  linkedApplicationIds?: string[];
+  snapshot?: DiarySnapshot;
+  appendToDay?: boolean;
 };
 
 export type ApplicationStatus =
@@ -261,7 +566,12 @@ export type IntegrationConfig = {
   gmailAccount: string;
 };
 
-export type SyncStatus = "lade" | "synchronisiert" | "lokal" | "fehler";
+export type SyncStatus =
+  | "lade"
+  | "synchronisiert"
+  | "lokal"
+  | "fehler"
+  | "konflikt";
 
 export type CaptureKind = "task" | "cost" | "income" | "document" | "journal";
 

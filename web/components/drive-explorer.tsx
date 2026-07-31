@@ -24,7 +24,10 @@ type DriveExplorerController = {
   selectedFolderId: string | null;
   selectedFile: DriveItem | null;
   error: string;
-  loadFolder: (folderId: string, force?: boolean) => Promise<void>;
+  loadFolder: (
+    folderId: string,
+    force?: boolean,
+  ) => Promise<DriveFolderContent | null>;
   selectFolder: (folder: DriveItem) => Promise<void>;
   selectFile: (file: DriveItem | null) => void;
   toggleFolder: (folder: DriveItem) => Promise<void>;
@@ -62,7 +65,9 @@ export function useDriveExplorer(): DriveExplorerController {
 
   const loadFolder = useCallback(
     async (folderId: string, force = false) => {
-      if (!force && cacheRef.current[folderId]) return;
+      if (!force && cacheRef.current[folderId]) {
+        return cacheRef.current[folderId];
+      }
       setLoadingFolders((current) => new Set(current).add(folderId));
       try {
         const response = await fetch(
@@ -76,12 +81,14 @@ export function useDriveExplorer(): DriveExplorerController {
           return next;
         });
         setError("");
+        return content;
       } catch (caught) {
         setError(
           caught instanceof Error
             ? caught.message
             : "Der Ordner konnte nicht geladen werden.",
         );
+        return null;
       } finally {
         setLoadingFolders((current) => {
           const next = new Set(current);
@@ -128,7 +135,18 @@ export function useDriveExplorer(): DriveExplorerController {
     async (folder: DriveItem) => {
       setSelectedFolderId(folder.id);
       setSelectedFile(null);
-      await loadFolder(folder.id);
+      const selectedContent = await loadFolder(folder.id);
+      if (!selectedContent) return;
+      await Promise.all(
+        selectedContent.breadcrumbs
+          .slice(0, -1)
+          .map((ancestor) => loadFolder(ancestor.id)),
+      );
+      setExpandedFolders((current) => {
+        const next = new Set(current);
+        selectedContent.breadcrumbs.forEach((ancestor) => next.add(ancestor.id));
+        return next;
+      });
     },
     [loadFolder],
   );
@@ -343,63 +361,203 @@ function DriveFilePreview({
 }) {
   const source = `/api/drive/files/${encodeURIComponent(file.id)}`;
   const download = `${source}?download=1`;
+  const previewSource =
+    file.previewKind === "pdf"
+      ? `${source}#page=1&view=Fit&toolbar=1&navpanes=0`
+      : source;
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const previousFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.body.classList.add("drive-preview-open");
+    window.addEventListener("keydown", closeOnEscape);
+    closeButtonRef.current?.focus();
+    return () => {
+      document.body.classList.remove("drive-preview-open");
+      window.removeEventListener("keydown", closeOnEscape);
+      previousFocus?.focus();
+    };
+  }, [onClose]);
+
   return (
-    <section className="drive-inline-preview" aria-labelledby="drive-preview-title">
-      <header>
-        <div>
-          <span className="eyebrow">Direkte Vorschau · Google Drive</span>
-          <h2 id="drive-preview-title">{file.name}</h2>
-          <p>
-            {file.modifiedAt
-              ? `Geändert ${new Date(file.modifiedAt).toLocaleDateString("de-DE")}`
-              : "Google-Drive-Datei"}
-            {file.sizeBytes ? ` · ${formatSize(file.sizeBytes)}` : ""}
-          </p>
-        </div>
-        <div className="button-group">
-          <a className="button button-soft" href={download}>
-            Herunterladen
-          </a>
-          <a
-            className="button button-soft"
-            href={file.webViewLink}
-            rel="noreferrer"
-            target="_blank"
-          >
-            In Drive
-          </a>
-          <button className="button button-ghost" onClick={onClose} type="button">
-            Schließen
-          </button>
-        </div>
-      </header>
-      <div className={`drive-preview-stage preview-${file.previewKind || "fallback"}`}>
-        {file.previewKind === "image" ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img alt={`Vorschau von ${file.name}`} src={source} />
-        ) : file.previewKind === "pdf" || file.previewKind === "text" ? (
-          <iframe loading="lazy" src={source} title={`Vorschau von ${file.name}`} />
-        ) : (
-          <div className="viewer-empty drive-preview-fallback">
-            <span>DATEI</span>
-            <h3>Für dieses Format ist keine direkte Vorschau verfügbar.</h3>
-            <p>Du kannst die Datei sicher herunterladen oder in Google Drive öffnen.</p>
-            <div className="button-group">
-              <a className="button button-primary" href={download}>
-                Herunterladen
-              </a>
-              <a
-                className="button button-soft"
-                href={file.webViewLink}
-                rel="noreferrer"
-                target="_blank"
-              >
-                In Drive öffnen
-              </a>
-            </div>
+    <div
+      className="drive-preview-backdrop"
+      onMouseDown={(event) => {
+        if (event.currentTarget === event.target) onClose();
+      }}
+      role="presentation"
+    >
+      <section
+        aria-labelledby="drive-preview-title"
+        aria-modal="true"
+        className="drive-inline-preview"
+        role="dialog"
+      >
+        <header>
+          <div>
+            <span className="eyebrow">Vollständige Vorschau · Google Drive</span>
+            <h2 id="drive-preview-title">{file.name}</h2>
+            <p>
+              {file.modifiedAt
+                ? `Geändert ${new Date(file.modifiedAt).toLocaleDateString("de-DE")}`
+                : "Google-Drive-Datei"}
+              {file.sizeBytes ? ` · ${formatSize(file.sizeBytes)}` : ""}
+              {file.previewKind === "pdf"
+                ? " · ganze Seite im Original-Layout eingepasst"
+                : " · vollständig eingepasst"}
+            </p>
           </div>
-        )}
-      </div>
+          <div className="button-group">
+            <a className="button button-soft" href={download}>
+              Herunterladen
+            </a>
+            <a
+              className="button button-soft"
+              href={file.webViewLink}
+              rel="noreferrer"
+              target="_blank"
+            >
+              In Drive
+            </a>
+            <button
+              className="button button-ghost"
+              onClick={onClose}
+              ref={closeButtonRef}
+              type="button"
+            >
+              Schließen
+            </button>
+          </div>
+        </header>
+        <div
+          className={`drive-preview-stage preview-${file.previewKind || "fallback"}`}
+        >
+          {file.previewKind === "image" ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img alt={`Vorschau von ${file.name}`} src={source} />
+          ) : file.previewKind === "pdf" || file.previewKind === "text" ? (
+            <iframe
+              loading="eager"
+              src={previewSource}
+              title={`Vorschau von ${file.name}`}
+            />
+          ) : (
+            <div className="viewer-empty drive-preview-fallback">
+              <span>DATEI</span>
+              <h3>Für dieses Format ist keine direkte Vorschau verfügbar.</h3>
+              <p>
+                Du kannst die Datei sicher herunterladen oder in Google Drive
+                öffnen.
+              </p>
+              <div className="button-group">
+                <a className="button button-primary" href={download}>
+                  Herunterladen
+                </a>
+                <a
+                  className="button button-soft"
+                  href={file.webViewLink}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  In Drive öffnen
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DriveFolderSearch({
+  controller,
+}: {
+  controller: DriveExplorerController;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<DriveItem[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const normalizedQuery = query.trim();
+
+  useEffect(() => {
+    if (normalizedQuery.length < 2) {
+      return;
+    }
+    const abortController = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setSearching(true);
+      try {
+        const response = await fetch(
+          `/api/drive/search?q=${encodeURIComponent(normalizedQuery)}`,
+          { cache: "no-store", signal: abortController.signal },
+        );
+        const payload = await jsonResponse<{ items: DriveItem[] }>(response);
+        setResults(payload.items);
+        setSearchError("");
+      } catch (caught) {
+        if (caught instanceof DOMException && caught.name === "AbortError") return;
+        setResults([]);
+        setSearchError(
+          caught instanceof Error
+            ? caught.message
+            : "Die Ordnersuche ist momentan nicht erreichbar.",
+        );
+      } finally {
+        if (!abortController.signal.aborted) setSearching(false);
+      }
+    }, 250);
+    return () => {
+      window.clearTimeout(timeout);
+      abortController.abort();
+    };
+  }, [normalizedQuery]);
+
+  return (
+    <section className="drive-folder-search" aria-label="Ordner suchen">
+      <label>
+        <span>Ordner im gesamten Bereich suchen</span>
+        <input
+          aria-controls="drive-folder-search-results"
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Zum Beispiel Bücher, Verträge oder Ausweise"
+          type="search"
+          value={query}
+        />
+      </label>
+      {normalizedQuery.length >= 2 ? (
+        <div className="drive-folder-search-results" id="drive-folder-search-results">
+          {searching ? <p>Ordner werden gesucht …</p> : null}
+          {!searching && searchError ? <p role="status">{searchError}</p> : null}
+          {!searching && !searchError && !results.length ? (
+            <p>Kein passender Ordner in dieser Ablage gefunden.</p>
+          ) : null}
+          {results.map((folder) => (
+            <button
+              key={folder.id}
+              onClick={() => {
+                void controller.selectFolder(folder);
+                setQuery("");
+              }}
+              type="button"
+            >
+              <FileKind item={folder} />
+              <span>
+                <strong>{folder.name}</strong>
+                <small>Ordner öffnen und Pfad anzeigen</small>
+              </span>
+              <i aria-hidden="true">›</i>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -493,6 +651,7 @@ export function DriveExplorer({
 
       {content ? (
         <>
+          <DriveFolderSearch controller={controller} />
           <div className="drive-content-summary">
             <span>{folders.length} Unterordner</span>
             <span>{files.length} Dateien</span>

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../../db";
 import { userStates } from "../../../db/schema";
@@ -7,6 +7,37 @@ import { ownerEmail, sameOrigin } from "../../../lib/server-auth";
 export const dynamic = "force-dynamic";
 
 const MAX_STATE_BYTES = 1_500_000;
+
+function revisionEtag(revision: number): string {
+  return `"${revision}"`;
+}
+
+function expectedRevision(request: Request): number | null {
+  const value = request.headers.get("if-match")?.trim();
+  if (!value) return null;
+  const match = /^(?:W\/)?"(\d+)"$/.exec(value);
+  if (!match) return null;
+  const revision = Number(match[1]);
+  return Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
+}
+
+function conflictResponse(currentRevision: number) {
+  return Response.json(
+    {
+      error:
+        "Der Zustand wurde in einer anderen Sitzung geändert. Bitte neu laden und die Änderungen bewusst zusammenführen.",
+      code: "state_revision_conflict",
+      currentRevision,
+    },
+    {
+      status: 409,
+      headers: {
+        "cache-control": "private, no-store",
+        etag: revisionEtag(currentRevision),
+      },
+    },
+  );
+}
 
 function errorResponse(error: unknown) {
   const message = error instanceof Error ? error.message : "";
@@ -43,6 +74,8 @@ export async function GET(request: Request) {
       headers: {
         "content-type": "application/json; charset=utf-8",
         "cache-control": "private, no-store",
+        etag: revisionEtag(row.stateVersion),
+        "x-gerris-state-revision": String(row.stateVersion),
       },
     });
   } catch (error) {
@@ -105,24 +138,63 @@ export async function PUT(request: Request) {
     };
     const stateJson = JSON.stringify(persistedPayload);
     const updatedAt = new Date().toISOString();
-    await getDb()
-      .insert(userStates)
-      .values({
-        ownerEmail: email,
-        stateJson,
-        stateVersion: state.revision,
-        updatedAt,
-      })
-      .onConflictDoUpdate({
-        target: userStates.ownerEmail,
-        set: {
+    const db = getDb();
+    const [current] = await db
+      .select({ stateVersion: userStates.stateVersion })
+      .from(userStates)
+      .where(eq(userStates.ownerEmail, email))
+      .limit(1);
+    const expected = expectedRevision(request);
+    if (current) {
+      if (
+        expected === null ||
+        expected !== current.stateVersion ||
+        state.revision <= current.stateVersion
+      ) {
+        return conflictResponse(current.stateVersion);
+      }
+      const updated = await db
+        .update(userStates)
+        .set({ stateJson, stateVersion: state.revision, updatedAt })
+        .where(
+          and(
+            eq(userStates.ownerEmail, email),
+            eq(userStates.stateVersion, expected),
+          ),
+        )
+        .returning({ stateVersion: userStates.stateVersion });
+      if (!updated[0]) return conflictResponse(current.stateVersion);
+    } else {
+      if (expected !== null && expected !== 0) return conflictResponse(0);
+      const inserted = await db
+        .insert(userStates)
+        .values({
+          ownerEmail: email,
           stateJson,
           stateVersion: state.revision,
           updatedAt,
-        },
-      });
+        })
+        .onConflictDoNothing()
+        .returning({ stateVersion: userStates.stateVersion });
+      if (!inserted[0]) {
+        const [winner] = await db
+          .select({ stateVersion: userStates.stateVersion })
+          .from(userStates)
+          .where(eq(userStates.ownerEmail, email))
+          .limit(1);
+        return conflictResponse(winner?.stateVersion ?? 0);
+      }
+    }
 
-    return Response.json({ ok: true, updatedAt });
+    return Response.json(
+      { ok: true, updatedAt, revision: state.revision },
+      {
+        headers: {
+          etag: revisionEtag(state.revision),
+          "cache-control": "private, no-store",
+        },
+      },
+    );
   } catch (error) {
     return errorResponse(error);
   }

@@ -21,11 +21,28 @@ export const GOOGLE_OAUTH_COOKIE = "gerri_google_oauth";
 
 export type GoogleCapability = "drive" | "tasks" | "calendar" | "gmail";
 
-const CAPABILITY_SCOPES: Record<GoogleCapability, string> = {
-  drive: "https://www.googleapis.com/auth/drive.readonly",
-  tasks: "https://www.googleapis.com/auth/tasks",
-  calendar: "https://www.googleapis.com/auth/calendar.events.owned",
-  gmail: "https://www.googleapis.com/auth/gmail.compose",
+export const GOOGLE_CALENDAR_OWN_EVENTS_SCOPE =
+  "https://www.googleapis.com/auth/calendar.events.owned";
+export const GOOGLE_CALENDAR_READ_EVENTS_SCOPE =
+  "https://www.googleapis.com/auth/calendar.events.readonly";
+export const GOOGLE_CALENDAR_LIST_SCOPE =
+  "https://www.googleapis.com/auth/calendar.calendarlist.readonly";
+export const GOOGLE_CALENDAR_CREATE_SCOPE =
+  "https://www.googleapis.com/auth/calendar.calendars";
+export const GOOGLE_CALENDAR_ACL_READ_SCOPE =
+  "https://www.googleapis.com/auth/calendar.acls.readonly";
+
+const CAPABILITY_SCOPES: Record<GoogleCapability, readonly string[]> = {
+  drive: ["https://www.googleapis.com/auth/drive.readonly"],
+  tasks: ["https://www.googleapis.com/auth/tasks"],
+  calendar: [
+    GOOGLE_CALENDAR_OWN_EVENTS_SCOPE,
+    GOOGLE_CALENDAR_READ_EVENTS_SCOPE,
+    GOOGLE_CALENDAR_LIST_SCOPE,
+    GOOGLE_CALENDAR_CREATE_SCOPE,
+    GOOGLE_CALENDAR_ACL_READ_SCOPE,
+  ],
+  gmail: ["https://www.googleapis.com/auth/gmail.compose"],
 };
 
 type StoredConnection = typeof googleDriveConnections.$inferSelect;
@@ -131,6 +148,12 @@ export function googleWorkspaceConfigured(): boolean {
 }
 
 export function scopeForCapability(capability: GoogleCapability): string {
+  return CAPABILITY_SCOPES[capability][0];
+}
+
+export function scopesForCapability(
+  capability: GoogleCapability,
+): readonly string[] {
   return CAPABILITY_SCOPES[capability];
 }
 
@@ -298,7 +321,9 @@ export async function createGoogleOAuthState(
   const existing = await googleConnectionFor(owner);
   const scopes = new Set<string>(BASE_SCOPES);
   for (const scope of scopeSet(existing?.grantedScopes || "")) scopes.add(scope);
-  for (const capability of selected) scopes.add(scopeForCapability(capability));
+  for (const capability of selected) {
+    for (const scope of scopesForCapability(capability)) scopes.add(scope);
+  }
 
   const state = crypto.randomUUID();
   const verifier = base64Url(crypto.getRandomValues(new Uint8Array(48)));
@@ -452,7 +477,9 @@ export async function finishGoogleOAuth(
       : scopeSet(identityChanged ? "" : existing?.grantedScopes || "");
   if (returnedScopes.size === 0) {
     for (const capability of requestedCapabilities) {
-      grantedScopes.add(scopeForCapability(capability));
+      for (const scope of scopesForCapability(capability)) {
+        grantedScopes.add(scope);
+      }
     }
   }
   const now = new Date().toISOString();
@@ -684,7 +711,9 @@ export async function googleWorkspaceStatus(
   const configured = googleWorkspaceConfigured();
   const connection = configured ? await googleConnectionFor(owner) : null;
   const statusFor = (capability: GoogleCapability) => ({
-    granted: hasScope(connection, scopeForCapability(capability)),
+    granted: scopesForCapability(capability).every((scope) =>
+      hasScope(connection, scope),
+    ),
     connectUrl: connectUrl(capability),
   });
   return {

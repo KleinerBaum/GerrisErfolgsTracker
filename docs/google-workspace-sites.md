@@ -9,7 +9,10 @@ nicht verwendet.
 
 - **Google Tasks** ist die führende Quelle für alle Aufgaben. Die App verwendet
   die Aufgabenliste `Gerris Kompass` und legt sie bei Bedarf einmalig an.
-- **Google Calendar** liest und pflegt Termine im Kalender `primary`.
+- **Google Calendar** liest die ausdrücklich ausgewählten Kalender, pflegt
+  Termine in eigenen Kalendern und kann nach Bestätigung neue sekundäre
+  Kalender anlegen. Ohne erweiterte Freigabe bleibt `primary` der sichere
+  Fallback.
 - **Google Drive** bleibt auf den konfigurierten Stammordner begrenzt und wird
   ausschließlich gelesen.
 - **Gmail** legt bearbeitbare Entwürfe an. Die App versendet keine Nachricht
@@ -70,7 +73,11 @@ werden erst angefordert, wenn die jeweilige Funktion gebraucht wird:
 | Funktion | Scope | Zweck |
 | --- | --- | --- |
 | Aufgaben | `https://www.googleapis.com/auth/tasks` | Aufgaben erstellen, ändern, abschließen und löschen |
-| Kalender | `https://www.googleapis.com/auth/calendar.events.owned` | Termine in eigenen Kalendern lesen und pflegen |
+| Eigene Kalendertermine | `https://www.googleapis.com/auth/calendar.events.owned` | Termine in eigenen Kalendern lesen und pflegen |
+| Geteilte Kalendertermine | `https://www.googleapis.com/auth/calendar.events.readonly` | Termine aus ausdrücklich ausgewählten, sichtbaren Kalendern nur lesen |
+| Kalenderauswahl | `https://www.googleapis.com/auth/calendar.calendarlist.readonly` | Namen, Farben und Zugriffsrollen der sichtbaren Kalender lesen |
+| Kalender anlegen | `https://www.googleapis.com/auth/calendar.calendars` | Nach ausdrücklicher Bestätigung einen sekundären Kalender erstellen |
+| Privatkalender prüfen | `https://www.googleapis.com/auth/calendar.acls.readonly` | Freigaben des verwalteten Privatkalenders lesen, bevor sensible Automatik schreibt |
 | Drive | `https://www.googleapis.com/auth/drive.readonly` | Inhalte im begrenzten Stammordner lesen und anzeigen |
 | Gmail | `https://www.googleapis.com/auth/gmail.compose` | Bearbeitbare Gmail-Entwürfe anlegen |
 
@@ -141,14 +148,16 @@ Vor der Veröffentlichung:
 3. Lege eine Aufgabe an, ändere sie, schließe sie ab und lösche sie wieder.
    Alle Aufgabenansichten müssen denselben Google-Tasks-Stand zeigen.
 4. Lege einen Testtermin an und entferne ihn wieder.
-5. Öffne den Drive-Stammordner und versuche keinen Zugriff außerhalb dieses
+5. Prüfe die Kalenderauswahl, lege einen eindeutig benannten Testkalender an
+   und entferne ihn anschließend in Google Kalender wieder.
+6. Öffne den Drive-Stammordner und versuche keinen Zugriff außerhalb dieses
    Ordners.
-6. Erzeuge einen Gmail-Entwurf, bearbeite ihn in Gmail und versende ihn nur
+7. Erzeuge einen Gmail-Entwurf, bearbeite ihn in Gmail und versende ihn nur
    manuell.
-7. Trenne Google und prüfe, dass der Refresh-Token bei Google widerrufen und
+8. Trenne Google und prüfe, dass der Refresh-Token bei Google widerrufen und
    anschließend zusammen mit den privaten Kompass-Zusatzangaben zu Tasks aus
    D1 entfernt wird. Die eigentlichen Aufgaben bleiben in Google Tasks.
-8. Führe die vollständigen Repository-Checks aus, speichere eine neue
+9. Führe die vollständigen Repository-Checks aus, speichere eine neue
    Sites-Version, deploye sie privat und prüfe anschließend die echten
    Produktionsendpunkte.
 

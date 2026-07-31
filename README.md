@@ -5,8 +5,12 @@ Streamlit-App mit Eisenhower-ToDo-Board, Gamification und optionaler OpenAI-Inte
 
 ## Gerris Kompass – neue Sites-Webapp
 
+Das Konzept und die technischen Verträge der selbstpflegenden Kalender-, Gap-
+und Entscheidungszentrale sind in
+[`docs/planning-center.md`](docs/planning-center.md) dokumentiert.
+
 Unter `web/` entsteht die eigenständige, responsive Sites-Version des
-ErfolgsTrackers. Sie führt Aufgaben, Kalender, Kosten, Unterlagen und Journal in
+ErfolgsTrackers. Sie führt Aufgaben, Kalender, Kosten, Unterlagen und Tagebuch in
 einer ruhigen deutschen Oberfläche zusammen.
 
 - Rekursiv einklappbare Live-Navigation für den Drive-Ordner „Unterlagen und
@@ -22,6 +26,11 @@ einer ruhigen deutschen Oberfläche zusammen.
   versendet.
 - Kostenbuch für vergangene, laufende und geplante Kosten einschließlich
   Fixkosten, Budget, Kategorien und Fälligkeiten.
+- Das **Tagebuch** bündelt den abendlichen Tagesabschluss in drei kurzen
+  Schritten: Rückblick, Abgleich von Aufgaben, Terminen, Bewerbungen, Finanzen
+  und Unterlagen sowie Planung für morgen und die nächsten sieben Tage.
+  Fachliche Änderungen werden dabei direkt im jeweiligen App-Bereich
+  gespeichert; bestehende Journal-Daten aus älteren Backups bleiben lesbar.
 - Private, geräteübergreifende Sites-Persistenz über D1; lokaler Browser-Speicher
   dient nur als Offline-Rückfall.
 

@@ -22,15 +22,21 @@ import {
 } from "./drive-explorer";
 import { FinanceView } from "./finance-view";
 import { ApplicationsView } from "./applications-view";
+import { DiaryView } from "./diary-view";
+import { CalendarView as CalendarWorkspace } from "./calendar-view";
+import { PlanningHealthBanner } from "./planning-health-banner";
 import { createDemoState } from "../lib/demo-data";
 import { COST_TEMPLATES } from "../lib/finance-catalog";
+import { diaryRhythmDays, upsertDiaryEntry } from "../lib/diary";
 import {
+  calendarDayDifference,
   formatCurrency,
   formatDate,
   formatDateLong,
   formatRelativeDate,
   formatTime,
   isoDateInput,
+  isSameCalendarMonth,
 } from "../lib/format";
 import {
   driveDownloadUrl,
@@ -52,6 +58,17 @@ import {
   type GoogleWorkspaceStatus,
 } from "../lib/google-tasks-client";
 import {
+  analyzeAndStoreJournal,
+  getPlanningReport,
+  reconcilePlanning,
+  removePlanningDayIntent,
+  savePlanningDecision,
+  savePlanningDayIntent,
+  setPlanningAutomationMode,
+  updatePlanningGap,
+  updatePlanningTopic,
+} from "../lib/planning-client";
+import {
   COST_CATEGORIES,
   COST_CADENCE_LABELS,
   LIFE_AREA_LABELS,
@@ -64,12 +81,16 @@ import {
   type CaptureKind,
   type Cost,
   type CostCadence,
+  type DiarySaveInput,
   type DocumentRef,
   type IntegrationConfig,
   type Income,
   type LifeArea,
   type Task,
   type TaskQuadrant,
+  type DayIntentKind,
+  type OpenTopic,
+  type PlanningHealthReport,
   type ViewKey,
 } from "../lib/types";
 import { useGerriState } from "../lib/use-gerri-state";
@@ -91,7 +112,7 @@ const NAV_ITEMS: Array<{
     short: "Bewerbung",
     mark: "B",
   },
-  { key: "journal", label: "Journal", short: "Journal", mark: "J" },
+  { key: "journal", label: "Tagebuch", short: "Tagebuch", mark: "T" },
 ];
 
 const VIEW_TITLES: Record<ViewKey, string> = {
@@ -101,7 +122,7 @@ const VIEW_TITLES: Record<ViewKey, string> = {
   finance: "Kosten im Überblick",
   documents: "Wichtige Unterlagen",
   applications: "Bewerbungen & nächste Schritte",
-  journal: "Journal & Reflexion",
+  journal: "Tagebuch & Tagesabschluss",
 };
 
 const uid = (prefix: string): string =>
@@ -110,13 +131,7 @@ const uid = (prefix: string): string =>
 const dateAtNine = (value: string): string =>
   new Date(`${value}T09:00:00`).toISOString();
 
-const daysFromNow = (value: string): number => {
-  const target = new Date(value);
-  const today = new Date();
-  target.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
-};
+const daysFromNow = (value: string): number => calendarDayDifference(value);
 
 const formatFileSize = (bytes: number): string =>
   bytes < 1_048_576
@@ -148,6 +163,10 @@ export function LifeOsApp({
   const [notice, setNotice] = useState("");
   const [externalEvents, setExternalEvents] = useState<CalendarEvent[]>([]);
   const [calendarLive, setCalendarLive] = useState(false);
+  const [planningReport, setPlanningReport] =
+    useState<PlanningHealthReport | null>(null);
+  const [planningLoading, setPlanningLoading] = useState(false);
+  const [planningError, setPlanningError] = useState("");
   const [taskStatus, setTaskStatus] = useState<GoogleTasksStatus | null>(null);
   const [workspaceStatus, setWorkspaceStatus] =
     useState<GoogleWorkspaceStatus | null>(null);
@@ -156,6 +175,9 @@ export function LifeOsApp({
   const [taskConnectUrl, setTaskConnectUrl] = useState("");
   const [taskActionId, setTaskActionId] = useState("");
   const taskInitialLoadStarted = useRef(false);
+  const planningInitialLoadStarted = useRef(false);
+  const planningRequestActive = useRef(false);
+  const planningReconciledRevision = useRef(initialState.revision);
   const driveExplorer = useDriveExplorer();
   const clearSelectedDriveFile = driveExplorer.selectFile;
   const {
@@ -167,6 +189,64 @@ export function LifeOsApp({
     importBackup,
   } = useGerriState(initialState);
   const pendingLegacyTasks = state.pendingTaskImports ?? [];
+
+  const refreshPlanning = useCallback(
+    async (reason: string, forceDryRun = false) => {
+      if (planningRequestActive.current) return null;
+      planningRequestActive.current = true;
+      setPlanningLoading(true);
+      setPlanningError("");
+      try {
+        const result = await reconcilePlanning(reason, forceDryRun);
+        setPlanningReport(result.report);
+        return result.report;
+      } catch (caught) {
+        setPlanningError(
+          caught instanceof Error
+            ? caught.message
+            : "Der Planungsstand konnte nicht aktualisiert werden.",
+        );
+        try {
+          const report = await getPlanningReport();
+          setPlanningReport(report);
+          return report;
+        } catch {
+          return null;
+        }
+      } finally {
+        planningRequestActive.current = false;
+        setPlanningLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!ready || planningInitialLoadStarted.current) return;
+    planningInitialLoadStarted.current = true;
+    planningReconciledRevision.current = state.revision;
+    void refreshPlanning("app-start");
+  }, [ready, refreshPlanning, state.revision]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const timer = window.setInterval(
+      () => void refreshPlanning("freshness-check"),
+      10 * 60 * 1_000,
+    );
+    return () => window.clearInterval(timer);
+  }, [ready, refreshPlanning]);
+
+  useEffect(() => {
+    if (!ready || !planningInitialLoadStarted.current) return;
+    if (planningReconciledRevision.current === state.revision) return;
+    const revision = state.revision;
+    const timer = window.setTimeout(() => {
+      planningReconciledRevision.current = revision;
+      void refreshPlanning("source-change");
+    }, 1_100);
+    return () => window.clearTimeout(timer);
+  }, [ready, refreshPlanning, state.revision]);
 
   const replaceTasks = useCallback(
     (tasks: Task[]) => {
@@ -651,28 +731,232 @@ export function LifeOsApp({
     }));
   };
 
-  const saveJournal = (
+  const saveDiary = (input: DiarySaveInput): string => {
+    const today = isoDateInput();
+    const now = new Date().toISOString();
+    const journalId =
+      state.journal.find((entry) => entry.date === today)?.id || uid("journal");
+    updateState((current) => {
+      const result = upsertDiaryEntry(
+        current.journal,
+        input,
+        today,
+        now,
+        () => journalId,
+      );
+      return {
+        ...current,
+        points: current.points + (result.created ? 10 : 0),
+        rhythmDays: diaryRhythmDays(result.entries, today),
+        journal: result.entries,
+      };
+    });
+    setNotice(
+      input.closeDay
+        ? "Tagesabschluss im Tagebuch gespeichert"
+        : "Tagebuchnotiz gespeichert",
+    );
+    return journalId;
+  };
+
+  const saveCompactDiary = (
     text: string,
     mood: number,
     win: string,
     nextStep: string,
-  ) => {
-    updateState((current) => ({
-      ...current,
-      points: current.points + 10,
-      journal: [
-        {
-          id: uid("journal"),
-          date: isoDateInput(),
-          mood,
-          text,
-          win,
-          nextStep,
-        },
-        ...current.journal,
-      ],
-    }));
-    setNotice("Reflexion gespeichert · 10 Punkte gesammelt");
+  ) => saveDiary({ text, mood, win, nextStep, appendToDay: true });
+
+  const analyzeSavedDiary = async (
+    journalId: string,
+    input: DiarySaveInput,
+  ): Promise<string> => {
+    try {
+      const result = await analyzeAndStoreJournal({
+        journalId,
+        date: isoDateInput(),
+        text: input.text,
+        mood: input.mood,
+        win: input.win,
+        nextStep: input.nextStep,
+        weekPlan: input.weekPlan || "",
+        report: planningReport,
+      });
+      await refreshPlanning("journal-analysis");
+      return result.mode === "ai"
+        ? `${result.analysis.summary} Vorschläge warten auf deine Bestätigung.`
+        : `${result.analysis.summary} Deterministischer Fallback ohne KI-Mutation.`;
+    } catch (caught) {
+      return caught instanceof Error
+        ? `Tagesabschluss gespeichert. Analysehinweis: ${caught.message}`
+        : "Tagesabschluss gespeichert. Die Analyse wird später erneut versucht.";
+    }
+  };
+
+  const setDayIntent = async (
+    date: string,
+    kind: DayIntentKind | null,
+  ): Promise<void> => {
+    try {
+      if (kind) {
+        await savePlanningDayIntent({ date, kind });
+      } else {
+        await removePlanningDayIntent(date);
+      }
+      await refreshPlanning("day-intent-change");
+      setNotice(kind ? "Tagesabsicht verbindlich gespeichert" : "Tagesabsicht entfernt");
+    } catch (caught) {
+      setNotice(
+        caught instanceof Error
+          ? caught.message
+          : "Die Tagesabsicht konnte nicht gespeichert werden.",
+      );
+    }
+  };
+
+  const actOnPlanningGap = async (
+    gapId: string,
+    action: "reopen" | "snooze" | "resolve",
+    note = "",
+  ): Promise<void> => {
+    try {
+      await updatePlanningGap(gapId, {
+        action,
+        note,
+        ...(action === "snooze"
+          ? {
+              snoozedUntil: new Date(
+                Date.now() + 24 * 60 * 60 * 1_000,
+              ).toISOString(),
+            }
+          : {}),
+      });
+      const report = await getPlanningReport();
+      setPlanningReport(report);
+      setNotice(
+        action === "snooze"
+          ? "Planungslücke mit Begründung bis morgen zurückgestellt"
+          : action === "resolve"
+            ? "Planungslücke als gelöst dokumentiert"
+            : "Planungslücke wieder geöffnet",
+      );
+    } catch (caught) {
+      setNotice(
+        caught instanceof Error
+          ? caught.message
+          : "Die Planungslücke konnte nicht bearbeitet werden.",
+      );
+    }
+  };
+
+  const updateTopic = async (
+    topicId: string,
+    input: Partial<
+      Pick<
+        OpenTopic,
+        | "status"
+        | "group"
+        | "nextStep"
+        | "dueAt"
+        | "calendarTarget"
+        | "snoozedUntil"
+      >
+    >,
+  ): Promise<void> => {
+    try {
+      await updatePlanningTopic(topicId, input);
+      await refreshPlanning("open-topic-change");
+      setNotice("Offenes Thema aktualisiert");
+    } catch (caught) {
+      setNotice(
+        caught instanceof Error
+          ? caught.message
+          : "Das offene Thema konnte nicht aktualisiert werden.",
+      );
+    }
+  };
+
+  const recordTopicDecision = async (
+    topic: OpenTopic,
+    decision: string,
+  ): Promise<void> => {
+    try {
+      await savePlanningDecision({
+        topicId: topic.id,
+        sourceJournalId:
+          topic.sourceId && topic.sourceType === "open-topic"
+            ? topic.sourceId
+            : undefined,
+        title: topic.title,
+        decision,
+        calendarTarget: topic.calendarTarget,
+        apply: true,
+      });
+      await updatePlanningTopic(topic.id, {
+        status:
+          topic.dueAt && topic.calendarTarget ? "open" : "resolved",
+        group:
+          topic.dueAt && topic.calendarTarget ? "scheduled" : topic.group,
+      });
+      await refreshPlanning("decision-confirmed");
+      setNotice("Entscheidung gespeichert und auf die Planung angewendet");
+    } catch (caught) {
+      setNotice(
+        caught instanceof Error
+          ? caught.message
+          : "Die Entscheidung konnte nicht gespeichert werden.",
+      );
+    }
+  };
+
+  const changePlanningMode = async (
+    mode: "dry-run" | "safe",
+  ): Promise<void> => {
+    try {
+      await setPlanningAutomationMode(mode);
+      await refreshPlanning(
+        mode === "safe" ? "safe-automation-activated" : "automation-paused",
+      );
+      setNotice(
+        mode === "safe"
+          ? "Sichere Automatik aktiviert"
+          : "Automatik auf Dry-run zurückgestellt",
+      );
+    } catch (caught) {
+      setNotice(
+        caught instanceof Error
+          ? caught.message
+          : "Der Automatikmodus konnte nicht geändert werden.",
+      );
+    }
+  };
+
+  const planTaskForTomorrow = async (taskId: string): Promise<boolean> => {
+    const task = state.tasks.find((candidate) => candidate.id === taskId);
+    if (!task || taskActionId) return false;
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setTaskActionId(taskId);
+    setTaskError("");
+    try {
+      const updated = await updateGoogleTask(task, {
+        dueAt: dateAtNine(isoDateInput(tomorrow.toISOString())),
+      });
+      updateState((current) => ({
+        ...current,
+        tasks: current.tasks.map((candidate) =>
+          candidate.id === taskId ? updated : candidate,
+        ),
+      }));
+      return true;
+    } catch (caught) {
+      rememberGoogleError(
+        caught,
+        "Die Fokusaufgabe konnte nicht auf morgen gesetzt werden.",
+      );
+      return false;
+    } finally {
+      setTaskActionId("");
+    }
   };
 
   const openDocument = (document: DocumentRef) => {
@@ -684,8 +968,10 @@ export function LifeOsApp({
       ? "Privat synchronisiert"
       : syncStatus === "lade"
         ? "Daten werden geladen"
-        : syncStatus === "fehler"
+      : syncStatus === "fehler"
           ? "Sync wird wiederholt"
+          : syncStatus === "konflikt"
+            ? "Änderungskonflikt – neu laden"
           : "Auf diesem Gerät gespeichert";
 
   return (
@@ -767,6 +1053,23 @@ export function LifeOsApp({
                   }
                 </span>
               ) : null}
+              {item.key === "calendar" &&
+              (planningReport?.criticalCount || planningReport?.importantCount) ? (
+                <span className="nav-alert" aria-label="Offene Planungslücken">
+                  {(planningReport?.criticalCount || 0) +
+                    (planningReport?.importantCount || 0)}
+                </span>
+              ) : null}
+              {item.key === "journal" &&
+              planningReport?.openTopics.some((topic) => topic.status !== "resolved") ? (
+                <span className="nav-alert" aria-label="Offene Themen">
+                  {
+                    planningReport.openTopics.filter(
+                      (topic) => topic.status !== "resolved",
+                    ).length
+                  }
+                </span>
+              ) : null}
             </button>
           ))}
         </nav>
@@ -840,6 +1143,14 @@ export function LifeOsApp({
           </div>
         </header>
 
+        <PlanningHealthBanner
+          error={planningError}
+          loading={planningLoading}
+          onNavigate={navigate}
+          onRefresh={() => void refreshPlanning("manual")}
+          report={planningReport}
+        />
+
         <main id="main-content">
           {view === "today" ? (
             <TodayView
@@ -847,6 +1158,7 @@ export function LifeOsApp({
               integrations={integrations}
               onCompleteTask={completeTask}
               onNavigate={navigate}
+              planningReport={planningReport}
               state={state}
               taskStatus={taskStatus}
               workspaceStatus={workspaceStatus}
@@ -870,12 +1182,21 @@ export function LifeOsApp({
             />
           ) : null}
           {view === "calendar" ? (
-            <CalendarView
+            <CalendarWorkspace
               calendarLive={calendarLive}
               externalEvents={externalEvents}
               integrations={integrations}
+              onEventsChange={setExternalEvents}
+              onNewEvent={() => openQuickAction("event")}
               onPlanCost={planCostInGoogleCalendar}
+              onPlanningModeChange={changePlanningMode}
+              onPlanningRefresh={refreshPlanning}
+              onSetDayIntent={setDayIntent}
+              planningBusy={planningLoading}
+              planningError={planningError}
+              planningReport={planningReport}
               state={state}
+              workspaceStatus={workspaceStatus}
             />
           ) : null}
           {view === "finance" ? (
@@ -915,10 +1236,23 @@ export function LifeOsApp({
             />
           ) : null}
           {view === "journal" ? (
-            <JournalView
-              onSave={saveJournal}
-              onNew={() => openCapture("journal")}
+            <DiaryView
+              externalEvents={externalEvents}
+              onCompleteTask={completeTask}
+              onCreateApplication={createApplication}
+              onOpenAppointment={() => openQuickAction("event")}
+              onOpenCapture={openCapture}
+              onPlanTask={planTaskForTomorrow}
+              onSave={saveDiary}
+              onAnalyze={analyzeSavedDiary}
+              onGapAction={actOnPlanningGap}
+              onDecision={recordTopicDecision}
+              onTopicUpdate={updateTopic}
+              onUpdateApplication={updateApplication}
+              planningReport={planningReport}
               state={state}
+              taskActionId={taskActionId}
+              tasksConnected={Boolean(taskStatus?.authorized)}
             />
           ) : null}
         </main>
@@ -929,12 +1263,22 @@ export function LifeOsApp({
         onClick={() =>
           view === "applications"
             ? openQuickAction("application")
-            : openCapture(view === "finance" ? "cost" : "task")
+            : openCapture(
+                view === "finance"
+                  ? "cost"
+                  : view === "journal"
+                    ? "journal"
+                    : "task",
+              )
         }
         type="button"
       >
         <span>+</span>
-        {view === "applications" ? "Bewerbung erstellen" : "Neu erfassen"}
+        {view === "applications"
+          ? "Bewerbung erstellen"
+          : view === "journal"
+            ? "Notiz erfassen"
+            : "Neu erfassen"}
       </button>
 
       <nav className="mobile-nav" aria-label="Mobile Hauptnavigation">
@@ -960,7 +1304,7 @@ export function LifeOsApp({
           onSaveCost={saveCost}
           onSaveDocument={saveDocument}
           onSaveIncome={saveIncome}
-          onSaveJournal={saveJournal}
+          onSaveJournal={saveCompactDiary}
           onSaveTask={saveTask}
         />
       ) : null}
@@ -1035,6 +1379,7 @@ type TodayViewProps = {
   integrations: IntegrationConfig;
   taskStatus: GoogleTasksStatus | null;
   workspaceStatus: GoogleWorkspaceStatus | null;
+  planningReport: PlanningHealthReport | null;
   onCompleteTask: (taskId: string) => Promise<void>;
   onNavigate: (view: ViewKey) => void;
 };
@@ -1045,6 +1390,7 @@ function TodayView({
   integrations,
   taskStatus,
   workspaceStatus,
+  planningReport,
   onCompleteTask,
   onNavigate,
 }: TodayViewProps) {
@@ -1068,7 +1414,7 @@ function TodayView({
     .filter(
       (cost) =>
         cost.status === "paid" &&
-        new Date(cost.dueAt).getMonth() === new Date().getMonth(),
+        isSameCalendarMonth(cost.dueAt, now),
     )
     .reduce((sum, cost) => sum + cost.amount, 0);
   const events = [...externalEvents, ...state.calendarEvents]
@@ -1079,19 +1425,12 @@ function TodayView({
     (sum, task) => sum + task.estimateMinutes,
     0,
   );
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
-  const tomorrowStart = new Date(todayStart);
-  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-  const weekEnd = new Date(todayStart);
-  weekEnd.setDate(weekEnd.getDate() + 7);
-  const todayEvents = events.filter((event) => {
-    const start = new Date(event.startAt);
-    return start >= todayStart && start < tomorrowStart;
-  });
+  const todayEvents = events.filter(
+    (event) => calendarDayDifference(event.startAt, now) === 0,
+  );
   const weekEvents = events.filter((event) => {
-    const start = new Date(event.startAt);
-    return start >= todayStart && start < weekEnd;
+    const difference = calendarDayDifference(event.startAt, now);
+    return difference >= 0 && difference < 7;
   });
   const openCosts = state.costs.filter((cost) => cost.status !== "paid");
   const documentFiles = state.documents.filter(
@@ -1146,6 +1485,12 @@ function TodayView({
       : averageMood.toFixed(1).replace(".", ",");
   const moodShare =
     averageMood === null ? 0 : Math.round((averageMood / 5) * 100);
+  const todayPlanning = planningReport?.days[0] || null;
+  const planningNeedsAttention =
+    !planningReport ||
+    planningReport.state === "unknown" ||
+    planningReport.state === "stale" ||
+    planningReport.criticalCount > 0;
 
   return (
     <div className="view-stack">
@@ -1156,7 +1501,9 @@ function TodayView({
           <p>
             {focusTasks.length
               ? `${focusTasks.length} sinnvolle Aufgaben, etwa ${focusMinutes} Minuten Fokus und ${upcomingCosts.length} anstehende Zahlungen sind für dich vorbereitet.`
-              : "Heute ist Raum für einen ruhigen Neustart. Erfasse genau einen nächsten Schritt."}
+              : todayPlanning?.state === "intentionally_free"
+                ? "Heute wurde bei frischen Kalenderdaten ausdrücklich als bewusst frei, Urlaub oder Krankheit bestätigt."
+                : "Für heute fehlt noch ein bestätigter Plan. Kläre zuerst Kalenderstand, Verpflichtungen und mindestens einen echten Planungsblock."}
           </p>
         </div>
         <div className="welcome-actions">
@@ -1175,6 +1522,29 @@ function TodayView({
             Tag ansehen
           </button>
         </div>
+      </section>
+
+      <section
+        className={`today-planning-status ${planningNeedsAttention ? "is-urgent" : ""}`}
+        aria-label="Verlässlichkeit des heutigen Plans"
+      >
+        <div>
+          <span className="eyebrow">Administrative Grundlage</span>
+          <strong>
+            {planningReport?.title || "Planungsstatus unbekannt – sofort klären"}
+          </strong>
+          <p>
+            {planningReport?.message ||
+              "Kein leerer Kalender wird als Freizeit interpretiert, solange Vollständigkeit und Aktualität nicht bestätigt sind."}
+          </p>
+        </div>
+        <button
+          className="button button-primary"
+          onClick={() => onNavigate("calendar")}
+          type="button"
+        >
+          {planningNeedsAttention ? "Lücken jetzt klären" : "Planung ansehen"}
+        </button>
       </section>
 
       <section className="core-kpi-grid" aria-label="Kernkennzahlen nach Bereichen">
@@ -1215,7 +1585,11 @@ function TodayView({
         </CoreKpiGroup>
 
         <CoreKpiGroup
-          copy="Termine und Fokuszeiten ohne Kalenderrauschen."
+          copy={
+            planningNeedsAttention
+              ? "Leere oder unzuverlässige Zeiträume sind Planungslücken, keine Freizeit."
+              : "Termine und Fokuszeiten sind frisch und vollständig geprüft."
+          }
           eyebrow="Deine Zeit"
           id="calendar-kpis-title"
           onOpen={() => onNavigate("calendar")}
@@ -1230,14 +1604,18 @@ function TodayView({
                   <time dateTime={events[0].startAt}>
                     {formatTime(events[0].startAt)}
                   </time>
+                ) : todayPlanning?.state === "intentionally_free" ? (
+                  "Bewusst frei"
                 ) : (
-                  "Frei"
+                  "Ungeplant"
                 )}
               </strong>
               <small>
                 {events[0]
                   ? `${formatRelativeDate(events[0].startAt)} · ${events[0].title}`
-                  : "Noch kein fester Zeitpunkt"}
+                  : todayPlanning?.state === "intentionally_free"
+                    ? "Ausdrücklich bestätigt"
+                    : "Planungslücke mit Top-Priorität"}
               </small>
             </div>
             <dl className="kpi-calendar-counts">
@@ -1370,11 +1748,11 @@ function TodayView({
         </CoreKpiGroup>
 
         <CoreKpiGroup
-          copy="Fortschritt, Stimmung und persönlicher Rhythmus."
-          eyebrow="Deine Reflexion"
+          copy="Tagesabschlüsse, Stimmung und persönlicher Rhythmus."
+          eyebrow="Dein Tagesabschluss"
           id="journal-kpis-title"
           onOpen={() => onNavigate("journal")}
-          title="Journal"
+          title="Tagebuch"
           tone="journal"
         >
           <div className="kpi-journal-layout">
@@ -1595,26 +1973,6 @@ function TodayView({
         </section>
       </div>
     </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  note,
-  tone,
-}: {
-  label: string;
-  value: string;
-  note: string;
-  tone: string;
-}) {
-  return (
-    <article className={`metric-card metric-${tone}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{note}</small>
-    </article>
   );
 }
 
@@ -1992,167 +2350,6 @@ function TasksView({
   );
 }
 
-function CalendarView({
-  state,
-  externalEvents,
-  integrations,
-  calendarLive,
-  onPlanCost,
-}: {
-  state: AppState;
-  externalEvents: CalendarEvent[];
-  integrations: IntegrationConfig;
-  calendarLive: boolean;
-  onPlanCost: (cost: Cost) => Promise<void>;
-}) {
-  const [planningCostId, setPlanningCostId] = useState("");
-  const [now] = useState(() => Date.now());
-  const events = [...externalEvents, ...state.calendarEvents]
-    .filter((event) => new Date(event.endAt).getTime() >= now - 86_400_000)
-    .sort((left, right) => left.startAt.localeCompare(right.startAt));
-  const upcomingCosts = state.costs
-    .filter((cost) => cost.status !== "paid" && daysFromNow(cost.dueAt) >= 0)
-    .sort((left, right) => left.dueAt.localeCompare(right.dueAt))
-    .slice(0, 5);
-
-  return (
-    <div className="view-stack">
-      <PageIntro
-        eyebrow="Termine und private Erinnerungen"
-        title="Zeit sehen, ohne den Überblick zu verlieren."
-        copy="Google Kalender liefert deine Termine. Zahlungserinnerungen bleiben im privaten Kompass und werden erst nach deiner Bestätigung an Google übergeben."
-        action={
-          <a
-            className="button button-soft"
-            href={integrations.calendarEmbedUrl}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Google Kalender öffnen
-          </a>
-        }
-      />
-
-      <section className="calendar-status-grid" aria-label="Kalenderstatus">
-        <Metric
-          label="Nächster Termin"
-          note={events[0] ? formatRelativeDate(events[0].startAt) : "Keine Termine"}
-          tone="green"
-          value={events[0] ? formatTime(events[0].startAt) : "Frei"}
-        />
-        <Metric
-          label="Zahlungserinnerungen"
-          note="Maximal vertraulich"
-          tone="amber"
-          value={String(upcomingCosts.length)}
-        />
-        <Metric
-          label="Google-Abgleich"
-          note={calendarLive ? "Calendar API verbunden" : "OAuth-Verbindung nötig"}
-          tone="blue"
-          value={calendarLive ? "Aktuell" : "Bereit"}
-        />
-      </section>
-
-      <div className="content-grid calendar-layout">
-        <section className="panel agenda-panel">
-          <PanelHeading
-            eyebrow="Agenda"
-            title="Kommende Termine"
-            action={<span className="private-chip">Nur für dich</span>}
-          />
-          <div className="agenda-list">
-            {events.slice(0, 10).map((event) => (
-              <article key={event.id}>
-                <div className="agenda-day">
-                  <span>{formatRelativeDate(event.startAt)}</span>
-                  <strong>{formatTime(event.startAt)}</strong>
-                </div>
-                <div className={`agenda-line event-${event.kind}`} />
-                <div className="agenda-copy">
-                  <span>
-                    {event.source === "google" ? "Google Kalender" : "Kompass"} ·{" "}
-                    {event.private ? "Privat" : "Standard"}
-                  </span>
-                  <h3>{event.title}</h3>
-                  <p>
-                    {formatTime(event.startAt)}–{formatTime(event.endAt)}
-                    {event.location ? ` · ${event.location}` : ""}
-                  </p>
-                </div>
-              </article>
-            ))}
-            {!events.length ? (
-              <EmptyState
-                title="Kein Termin drängt."
-                copy="Öffne die Google-Ansicht oder plane einen Fokusblock."
-              />
-            ) : null}
-          </div>
-        </section>
-
-        <section className="panel reminder-panel">
-          <PanelHeading eyebrow="Privat" title="Zahlungen einplanen" />
-          <div className="confidential-note">
-            <strong>Maximaler Vertraulichkeitsfaktor</strong>
-            <p>
-              Beträge und Zahlungsdetails werden hier gespeichert. Der
-              Kalender erhält nach deiner Bestätigung nur Titel und Fälligkeitsdatum;
-              die Sichtbarkeit wird serverseitig auf „Privat“ gesetzt.
-            </p>
-          </div>
-          <div className="reminder-list">
-            {upcomingCosts.map((cost) => (
-              <article key={cost.id}>
-                <div>
-                  <span>{formatRelativeDate(cost.dueAt)}</span>
-                  <strong>{cost.title}</strong>
-                  <small>{formatCurrency(cost.amount)}</small>
-                </div>
-                <button
-                  disabled={Boolean(planningCostId)}
-                  onClick={async () => {
-                    setPlanningCostId(cost.id);
-                    await onPlanCost(cost);
-                    setPlanningCostId("");
-                  }}
-                  type="button"
-                >
-                  {planningCostId === cost.id
-                    ? "Wird gespeichert …"
-                    : "Privat in Google speichern"}
-                </button>
-              </article>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      <section className="panel calendar-api-panel">
-        <div className="embed-heading">
-          <div>
-            <span className="eyebrow">Private Verbindung</span>
-            <h2>Termine bleiben unter deiner Kontrolle</h2>
-            <p>
-              Die Agenda wird serverseitig über die Calendar API geladen. Der
-              frühere öffentliche iCal-Zugriff und ein eingebetteter Kalender
-              werden nicht mehr benötigt.
-            </p>
-          </div>
-          <a
-            className="button button-soft"
-            href={integrations.calendarEmbedUrl}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Google Kalender öffnen
-          </a>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 function DocumentsView({
   driveController,
   state,
@@ -2361,125 +2558,6 @@ function DocumentsView({
   );
 }
 
-function JournalView({
-  state,
-  onSave,
-  onNew,
-}: {
-  state: AppState;
-  onSave: (text: string, mood: number, win: string, nextStep: string) => void;
-  onNew: () => void;
-}) {
-  const [text, setText] = useState("");
-  const [win, setWin] = useState("");
-  const [nextStep, setNextStep] = useState("");
-  const [mood, setMood] = useState(3);
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!text.trim() && !win.trim()) return;
-    onSave(text.trim(), mood, win.trim(), nextStep.trim());
-    setText("");
-    setWin("");
-    setNextStep("");
-    setMood(3);
-  };
-
-  return (
-    <div className="view-stack">
-      <PageIntro
-        eyebrow="Kurz innehalten"
-        title="Reflexion, die deinen Alltag leichter macht."
-        copy="Ein paar ehrliche Sätze reichen. Erfolge, Stimmung und nächster Schritt bleiben privat und geben deinem Coach hilfreichen Kontext."
-        action={
-          <button className="button button-soft" onClick={onNew} type="button">
-            Kompakt erfassen
-          </button>
-        }
-      />
-      <div className="content-grid journal-layout">
-        <form className="panel journal-form" onSubmit={submit}>
-          <PanelHeading eyebrow="Heute" title="Wie war dein Tag?" />
-          <fieldset className="mood-field">
-            <legend>Wie fühlst du dich?</legend>
-            <div>
-              {[1, 2, 3, 4, 5].map((value) => (
-                <button
-                  aria-pressed={mood === value}
-                  className={mood === value ? "active" : ""}
-                  key={value}
-                  onClick={() => setMood(value)}
-                  type="button"
-                >
-                  {value}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-          <label>
-            Was beschäftigt dich?
-            <textarea
-              onChange={(event) => setText(event.target.value)}
-              placeholder="Ein Gedanke, ein Gefühl oder eine Beobachtung …"
-              rows={5}
-              value={text}
-            />
-          </label>
-          <label>
-            Was ist heute gelungen?
-            <input
-              onChange={(event) => setWin(event.target.value)}
-              placeholder="Auch ein kleiner Schritt zählt."
-              value={win}
-            />
-          </label>
-          <label>
-            Was ist morgen der nächste gute Schritt?
-            <input
-              onChange={(event) => setNextStep(event.target.value)}
-              placeholder="Klein, konkret und machbar."
-              value={nextStep}
-            />
-          </label>
-          <button
-            className="button button-primary button-full"
-            disabled={!text.trim() && !win.trim()}
-            type="submit"
-          >
-            Reflexion speichern
-          </button>
-        </form>
-
-        <section className="panel journal-history">
-          <PanelHeading
-            eyebrow="Verlauf"
-            title={`${state.journal.length} Einträge`}
-          />
-          <div>
-            {state.journal.map((entry) => (
-              <article key={entry.id}>
-                <div>
-                  <time dateTime={entry.date}>{formatDate(entry.date)}</time>
-                  <span>Stimmung {entry.mood}/5</span>
-                </div>
-                {entry.text ? <p>{entry.text}</p> : null}
-                {entry.win ? (
-                  <blockquote>
-                    <strong>Gelungen:</strong> {entry.win}
-                  </blockquote>
-                ) : null}
-                {entry.nextStep ? (
-                  <small>Nächster Schritt: {entry.nextStep}</small>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        </section>
-      </div>
-    </div>
-  );
-}
-
 function PageIntro({
   eyebrow,
   title,
@@ -2660,7 +2738,7 @@ function CaptureDialog({
               ["cost", "Kosten"],
               ["income", "Einnahme"],
               ["document", "Unterlage"],
-              ["journal", "Reflexion"],
+              ["journal", "Tagebuch"],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -2679,7 +2757,7 @@ function CaptureDialog({
         <form className="capture-form" onSubmit={submit}>
           <label>
             {kind === "journal"
-              ? "Was beschäftigt dich?"
+              ? "Was ist heute passiert?"
               : kind === "document"
                 ? "Name der Unterlage"
                 : kind === "cost" || kind === "income"
@@ -2689,7 +2767,7 @@ function CaptureDialog({
               <textarea
                 autoFocus
                 onChange={(event) => setTitle(event.target.value)}
-                placeholder="Ein Gedanke reicht …"
+                placeholder="Ein Stichpunkt reicht …"
                 rows={4}
                 value={title}
               />
@@ -3043,7 +3121,7 @@ function CaptureDialog({
                 />
               </label>
               <label>
-                Nächster kleiner Schritt
+                Nächster kleiner Schritt für morgen
                 <input
                   onChange={(event) => setNextStep(event.target.value)}
                   value={nextStep}
@@ -3251,7 +3329,7 @@ function SettingsDialog({
             <strong>Nur für dich freigegeben</strong>
             <p>
               {syncCopy}. Aufgaben werden in Google Tasks geführt; Eisenhower-
-              Metadaten, Kosten und Journal bleiben im privaten Sites-Speicher.
+              Metadaten, Kosten und Tagebuch bleiben im privaten Sites-Speicher.
               Noch nicht übernommene Altaufgaben bleiben bis zur Migration lokal.
               Drive-Dateien verbleiben bei Google.
             </p>

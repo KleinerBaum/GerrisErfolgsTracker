@@ -263,6 +263,69 @@ export async function listFolder(
   };
 }
 
+function driveQueryLiteral(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+}
+
+export async function searchDriveFolders(
+  ownerEmail: string,
+  rawQuery: string,
+): Promise<DriveItem[]> {
+  const query = rawQuery.trim().normalize("NFC").slice(0, 80);
+  if (query.length < 2) return [];
+  const connection = await googleConnectionForOwner(ownerEmail, {
+    capability: "drive",
+  });
+  const candidates: GoogleFile[] = [];
+  let pageToken = "";
+  let pageCount = 0;
+  do {
+    const parameters = new URLSearchParams({
+      q: `mimeType = '${FOLDER_MIME}' and trashed = false and name contains '${driveQueryLiteral(query)}'`,
+      orderBy: "name_natural",
+      pageSize: "100",
+      spaces: "drive",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+      fields:
+        "nextPageToken,files(id,name,mimeType,modifiedTime,size,webViewLink,parents,trashed)",
+    });
+    if (pageToken) parameters.set("pageToken", pageToken);
+    const page = await driveJson<{
+      files?: GoogleFile[];
+      nextPageToken?: string;
+    }>(connection, `/files?${parameters}`);
+    candidates.push(...(page.files || []));
+    pageToken = page.nextPageToken || "";
+    pageCount += 1;
+  } while (pageToken && pageCount < 3);
+
+  const matches: GoogleFile[] = [];
+  for (let offset = 0; offset < candidates.length; offset += 10) {
+    const batch = await Promise.all(
+      candidates.slice(offset, offset + 10).map(async (candidate) => {
+        if (!candidate.id) return null;
+        try {
+          await assertInsideRoot(connection, candidate.id);
+          return candidate;
+        } catch (error) {
+          if (error instanceof DriveBoundaryError) return null;
+          throw error;
+        }
+      }),
+    );
+    matches.push(...batch.filter((item): item is GoogleFile => Boolean(item)));
+    if (matches.length >= 30) break;
+  }
+
+  return matches
+    .map(toDriveItem)
+    .sort((left, right) =>
+      left.name.localeCompare(right.name, "de", { numeric: true }),
+    )
+    .slice(0, 30);
+}
+
 export async function driveFileResponse(
   ownerEmail: string,
   fileId: string,

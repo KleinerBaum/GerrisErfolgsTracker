@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { COST_CATEGORIES } from "./finance-data";
 import { mergeApplicationResearch } from "./application-research";
+import { diaryRhythmDays, normalizeDiaryEntries } from "./diary";
+import { isoDateInput } from "./format";
 import type { AppState, CostCategory, SyncStatus } from "./types";
 
 const STORAGE_KEY = "gerris-kompass-state-v1";
@@ -30,6 +32,7 @@ function normalizeState(value: AppState): AppState {
     accountBalances?: Partial<AppState["accountBalances"]>;
     pendingTaskImports?: AppState["pendingTaskImports"];
   };
+  const journal = normalizeDiaryEntries(candidate.journal);
   return {
     ...candidate,
     pendingTaskImports: Array.isArray(candidate.pendingTaskImports)
@@ -61,6 +64,8 @@ function normalizeState(value: AppState): AppState {
       typeof candidate.masterCvDocumentId === "string"
         ? candidate.masterCvDocumentId
         : null,
+    journal,
+    rhythmDays: diaryRhythmDays(journal, isoDateInput()),
   };
 }
 
@@ -94,10 +99,11 @@ function writeLocalState(state: AppState) {
 }
 
 export function useGerriState(initialState: AppState) {
-  const [state, setState] = useState(initialState);
+  const [state, setState] = useState(() => normalizeState(initialState));
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("lade");
   const [ready, setReady] = useState(false);
   const remoteAvailable = useRef(false);
+  const remoteRevision = useRef<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -114,8 +120,15 @@ export function useGerriState(initialState: AppState) {
             setState(normalized);
             writeLocalState(normalized);
             remoteAvailable.current = true;
+            remoteRevision.current = normalized.revision;
             setSyncStatus("synchronisiert");
           }
+        } else if (response.status === 204) {
+          const local = readLocalState();
+          if (local) setState(local);
+          remoteAvailable.current = true;
+          remoteRevision.current = 0;
+          setSyncStatus("synchronisiert");
         } else {
           const local = readLocalState();
           if (local) setState(local);
@@ -138,16 +151,24 @@ export function useGerriState(initialState: AppState) {
   useEffect(() => {
     if (!ready) return;
     writeLocalState(state);
+    if (remoteRevision.current === state.revision) return;
     const timer = window.setTimeout(async () => {
       try {
+        const expected = remoteRevision.current ?? 0;
         const response = await fetch("/api/state", {
           method: "PUT",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            "if-match": `"${expected}"`,
+          },
           body: JSON.stringify(stateForPersistence(state)),
         });
         if (response.ok) {
           remoteAvailable.current = true;
+          remoteRevision.current = state.revision;
           setSyncStatus("synchronisiert");
+        } else if (response.status === 409) {
+          setSyncStatus("konflikt");
         } else {
           setSyncStatus(remoteAvailable.current ? "fehler" : "lokal");
         }
@@ -197,12 +218,12 @@ export function useGerriState(initialState: AppState) {
       (task, index, tasks) =>
         tasks.findIndex((candidate) => candidate.id === task.id) === index,
     );
-    setState({
+    setState((current) => ({
       ...normalized,
       pendingTaskImports,
-      revision: parsed.revision + 1,
+      revision: Math.max(current.revision, parsed.revision) + 1,
       updatedAt: new Date().toISOString(),
-    });
+    }));
   }, []);
 
   return {
