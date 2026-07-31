@@ -5,11 +5,13 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 
 test("persistiert Planungsgraph, Links, ETags, Outbox und Sync-Läufe strukturiert", async () => {
-  const [schema, migration, server, calendarServer] = await Promise.all([
+  const [schema, migration, server, calendarServer, packageJson, localConfig] = await Promise.all([
     readFile(new URL("db/schema.ts", root), "utf8"),
     readFile(new URL("drizzle/0004_brief_killer_shrike.sql", root), "utf8"),
     readFile(new URL("lib/planning-server.ts", root), "utf8"),
     readFile(new URL("lib/google-calendar-server.ts", root), "utf8"),
+    readFile(new URL("package.json", root), "utf8"),
+    readFile(new URL("wrangler.local.jsonc", root), "utf8"),
   ]);
 
   for (const table of [
@@ -37,6 +39,10 @@ test("persistiert Planungsgraph, Links, ETags, Outbox und Sync-Läufe strukturie
   assert.match(calendarServer, /gerrisSourceId/);
   assert.match(calendarServer, /gerrisOccurrence/);
   assert.match(calendarServer, /gerrisDesiredHash/);
+  const scripts = JSON.parse(packageJson).scripts;
+  assert.equal(scripts.predev, "npm run db:migrate:local");
+  assert.match(scripts["db:migrate:local"], /--persist-to \.wrangler\/state/);
+  assert.match(localConfig, /"migrations_dir": "\.\/drizzle"/);
 });
 
 test("verwendet exakt vier Bereichskalender und blockiert unbestätigte Privatfreigaben", async () => {

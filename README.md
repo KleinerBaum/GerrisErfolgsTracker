@@ -42,6 +42,11 @@ npm install
 npm run dev
 ```
 
+Vor jedem lokalen Start wendet `predev` die noch offenen D1-Migrationen auf den
+ignorierten lokalen Speicher unter `web/.wrangler/` an. Dadurch sind Zustand
+und Planungs-APIs beim ersten Aufruf sofort verfügbar. Die produktive Sites-D1
+und vorhandene Laufzeitwerte werden dabei nicht verändert.
+
 Qualitätsprüfung:
 
 ```bash

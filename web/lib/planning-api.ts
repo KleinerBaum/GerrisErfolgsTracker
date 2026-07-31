@@ -2,24 +2,39 @@ export const PLANNING_NO_STORE_HEADERS = {
   "cache-control": "private, no-store",
 };
 
+function errorMessages(error: unknown): string[] {
+  const messages: string[] = [];
+  const seen = new Set<unknown>();
+  let current = error;
+  for (let depth = 0; depth < 5 && current; depth += 1) {
+    if (seen.has(current)) break;
+    seen.add(current);
+    if (current instanceof Error) messages.push(current.message);
+    else if (typeof current === "object" && "message" in current) {
+      messages.push(String(current.message));
+    }
+    current =
+      typeof current === "object" && "cause" in current
+        ? current.cause
+        : null;
+  }
+  return messages;
+}
+
 export function planningErrorResponse(error: unknown): Response {
-  const message =
-    error instanceof Error
-      ? error.message
-      : error && typeof error === "object" && "message" in error
-        ? String(error.message)
-        : "";
+  const message = errorMessages(error).join("\n");
+  const normalizedMessage = message.toLowerCase();
   const storageUnavailable =
-    message.includes("D1-Binding") ||
-    message.includes("D1_") ||
-    message.includes("database") ||
-    message.includes("no such table") ||
-    message.includes("planning_") ||
-    message.includes("managed_calendars") ||
-    message.includes("sync_") ||
-    message.includes("open_topics") ||
-    message.includes("day_intents") ||
-    message.includes("calendar_links");
+    normalizedMessage.includes("d1-binding") ||
+    normalizedMessage.includes("d1_") ||
+    normalizedMessage.includes("database") ||
+    normalizedMessage.includes("no such table") ||
+    normalizedMessage.includes("planning_") ||
+    normalizedMessage.includes("managed_calendars") ||
+    normalizedMessage.includes("sync_") ||
+    normalizedMessage.includes("open_topics") ||
+    normalizedMessage.includes("day_intents") ||
+    normalizedMessage.includes("calendar_links");
   const inputError =
     message.includes("ungültig") ||
     message.includes("benötigt") ||

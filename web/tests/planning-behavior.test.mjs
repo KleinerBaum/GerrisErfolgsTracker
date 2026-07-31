@@ -5,8 +5,8 @@ import ts from "typescript";
 
 const root = new URL("../", import.meta.url);
 
-async function importPlanning() {
-  const source = await readFile(new URL("lib/planning.ts", root), "utf8");
+async function importTypeScriptModule(relativeUrl) {
+  const source = await readFile(new URL(relativeUrl, root), "utf8");
   const compiled = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.ES2022,
@@ -17,6 +17,8 @@ async function importPlanning() {
     `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
   );
 }
+
+const importPlanning = () => importTypeScriptModule("lib/planning.ts");
 
 function state(overrides = {}) {
   return {
@@ -260,4 +262,21 @@ test("Sensitivitätsrouting folgt nur dem expliziten Flag", async () => {
     planningDateKey("2026-10-25T23:30:00.000Z"),
     "2026-10-26",
   );
+});
+
+test("klassifiziert verschachtelte D1-Startfehler als vorbereitenden Speicher", async () => {
+  const { planningErrorResponse } = await importTypeScriptModule(
+    "lib/planning-api.ts",
+  );
+  const storageError = new Error("Failed query");
+  storageError.cause = new Error(
+    "D1_ERROR: no such table: planning_settings",
+  );
+
+  const response = planningErrorResponse(storageError);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    error: "Der private Planungsspeicher wird gerade vorbereitet.",
+    code: "planning_storage_preparing",
+  });
 });
