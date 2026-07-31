@@ -12,6 +12,13 @@ Dieses Dokument ist absichtlich **agenten-fokussiert** (Setup, Checks, Repo-Konv
 - Die App bleibt **ohne** API-Key vollständig nutzbar (Fallback-Texte/Templates).
 - Persistenz: ToDos/KPIs/Settings werden in einer JSON-Datei gespeichert (`gerris_state.json`), i. d. R. unter OneDrive (konfigurierbar), sonst Fallback in `.data/`.
 
+## Aktive Laufzeitpfade und Codex
+
+- Das Python-/Streamlit-Produkt bleibt im Repository-Root; die aktuelle Sites-Webanwendung liegt unter `web/`. Änderungen werden nur in dem vom Auftrag betroffenen Pfad vorgenommen.
+- Verwende ausschließlich den nativen WSL-Checkout `/home/gerri/src/github.com/KleinerBaum/GerrisErfolgsTracker`, nicht `/mnt/wslg/distro/...` oder Git for Windows.
+- Die Codex-Umgebung installiert Python 3.12 mit `uv` und wählt für `web/` die in `.nvmrc` gepinnte Node-Version.
+- Sites-Runtimewerte und Secrets gehören in Sites beziehungsweise in ignorierte lokale Secret-Dateien, nie in `web/.openai/hosting.json`.
+
 ---
 
 ## Setup commands
