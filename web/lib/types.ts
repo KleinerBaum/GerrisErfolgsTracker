@@ -346,7 +346,18 @@ export type CalendarEvent = {
   startAt: string;
   endAt: string;
   source: "google" | "kompass";
-  kind: "appointment" | "focus" | "payment";
+  kind:
+    | "appointment"
+    | "focus"
+    | "payment"
+    | "job_interview"
+    | "employment_agency"
+    | "networking"
+    | "family"
+    | "school_childcare"
+    | "health"
+    | "public_office"
+    | "learning";
   private: boolean;
   calendarId?: string;
   allDay?: boolean;

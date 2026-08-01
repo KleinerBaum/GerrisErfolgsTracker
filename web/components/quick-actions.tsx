@@ -13,6 +13,7 @@ import {
   CalendarClientError,
   listGoogleCalendars,
 } from "../lib/google-calendar-client";
+import { APP_TIME_ZONE } from "../lib/format";
 import {
   type CalendarEvent,
   type ApplicationProcess,
@@ -476,6 +477,61 @@ function todayInput(): string {
   return local.toISOString().slice(0, 10);
 }
 
+const EVENT_DURATION_OPTIONS = [
+  15,
+  30,
+  45,
+  60,
+  90,
+  120,
+  180,
+  240,
+  360,
+  480,
+  720,
+  1_440,
+  2_160,
+  2_880,
+  4_320,
+  5_760,
+  7_200,
+  10_080,
+  14_400,
+  20_160,
+] as const;
+
+function addDaysToInput(value: string, days: number): string {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return date.toISOString().slice(0, 10);
+}
+
+function eventDurationLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes} Minuten`;
+  const days = Math.floor(minutes / 1_440);
+  const hours = Math.floor((minutes % 1_440) / 60);
+  const remainingMinutes = minutes % 60;
+  const parts: string[] = [];
+  if (days) parts.push(`${days} ${days === 1 ? "Tag" : "Tage"}`);
+  if (hours) parts.push(`${hours} ${hours === 1 ? "Stunde" : "Stunden"}`);
+  if (remainingMinutes) parts.push(`${remainingMinutes} Minuten`);
+  return parts.join(" ");
+}
+
+function eventEndLabel(date: string, time: string, duration: number): string {
+  const start = new Date(`${date}T${time}:00`);
+  if (Number.isNaN(start.getTime())) return "Ende wird automatisch berechnet";
+  const end = new Date(start.getTime() + duration * 60_000);
+  return new Intl.DateTimeFormat("de-DE", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(end);
+}
+
 function EventForm({
   onClose,
   onSave,
@@ -488,10 +544,14 @@ function EventForm({
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(todayInput());
   const [time, setTime] = useState("09:00");
-  const [duration, setDuration] = useState(60);
+  const [durationIndex, setDurationIndex] = useState(3);
+  const [allDay, setAllDay] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(true);
+  const [shareByEmail, setShareByEmail] = useState(false);
+  const [attendeeEmail, setAttendeeEmail] = useState("");
   const [location, setLocation] = useState("");
   const [note, setNote] = useState("");
-  const [kind, setKind] = useState<CalendarEvent["kind"]>("appointment");
+  const [kind, setKind] = useState<CalendarEvent["kind"]>("job_interview");
   const [reminder, setReminder] = useState(30);
   const [calendars, setCalendars] = useState<GoogleCalendar[]>([]);
   const [calendarId, setCalendarId] = useState("primary");
@@ -501,6 +561,10 @@ function EventForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [connectUrl, setConnectUrl] = useState("");
+  const duration = EVENT_DURATION_OPTIONS[durationIndex] || 60;
+  const durationSummary = allDay
+    ? "Ganzer Tag"
+    : `${eventDurationLabel(duration)} · Ende ${eventEndLabel(date, time, duration)}`;
 
   useEffect(() => {
     let active = true;
@@ -529,17 +593,31 @@ function EventForm({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!title.trim() || !date || !time || busy) return;
-    const start = new Date(`${date}T${time}:00`);
-    const end = new Date(start.getTime() + duration * 60_000);
-    const calendarEvent: CalendarEvent = {
-      id: `event-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    if (
+      !title.trim() ||
+      !date ||
+      (!allDay && !time) ||
+      (shareByEmail && !attendeeEmail.trim()) ||
+      busy
+    ) {
+      return;
+    }
+    const allDayEndDate = addDaysToInput(date, 1);
+    const start = new Date(`${date}T${allDay ? "00:00" : time}:00`);
+    const end = allDay
+      ? new Date(`${allDayEndDate}T00:00:00`)
+      : new Date(start.getTime() + duration * 60_000);
+    const calendarEvent = {
       title: title.trim(),
       startAt: start.toISOString(),
       endAt: end.toISOString(),
-      source: "kompass",
       kind,
-      private: true,
+      private: isPrivate,
+      allDay,
+      startDate: allDay ? date : undefined,
+      endDate: allDay ? allDayEndDate : undefined,
+      attendeeEmail: shareByEmail ? attendeeEmail.trim() : undefined,
+      timeZone: APP_TIME_ZONE,
       calendarId,
       location: location.trim(),
       note: note.trim(),
@@ -566,7 +644,11 @@ function EventForm({
         );
       }
       onSave(payload.event);
-      toast("Termin privat in Google Kalender gespeichert");
+      toast(
+        shareByEmail
+          ? "Termin gespeichert und Einladung per E-Mail versendet"
+          : "Termin direkt in Google Kalender gespeichert",
+      );
       onClose();
     } catch (caught) {
       setError(
@@ -591,6 +673,38 @@ function EventForm({
           value={title}
         />
       </label>
+      <div className="event-switch-grid">
+        <label className="event-switch">
+          <input
+            checked={allDay}
+            onChange={(event) => setAllDay(event.target.checked)}
+            role="switch"
+            type="checkbox"
+          />
+          <span className="event-switch-copy">
+            <strong>Ganztägig</strong>
+            <small>Reserviert den gesamten ausgewählten Tag.</small>
+          </span>
+          <span aria-hidden="true" className="event-switch-track">
+            <span />
+          </span>
+        </label>
+        <label className="event-switch">
+          <input
+            checked={isPrivate}
+            onChange={(event) => setIsPrivate(event.target.checked)}
+            role="switch"
+            type="checkbox"
+          />
+          <span className="event-switch-copy">
+            <strong>Privater Termin</strong>
+            <small>Verbirgt Details bei eingeschränkter Kalenderfreigabe.</small>
+          </span>
+          <span aria-hidden="true" className="event-switch-track">
+            <span />
+          </span>
+        </label>
+      </div>
       <div className="form-grid three">
         <label>
           Datum
@@ -604,28 +718,50 @@ function EventForm({
         <label>
           Beginn
           <input
+            disabled={allDay}
             onChange={(event) => setTime(event.target.value)}
-            required
+            required={!allDay}
             type="time"
             value={time}
           />
         </label>
         <label>
-          Dauer
+          Erinnerung
           <select
-            onChange={(event) => setDuration(Number(event.target.value))}
-            value={duration}
+            onChange={(event) => setReminder(Number(event.target.value))}
+            value={reminder}
           >
-            <option value="15">15 Minuten</option>
-            <option value="30">30 Minuten</option>
-            <option value="45">45 Minuten</option>
-            <option value="60">1 Stunde</option>
-            <option value="90">1,5 Stunden</option>
-            <option value="120">2 Stunden</option>
+            <option value="0">Keine</option>
+            <option value="10">10 Minuten vorher</option>
+            <option value="30">30 Minuten vorher</option>
+            <option value="60">1 Stunde vorher</option>
+            <option value="1440">1 Tag vorher</option>
           </select>
         </label>
       </div>
-      <div className="form-grid three">
+      <label className={`event-duration-field${allDay ? " is-disabled" : ""}`}>
+        <span className="event-field-heading">
+          <span>Dauer</span>
+          <output htmlFor="event-duration">{durationSummary}</output>
+        </span>
+        <input
+          aria-label="Termindauer einstellen"
+          disabled={allDay}
+          id="event-duration"
+          max={EVENT_DURATION_OPTIONS.length - 1}
+          min="0"
+          onChange={(event) => setDurationIndex(Number(event.target.value))}
+          step="1"
+          type="range"
+          value={durationIndex}
+        />
+        <span aria-hidden="true" className="event-duration-scale">
+          <span>15 Min.</span>
+          <span>1 Tag</span>
+          <span>14 Tage</span>
+        </span>
+      </label>
+      <div className="form-grid">
         <label>
           Zielkalender
           <select
@@ -649,22 +785,15 @@ function EventForm({
             }
             value={kind}
           >
-            <option value="appointment">Termin</option>
-            <option value="focus">Fokusblock</option>
-            <option value="payment">Zahlung / Frist</option>
-          </select>
-        </label>
-        <label>
-          Erinnerung
-          <select
-            onChange={(event) => setReminder(Number(event.target.value))}
-            value={reminder}
-          >
-            <option value="0">Keine</option>
-            <option value="10">10 Minuten vorher</option>
-            <option value="30">30 Minuten vorher</option>
-            <option value="60">1 Stunde vorher</option>
-            <option value="1440">1 Tag vorher</option>
+            <option value="job_interview">Bewerbungsgespräch</option>
+            <option value="employment_agency">Arbeitsagentur / Jobcenter</option>
+            <option value="networking">Netzwerk / Karrierekontakt</option>
+            <option value="learning">Weiterbildung / Lernen</option>
+            <option value="family">Familie / Kinder</option>
+            <option value="school_childcare">Schule / Kita</option>
+            <option value="health">Gesundheit / Vorsorge</option>
+            <option value="public_office">Behörde / Finanzen</option>
+            <option value="appointment">Persönlicher Termin</option>
           </select>
         </label>
       </div>
@@ -685,9 +814,42 @@ function EventForm({
           value={note}
         />
       </label>
+      <label className="event-share-switch event-switch">
+        <input
+          checked={shareByEmail}
+          onChange={(event) => setShareByEmail(event.target.checked)}
+          role="switch"
+          type="checkbox"
+        />
+        <span className="event-switch-copy">
+          <strong>Per E-Mail teilen</strong>
+          <small>Google Kalender sendet der Person direkt eine Einladung.</small>
+        </span>
+        <span aria-hidden="true" className="event-switch-track">
+          <span />
+        </span>
+      </label>
+      {shareByEmail ? (
+        <label>
+          E-Mail-Adresse der eingeladenen Person
+          <input
+            autoComplete="email"
+            onChange={(event) => setAttendeeEmail(event.target.value)}
+            placeholder="name@beispiel.de"
+            required
+            type="email"
+            value={attendeeEmail}
+          />
+        </label>
+      ) : null}
       <p className="form-trust">
-        Der Termin wird erst nach deiner Bestätigung privat in Google Kalender
-        gespeichert. Im Kompass entsteht keine zweite Terminkopie.
+        Mit „Termin speichern“ wird der Eintrag sofort im Zielkalender angelegt –
+        ohne weitere Bestätigung. {isPrivate
+          ? "Die Termindetails bleiben für Personen mit eingeschränkter Kalenderfreigabe verborgen."
+          : "Die Sichtbarkeit folgt den normalen Freigaben des Zielkalenders."}{" "}
+        {shareByEmail
+          ? "Die eingeladene Person erhält die Termindetails per Google-Kalender-Einladung."
+          : "Es wird keine E-Mail versendet."}
       </p>
       {calendarSelectionConnectUrl ? (
         <p className="form-progress">
@@ -711,7 +873,7 @@ function EventForm({
           </a>
         ) : null}
         <button className="button button-primary" disabled={busy} type="submit">
-          {busy ? "Wird in Google gespeichert …" : "Privat in Google speichern"}
+          {busy ? "Wird in Google gespeichert …" : "Termin speichern"}
         </button>
       </div>
     </form>

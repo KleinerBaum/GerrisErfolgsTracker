@@ -22,6 +22,14 @@ const EVENT_KINDS = new Set<CalendarEvent["kind"]>([
   "appointment",
   "focus",
   "payment",
+  "job_interview",
+  "employment_agency",
+  "networking",
+  "family",
+  "school_childcare",
+  "health",
+  "public_office",
+  "learning",
 ]);
 
 type GoogleEventDate = {
@@ -44,6 +52,10 @@ type GoogleCalendarEvent = {
   summary?: string;
   description?: string;
   location?: string;
+  attendees?: Array<{
+    email?: string;
+    responseStatus?: string;
+  }>;
   start?: GoogleEventDate;
   end?: GoogleEventDate;
   extendedProperties?: {
@@ -91,6 +103,11 @@ export type CreateCalendarEventInput = {
   note?: string;
   reminderMinutes?: number;
   timeZone?: string;
+  allDay?: boolean;
+  startDate?: string;
+  endDate?: string;
+  private?: boolean;
+  attendeeEmail?: string;
   sourceType?: PlanningSourceType;
   sourceId?: string;
   sourceOccurrence?: string;
@@ -99,7 +116,17 @@ export type CreateCalendarEventInput = {
 };
 
 export type UpdateCalendarEventInput = Partial<
-  Omit<CreateCalendarEventInput, "calendarId" | "sourceType" | "sourceId">
+  Omit<
+    CreateCalendarEventInput,
+    | "calendarId"
+    | "sourceType"
+    | "sourceId"
+    | "allDay"
+    | "startDate"
+    | "endDate"
+    | "private"
+    | "attendeeEmail"
+  >
 > & {
   calendarId: string;
   etag?: string;
@@ -177,6 +204,40 @@ function validIsoDate(value: unknown, fieldName: string): string {
     throw new GoogleValidationError(`${fieldName} ist kein gültiger Zeitpunkt.`);
   }
   return date.toISOString();
+}
+
+function validDateOnly(value: unknown, fieldName: string): string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new GoogleValidationError(`${fieldName} ist kein gültiges Datum.`);
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value
+  ) {
+    throw new GoogleValidationError(`${fieldName} ist kein gültiges Datum.`);
+  }
+  return value;
+}
+
+function validOptionalBoolean(
+  value: unknown,
+  fieldName: string,
+): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "boolean") {
+    throw new GoogleValidationError(`${fieldName} ist ungültig.`);
+  }
+  return value;
+}
+
+function validAttendeeEmail(value: unknown): string | undefined {
+  const email = optionalString(value, "Die E-Mail-Adresse", 254);
+  if (!email) return undefined;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new GoogleValidationError("Die E-Mail-Adresse ist ungültig.");
+  }
+  return email.toLowerCase();
 }
 
 function validTimeZone(value: unknown): string | undefined {
@@ -276,6 +337,20 @@ export function parseCreateCalendarEventInput(
   if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
     throw new GoogleValidationError("Das Ende muss nach dem Beginn liegen.");
   }
+  const allDay = validOptionalBoolean(input.allDay, "Ganztägig") ?? false;
+  const startDate = allDay
+    ? validDateOnly(input.startDate, "Das Startdatum")
+    : undefined;
+  const endDate = allDay
+    ? validDateOnly(input.endDate, "Das Enddatum")
+    : undefined;
+  if (
+    allDay &&
+    new Date(`${endDate}T00:00:00.000Z`).getTime() <=
+      new Date(`${startDate}T00:00:00.000Z`).getTime()
+  ) {
+    throw new GoogleValidationError("Das Enddatum muss nach dem Startdatum liegen.");
+  }
   return {
     title: nonEmptyString(input.title, "Der Titel", 1_024),
     startAt,
@@ -286,6 +361,11 @@ export function parseCreateCalendarEventInput(
     note: optionalString(input.note, "Die Notiz", 20_000),
     reminderMinutes: validReminder(input.reminderMinutes),
     timeZone: validTimeZone(input.timeZone),
+    allDay,
+    startDate,
+    endDate,
+    private: validOptionalBoolean(input.private, "Die Sichtbarkeit") ?? true,
+    attendeeEmail: validAttendeeEmail(input.attendeeEmail),
     sourceType: validSourceType(input.sourceType),
     sourceId: validMetadataString(input.sourceId, "Die Quellen-ID"),
     sourceOccurrence: validMetadataString(
@@ -711,6 +791,7 @@ export async function createCalendarEvent(
 ): Promise<CalendarEvent> {
   const targetCalendarId = input.calendarId || calendarId();
   const url = calendarUrl(targetCalendarId);
+  if (input.attendeeEmail) url.searchParams.set("sendUpdates", "all");
   url.searchParams.set(
     "fields",
     "id,etag,updated,status,visibility,summary,description,location,start,end,extendedProperties,reminders,recurringEventId,originalStartTime",
@@ -737,15 +818,24 @@ export async function createCalendarEvent(
         summary: input.title,
         description: input.note,
         location: input.location,
-        visibility: "private",
-        start: {
-          dateTime: input.startAt,
-          ...(input.timeZone ? { timeZone: input.timeZone } : {}),
-        },
-        end: {
-          dateTime: input.endAt,
-          ...(input.timeZone ? { timeZone: input.timeZone } : {}),
-        },
+        visibility: input.private === false ? "default" : "private",
+        start:
+          input.allDay && input.startDate
+            ? { date: input.startDate }
+            : {
+                dateTime: input.startAt,
+                ...(input.timeZone ? { timeZone: input.timeZone } : {}),
+              },
+        end:
+          input.allDay && input.endDate
+            ? { date: input.endDate }
+            : {
+                dateTime: input.endAt,
+                ...(input.timeZone ? { timeZone: input.timeZone } : {}),
+              },
+        ...(input.attendeeEmail
+          ? { attendees: [{ email: input.attendeeEmail }] }
+          : {}),
         reminders,
         extendedProperties: {
           private: {
