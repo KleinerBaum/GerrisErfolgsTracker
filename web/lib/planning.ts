@@ -175,6 +175,7 @@ function eventDateKeys(event: CalendarEvent): string[] {
 }
 
 export function isPlanBearingEvent(event: CalendarEvent): boolean {
+  if (event.availability === "free" || event.kind === "birthday") return false;
   if (event.managedCalendarKey === "birthdays_holidays") return false;
   if (
     event.allDay &&

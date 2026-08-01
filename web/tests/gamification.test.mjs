@@ -159,6 +159,20 @@ test("Moduswechsel verändert weder Ledger noch Ressourcen", async () => {
   assert.equal(base.ledger[0].kind, "OPENING_BALANCE");
 });
 
+test("ältere Zustände erhalten sichere Standardwerte für Etappenfeiern", async () => {
+  const { createDefaultGamification, normalizeGamificationState } =
+    await importGamification();
+  const legacy = createDefaultGamification(1240, now);
+  delete legacy.celebrationsEnabled;
+  delete legacy.milestoneStepXp;
+
+  const normalized = normalizeGamificationState(legacy, 1240, now);
+
+  assert.equal(normalized.celebrationsEnabled, true);
+  assert.equal(normalized.milestoneStepXp, 250);
+  assert.equal(normalized.ledger[0].xpDelta, 1240);
+});
+
 test("Ruhetage und bewusst ausgesetzte Tage zählen nicht in den 14-Tage-Rhythmus", async () => {
   const {
     anchorRhythm,

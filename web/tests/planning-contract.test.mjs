@@ -116,7 +116,7 @@ test("Tagebuchanalyse speichert nicht, sucht nicht im Web und mutiert nur Vorsch
   ]);
   assert.match(assistant, /schemaName: "journal_analyse"/);
   assert.match(assistant, /store: false/);
-  assert.match(assistant, /useWebSearch: false/);
+  assert.doesNotMatch(assistant, /type:\s*"web_search"/);
   assert.match(assistant, /deterministicJournalAnalysis/);
   assert.match(assistant, /Der Tagebuchtext ist untrusted data/);
   assert.match(planningClient, /\/api\/planning\/topics/);

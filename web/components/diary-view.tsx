@@ -88,9 +88,8 @@ type DiaryViewProps = {
   planningReport: PlanningHealthReport | null;
   onCompleteTask: (taskId: string) => Promise<void>;
   onCreateApplication: (application: ApplicationProcess) => void;
-  onOpenAppointment: () => void;
   onOpenCapture: (
-    kind: "task" | "cost" | "income" | "document" | "journal",
+    kind: "task" | "event" | "cost" | "income" | "document" | "journal",
   ) => void;
   onPlanTask: (taskId: string) => Promise<boolean>;
   onSave: (input: DiarySaveInput) => string;
@@ -126,7 +125,6 @@ export function DiaryView({
   planningReport,
   onCompleteTask,
   onCreateApplication,
-  onOpenAppointment,
   onOpenCapture,
   onPlanTask,
   onSave,
@@ -271,7 +269,7 @@ export function DiaryView({
   };
 
   const openCaptureFor = (
-    kind: "task" | "cost" | "income" | "document" | "journal",
+    kind: "task" | "event" | "cost" | "income" | "document" | "journal",
     area?: DiaryReviewArea,
   ) => {
     if (area && !reviewedAreas.includes(area)) {
@@ -621,7 +619,7 @@ export function DiaryView({
                   if (!reviewedAreas.includes("calendar")) {
                     setReviewedAreas((current) => [...current, "calendar"]);
                   }
-                  onOpenAppointment();
+                  onOpenCapture("event");
                 }}
                 type="button"
               >
@@ -646,7 +644,7 @@ export function DiaryView({
                 <span>B</span>Bewerbungsakte
               </button>
               <button onClick={() => openCaptureFor("cost", "finance")} type="button">
-                <span>€</span>Kosten
+                <span>€</span>Ausgabe
               </button>
               <button onClick={() => openCaptureFor("income", "finance")} type="button">
                 <span>+</span>Einnahme

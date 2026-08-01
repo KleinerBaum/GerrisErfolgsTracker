@@ -23,6 +23,12 @@ export type GoogleTasksStatus = {
   taskList: { id: string; title: string } | null;
 };
 
+export type GoogleTaskList = {
+  id: string;
+  title: string;
+  updatedAt: string | null;
+};
+
 type GoogleErrorPayload = {
   error?: string;
   code?: string;
@@ -97,6 +103,19 @@ export async function listGoogleTasks(): Promise<Task[]> {
   return Array.isArray(payload.tasks) ? payload.tasks : [];
 }
 
+export async function listGoogleTaskLists(): Promise<{
+  lists: GoogleTaskList[];
+  selectedTaskListId: string | null;
+}> {
+  return json<{
+    lists: GoogleTaskList[];
+    selectedTaskListId: string | null;
+  }>(
+    await fetch("/api/tasks/lists", { cache: "no-store" }),
+    "Die Google-Tasks-Listen konnten nicht geladen werden.",
+  );
+}
+
 export async function bootstrapGoogleTasks(
   tasks: Task[],
 ): Promise<{ tasks: Task[]; imported: number; reused: number }> {
@@ -121,11 +140,13 @@ export async function createGoogleTask(task: Task): Promise<Task> {
         completed: task.completed,
         notes: task.notes || "",
         legacyId: task.id,
+        taskListId: task.taskListId,
         area: task.area,
         quadrant: task.quadrant,
         estimateMinutes: task.estimateMinutes,
         progress: task.progress,
         confidential: task.confidential,
+        reminderAt: task.reminderAt,
       }),
     }),
     "Die Aufgabe konnte nicht in Google Tasks gespeichert werden.",
@@ -138,23 +159,31 @@ export async function updateGoogleTask(
   changes: Partial<Task>,
 ): Promise<Task> {
   const payload = await json<{ task: Task }>(
-    await fetch(`/api/tasks/${encodeURIComponent(task.id)}`, {
+    await fetch(
+      `/api/tasks/${encodeURIComponent(task.id)}?${new URLSearchParams({
+        taskListId: task.taskListId || "",
+      })}`,
+      {
       method: "PATCH",
       headers: {
         ...writeHeaders,
         ...(task.etag ? { "if-match": task.etag } : {}),
       },
       body: JSON.stringify({ ...changes, etag: task.etag || undefined }),
-    }),
+      },
+    ),
     "Die Aufgabe konnte nicht in Google Tasks aktualisiert werden.",
   );
   return payload.task;
 }
 
 export async function deleteGoogleTask(task: Task): Promise<void> {
-  const query = task.assigned ? "?confirmAssigned=true" : "";
+  const query = new URLSearchParams({
+    taskListId: task.taskListId || "",
+    ...(task.assigned ? { confirmAssigned: "true" } : {}),
+  });
   await json<{ ok: boolean }>(
-    await fetch(`/api/tasks/${encodeURIComponent(task.id)}${query}`, {
+    await fetch(`/api/tasks/${encodeURIComponent(task.id)}?${query}`, {
       method: "DELETE",
       headers: task.etag ? { "if-match": task.etag } : undefined,
     }),

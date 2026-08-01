@@ -1,34 +1,24 @@
 "use client";
 
 import {
-  useEffect,
   useMemo,
   useRef,
   useState,
   type FormEvent,
 } from "react";
 
+import { JobResearchPanel } from "./job-research-panel";
 import { gmailDraftUrl } from "../lib/google-links";
+import { applyConfirmedResearchClaim } from "../lib/job-research";
 import {
-  CalendarClientError,
-  listGoogleCalendars,
-} from "../lib/google-calendar-client";
-import { APP_TIME_ZONE } from "../lib/format";
-import {
-  type CalendarEvent,
   type ApplicationProcess,
   type DocumentKind,
   type DocumentRef,
-  type GoogleCalendar,
   type IntegrationConfig,
+  type VacancyResearch,
 } from "../lib/types";
 
-export type QuickActionKind =
-  | "upload"
-  | "event"
-  | "task"
-  | "email"
-  | "application";
+export type QuickActionKind = "upload" | "email" | "application";
 
 const QUICK_ACTIONS: Array<{
   key: QuickActionKind;
@@ -36,9 +26,6 @@ const QUICK_ACTIONS: Array<{
   mark: string;
   tone: string;
 }> = [
-  { key: "upload", label: "Datei ablegen", mark: "↥", tone: "green" },
-  { key: "event", label: "Termin", mark: "T", tone: "blue" },
-  { key: "task", label: "Aufgabe", mark: "A", tone: "amber" },
   { key: "email", label: "E-Mail", mark: "@", tone: "violet" },
   { key: "application", label: "Bewerbung", mark: "B", tone: "rose" },
 ];
@@ -72,28 +59,24 @@ export function SidebarQuickActions({
 }
 
 type QuickActionDialogProps = {
-  kind: Exclude<QuickActionKind, "task">;
+  kind: QuickActionKind;
   documents: DocumentRef[];
   applicationDraft: ApplicationProcess | null;
   masterCvDocumentId: string | null;
   integrations: IntegrationConfig;
   onClose: () => void;
   onSaveDocument: (document: DocumentRef) => void;
-  onSaveEvent: (event: CalendarEvent) => void;
+  onUpdateApplication: (application: ApplicationProcess) => void;
   toast: (message: string) => void;
 };
 
 const ACTION_COPY: Record<
-  Exclude<QuickActionKind, "task">,
+  QuickActionKind,
   { eyebrow: string; title: string }
 > = {
   upload: {
     eyebrow: "Private Ablage",
     title: "Dateien sicher und auffindbar ablegen",
-  },
-  event: {
-    eyebrow: "Zeit reservieren",
-    title: "Termin erstellen",
   },
   email: {
     eyebrow: "Schreibassistenz",
@@ -113,7 +96,7 @@ export function QuickActionDialog({
   masterCvDocumentId,
   onClose,
   onSaveDocument,
-  onSaveEvent,
+  onUpdateApplication,
   toast,
 }: QuickActionDialogProps) {
   const copy = ACTION_COPY[kind];
@@ -146,13 +129,6 @@ export function QuickActionDialog({
             toast={toast}
           />
         ) : null}
-        {kind === "event" ? (
-          <EventForm
-            onClose={onClose}
-            onSave={onSaveEvent}
-            toast={toast}
-          />
-        ) : null}
         {kind === "email" ? (
           <EmailComposer
             account={integrations.gmailAccount}
@@ -165,6 +141,7 @@ export function QuickActionDialog({
             documents={documents}
             initialApplication={applicationDraft}
             masterCvDocumentId={masterCvDocumentId}
+            onUpdateApplication={onUpdateApplication}
             toast={toast}
           />
         ) : null}
@@ -465,415 +442,6 @@ function UploadForm({
           type="submit"
         >
           {busy ? "Wird sicher abgelegt …" : "In Meine Ablage speichern"}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function todayInput(): string {
-  const date = new Date();
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 10);
-}
-
-const EVENT_DURATION_OPTIONS = [
-  15,
-  30,
-  45,
-  60,
-  90,
-  120,
-  180,
-  240,
-  360,
-  480,
-  720,
-  1_440,
-  2_160,
-  2_880,
-  4_320,
-  5_760,
-  7_200,
-  10_080,
-  14_400,
-  20_160,
-] as const;
-
-function addDaysToInput(value: string, days: number): string {
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day + days));
-  return date.toISOString().slice(0, 10);
-}
-
-function eventDurationLabel(minutes: number): string {
-  if (minutes < 60) return `${minutes} Minuten`;
-  const days = Math.floor(minutes / 1_440);
-  const hours = Math.floor((minutes % 1_440) / 60);
-  const remainingMinutes = minutes % 60;
-  const parts: string[] = [];
-  if (days) parts.push(`${days} ${days === 1 ? "Tag" : "Tage"}`);
-  if (hours) parts.push(`${hours} ${hours === 1 ? "Stunde" : "Stunden"}`);
-  if (remainingMinutes) parts.push(`${remainingMinutes} Minuten`);
-  return parts.join(" ");
-}
-
-function eventEndLabel(date: string, time: string, duration: number): string {
-  const start = new Date(`${date}T${time}:00`);
-  if (Number.isNaN(start.getTime())) return "Ende wird automatisch berechnet";
-  const end = new Date(start.getTime() + duration * 60_000);
-  return new Intl.DateTimeFormat("de-DE", {
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(end);
-}
-
-function EventForm({
-  onClose,
-  onSave,
-  toast,
-}: {
-  onClose: () => void;
-  onSave: (event: CalendarEvent) => void;
-  toast: (message: string) => void;
-}) {
-  const [title, setTitle] = useState("");
-  const [date, setDate] = useState(todayInput());
-  const [time, setTime] = useState("09:00");
-  const [durationIndex, setDurationIndex] = useState(3);
-  const [allDay, setAllDay] = useState(false);
-  const [isPrivate, setIsPrivate] = useState(true);
-  const [shareByEmail, setShareByEmail] = useState(false);
-  const [attendeeEmail, setAttendeeEmail] = useState("");
-  const [location, setLocation] = useState("");
-  const [note, setNote] = useState("");
-  const [kind, setKind] = useState<CalendarEvent["kind"]>("job_interview");
-  const [reminder, setReminder] = useState(30);
-  const [calendars, setCalendars] = useState<GoogleCalendar[]>([]);
-  const [calendarId, setCalendarId] = useState("primary");
-  const [calendarSelectionLoading, setCalendarSelectionLoading] = useState(true);
-  const [calendarSelectionConnectUrl, setCalendarSelectionConnectUrl] =
-    useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [connectUrl, setConnectUrl] = useState("");
-  const duration = EVENT_DURATION_OPTIONS[durationIndex] || 60;
-  const durationSummary = allDay
-    ? "Ganzer Tag"
-    : `${eventDurationLabel(duration)} · Ende ${eventEndLabel(date, time, duration)}`;
-
-  useEffect(() => {
-    let active = true;
-    const load = async () => {
-      try {
-        const loaded = (await listGoogleCalendars()).filter(
-          (calendar) => calendar.accessRole === "owner",
-        );
-        if (!active) return;
-        setCalendars(loaded);
-        const preferred = loaded.find((calendar) => calendar.primary) || loaded[0];
-        if (preferred) setCalendarId(preferred.id);
-      } catch (caught) {
-        if (active && caught instanceof CalendarClientError) {
-          setCalendarSelectionConnectUrl(caught.connectUrl);
-        }
-      } finally {
-        if (active) setCalendarSelectionLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (
-      !title.trim() ||
-      !date ||
-      (!allDay && !time) ||
-      (shareByEmail && !attendeeEmail.trim()) ||
-      busy
-    ) {
-      return;
-    }
-    const allDayEndDate = addDaysToInput(date, 1);
-    const start = new Date(`${date}T${allDay ? "00:00" : time}:00`);
-    const end = allDay
-      ? new Date(`${allDayEndDate}T00:00:00`)
-      : new Date(start.getTime() + duration * 60_000);
-    const calendarEvent = {
-      title: title.trim(),
-      startAt: start.toISOString(),
-      endAt: end.toISOString(),
-      kind,
-      private: isPrivate,
-      allDay,
-      startDate: allDay ? date : undefined,
-      endDate: allDay ? allDayEndDate : undefined,
-      attendeeEmail: shareByEmail ? attendeeEmail.trim() : undefined,
-      timeZone: APP_TIME_ZONE,
-      calendarId,
-      location: location.trim(),
-      note: note.trim(),
-      reminderMinutes: reminder,
-    };
-    setBusy(true);
-    setError("");
-    setConnectUrl("");
-    try {
-      const response = await fetch("/api/calendar", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(calendarEvent),
-      });
-      const payload = (await response.json()) as {
-        event?: CalendarEvent;
-        error?: string;
-        connectUrl?: string;
-      };
-      if (!response.ok || !payload.event) {
-        setConnectUrl(payload.connectUrl || "");
-        throw new Error(
-          payload.error || "Der Termin konnte nicht gespeichert werden.",
-        );
-      }
-      onSave(payload.event);
-      toast(
-        shareByEmail
-          ? "Termin gespeichert und Einladung per E-Mail versendet"
-          : "Termin direkt in Google Kalender gespeichert",
-      );
-      onClose();
-    } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Der Termin konnte nicht gespeichert werden.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form className="capture-form action-form" onSubmit={submit}>
-      <label>
-        Titel
-        <input
-          autoFocus
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="z. B. Gespräch mit Frau Müller"
-          required
-          value={title}
-        />
-      </label>
-      <div className="event-switch-grid">
-        <label className="event-switch">
-          <input
-            checked={allDay}
-            onChange={(event) => setAllDay(event.target.checked)}
-            role="switch"
-            type="checkbox"
-          />
-          <span className="event-switch-copy">
-            <strong>Ganztägig</strong>
-            <small>Reserviert den gesamten ausgewählten Tag.</small>
-          </span>
-          <span aria-hidden="true" className="event-switch-track">
-            <span />
-          </span>
-        </label>
-        <label className="event-switch">
-          <input
-            checked={isPrivate}
-            onChange={(event) => setIsPrivate(event.target.checked)}
-            role="switch"
-            type="checkbox"
-          />
-          <span className="event-switch-copy">
-            <strong>Privater Termin</strong>
-            <small>Verbirgt Details bei eingeschränkter Kalenderfreigabe.</small>
-          </span>
-          <span aria-hidden="true" className="event-switch-track">
-            <span />
-          </span>
-        </label>
-      </div>
-      <div className="form-grid three">
-        <label>
-          Datum
-          <input
-            onChange={(event) => setDate(event.target.value)}
-            required
-            type="date"
-            value={date}
-          />
-        </label>
-        <label>
-          Beginn
-          <input
-            disabled={allDay}
-            onChange={(event) => setTime(event.target.value)}
-            required={!allDay}
-            type="time"
-            value={time}
-          />
-        </label>
-        <label>
-          Erinnerung
-          <select
-            onChange={(event) => setReminder(Number(event.target.value))}
-            value={reminder}
-          >
-            <option value="0">Keine</option>
-            <option value="10">10 Minuten vorher</option>
-            <option value="30">30 Minuten vorher</option>
-            <option value="60">1 Stunde vorher</option>
-            <option value="1440">1 Tag vorher</option>
-          </select>
-        </label>
-      </div>
-      <label className={`event-duration-field${allDay ? " is-disabled" : ""}`}>
-        <span className="event-field-heading">
-          <span>Dauer</span>
-          <output htmlFor="event-duration">{durationSummary}</output>
-        </span>
-        <input
-          aria-label="Termindauer einstellen"
-          disabled={allDay}
-          id="event-duration"
-          max={EVENT_DURATION_OPTIONS.length - 1}
-          min="0"
-          onChange={(event) => setDurationIndex(Number(event.target.value))}
-          step="1"
-          type="range"
-          value={durationIndex}
-        />
-        <span aria-hidden="true" className="event-duration-scale">
-          <span>15 Min.</span>
-          <span>1 Tag</span>
-          <span>14 Tage</span>
-        </span>
-      </label>
-      <div className="form-grid">
-        <label>
-          Zielkalender
-          <select
-            disabled={calendarSelectionLoading}
-            onChange={(event) => setCalendarId(event.target.value)}
-            value={calendarId}
-          >
-            {!calendars.length ? <option value="primary">Hauptkalender</option> : null}
-            {calendars.map((calendar) => (
-              <option key={calendar.id} value={calendar.id}>
-                {calendar.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Art des Termins
-          <select
-            onChange={(event) =>
-              setKind(event.target.value as CalendarEvent["kind"])
-            }
-            value={kind}
-          >
-            <option value="job_interview">Bewerbungsgespräch</option>
-            <option value="employment_agency">Arbeitsagentur / Jobcenter</option>
-            <option value="networking">Netzwerk / Karrierekontakt</option>
-            <option value="learning">Weiterbildung / Lernen</option>
-            <option value="family">Familie / Kinder</option>
-            <option value="school_childcare">Schule / Kita</option>
-            <option value="health">Gesundheit / Vorsorge</option>
-            <option value="public_office">Behörde / Finanzen</option>
-            <option value="appointment">Persönlicher Termin</option>
-          </select>
-        </label>
-      </div>
-      <label>
-        Ort oder Videolink
-        <input
-          onChange={(event) => setLocation(event.target.value)}
-          placeholder="Optional"
-          value={location}
-        />
-      </label>
-      <label>
-        Notizen und Vorbereitung
-        <textarea
-          onChange={(event) => setNote(event.target.value)}
-          placeholder="Agenda, Unterlagen, Gesprächsziel …"
-          rows={3}
-          value={note}
-        />
-      </label>
-      <label className="event-share-switch event-switch">
-        <input
-          checked={shareByEmail}
-          onChange={(event) => setShareByEmail(event.target.checked)}
-          role="switch"
-          type="checkbox"
-        />
-        <span className="event-switch-copy">
-          <strong>Per E-Mail teilen</strong>
-          <small>Google Kalender sendet der Person direkt eine Einladung.</small>
-        </span>
-        <span aria-hidden="true" className="event-switch-track">
-          <span />
-        </span>
-      </label>
-      {shareByEmail ? (
-        <label>
-          E-Mail-Adresse der eingeladenen Person
-          <input
-            autoComplete="email"
-            onChange={(event) => setAttendeeEmail(event.target.value)}
-            placeholder="name@beispiel.de"
-            required
-            type="email"
-            value={attendeeEmail}
-          />
-        </label>
-      ) : null}
-      <p className="form-trust">
-        Mit „Termin speichern“ wird der Eintrag sofort im Zielkalender angelegt –
-        ohne weitere Bestätigung. {isPrivate
-          ? "Die Termindetails bleiben für Personen mit eingeschränkter Kalenderfreigabe verborgen."
-          : "Die Sichtbarkeit folgt den normalen Freigaben des Zielkalenders."}{" "}
-        {shareByEmail
-          ? "Die eingeladene Person erhält die Termindetails per Google-Kalender-Einladung."
-          : "Es wird keine E-Mail versendet."}
-      </p>
-      {calendarSelectionConnectUrl ? (
-        <p className="form-progress">
-          Die Kalenderauswahl benötigt einmalig eine ergänzte Google-Freigabe. Bis
-          dahin wird sicher der Hauptkalender verwendet.
-        </p>
-      ) : null}
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
-      <div className="dialog-actions">
-        <button className="button button-ghost" onClick={onClose} type="button">
-          Abbrechen
-        </button>
-        {connectUrl ? (
-          <a className="button button-soft" href={connectUrl}>
-            Google Kalender verbinden
-          </a>
-        ) : null}
-        {!connectUrl && calendarSelectionConnectUrl ? (
-          <a className="button button-soft" href={calendarSelectionConnectUrl}>
-            Kalenderauswahl freischalten
-          </a>
-        ) : null}
-        <button className="button button-primary" disabled={busy} type="submit">
-          {busy ? "Wird in Google gespeichert …" : "Termin speichern"}
         </button>
       </div>
     </form>
@@ -1305,6 +873,7 @@ type ApplicationPackage = {
   coverLetter: string;
   tailoredCv: string;
   companyBrief: string;
+  interviewPrep: string;
   applicationEmailSubject: string;
   applicationEmailBody: string;
   fitHighlights: string[];
@@ -1319,6 +888,7 @@ function isApplicationPackage(value: unknown): value is ApplicationPackage {
     typeof result.coverLetter === "string" &&
     typeof result.tailoredCv === "string" &&
     typeof result.companyBrief === "string" &&
+    typeof result.interviewPrep === "string" &&
     typeof result.applicationEmailSubject === "string" &&
     typeof result.applicationEmailBody === "string" &&
     Array.isArray(result.fitHighlights) &&
@@ -1389,6 +959,24 @@ function localApplicationPackage(input: {
       "",
       "Die Live-Recherche war nicht verfügbar. Vor dem Versand bitte Geschäftsmodell, Werte, aktuelle Schwerpunkte, Rollenanforderungen und Ansprechperson anhand der offiziellen Seite ergänzen.",
     ].join("\n"),
+    interviewPrep: [
+      `# Interviewvorbereitung · ${input.companyName}`,
+      "",
+      "## Kernbotschaft",
+      input.motivation ||
+        `[In 60–90 Sekunden erklären, warum ${input.roleTitle} der passende nächste Schritt ist.]`,
+      "",
+      "## Belege aus dem eigenen Profil",
+      input.achievements ||
+        "[Drei belegbare Beispiele nach Situation, Aufgabe, Vorgehen und Ergebnis vorbereiten.]",
+      "",
+      "## Fragen an den Arbeitgeber",
+      "- Woran wird Erfolg in den ersten sechs Monaten gemessen?",
+      "- Welche Aufgaben und Anforderungen haben im Alltag tatsächlich Priorität?",
+      "- Welche Rahmenbedingungen der Anzeige sind noch offen?",
+      "",
+      "Die öffentliche Recherche war nicht verfügbar. Aussagen zur Vakanz vor dem Gespräch anhand der Originalquelle prüfen.",
+    ].join("\n"),
     applicationEmailSubject: `Bewerbung als ${input.roleTitle}`,
     applicationEmailBody: [
       greeting,
@@ -1410,7 +998,7 @@ function localApplicationPackage(input: {
       "Konkrete CV-Inhalte in den lokalen Entwurf übernehmen",
       "Unternehmensfakten anhand offizieller Quellen verifizieren",
     ],
-    sources: [input.jobUrl],
+    sources: [],
   };
 }
 
@@ -1418,12 +1006,14 @@ type ApplicationTab =
   | "coverLetter"
   | "tailoredCv"
   | "companyBrief"
+  | "interviewPrep"
   | "applicationEmailBody";
 
 const APPLICATION_TABS: Array<{ key: ApplicationTab; label: string }> = [
   { key: "coverLetter", label: "Anschreiben" },
   { key: "tailoredCv", label: "CV" },
   { key: "companyBrief", label: "Firma & Rolle" },
+  { key: "interviewPrep", label: "Interview" },
   { key: "applicationEmailBody", label: "Bewerbungs-Mail" },
 ];
 
@@ -1451,12 +1041,14 @@ function ApplicationStudio({
   documents,
   initialApplication,
   masterCvDocumentId,
+  onUpdateApplication,
   toast,
 }: {
   account: string;
   documents: DocumentRef[];
   initialApplication: ApplicationProcess | null;
   masterCvDocumentId: string | null;
+  onUpdateApplication: (application: ApplicationProcess) => void;
   toast: (message: string) => void;
 }) {
   const cvRef = useRef<HTMLInputElement>(null);
@@ -1479,6 +1071,9 @@ function ApplicationStudio({
   );
   const [cv, setCv] = useState<File | null>(null);
   const [useMasterCv, setUseMasterCv] = useState(Boolean(masterCv));
+  const [research, setResearch] = useState<VacancyResearch | null>(
+    initialApplication?.vacancyResearch ?? null,
+  );
   const [motivation, setMotivation] = useState(
     initialApplication?.researchSummary ?? "",
   );
@@ -1500,6 +1095,28 @@ function ApplicationStudio({
   const [activeTab, setActiveTab] = useState<ApplicationTab>("coverLetter");
   const [busy, setBusy] = useState(false);
   const [usedFallback, setUsedFallback] = useState(false);
+
+  const updateResearch = (nextResearch: VacancyResearch) => {
+    setResearch(nextResearch);
+    if (!initialApplication) return;
+    let nextApplication: ApplicationProcess = {
+      ...initialApplication,
+      vacancyResearch: nextResearch,
+      sourceVerifiedAt: nextResearch.researchedAt.slice(0, 10),
+      sourceUrl:
+        nextResearch.retrievalStatus === "exact_page_accessed" &&
+        nextResearch.canonicalUrl
+          ? nextResearch.canonicalUrl
+          : initialApplication.sourceUrl,
+    };
+    for (const claim of [
+      ...nextResearch.adFacts,
+      ...nextResearch.enrichment,
+    ]) {
+      nextApplication = applyConfirmedResearchClaim(nextApplication, claim);
+    }
+    onUpdateApplication(nextApplication);
+  };
 
   const generate = async (event: FormEvent) => {
     event.preventDefault();
@@ -1526,6 +1143,7 @@ function ApplicationStudio({
       availability,
       style,
       language,
+      researchContext: JSON.stringify(research),
     };
     try {
       let sourceCv = cv;
@@ -1573,6 +1191,7 @@ function ApplicationStudio({
       coverLetter: `Anschreiben-${result.companyName}.txt`,
       tailoredCv: `CV-${result.roleTitle}.md`,
       companyBrief: `Briefing-${result.companyName}.md`,
+      interviewPrep: `Interview-${result.companyName}.md`,
       applicationEmailBody: `Bewerbungs-Mail-${result.companyName}.txt`,
     };
     return (
@@ -1749,6 +1368,14 @@ function ApplicationStudio({
           />
         </label>
       </div>
+      <JobResearchPanel
+        compact
+        companyName={companyName}
+        onChange={updateResearch}
+        research={research}
+        roleTitle={roleTitle}
+        sourceUrl={jobUrl}
+      />
       <div className="form-grid">
         <label>
           Ansprechperson

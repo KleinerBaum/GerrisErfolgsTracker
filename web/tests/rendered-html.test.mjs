@@ -51,7 +51,7 @@ test("enthält den vollständigen privaten Organisationsbereich", async () => {
   assert.match(finance, /Revolut/);
   assert.equal((catalog.match(/\{ id: \d+, title:/g) ?? []).length, 48);
   assert.match(app, /DIN-A4-Ansicht/);
-  assert.match(layout, /og-momentum\.png/);
+  assert.match(layout, /og-kompass\.png/);
   assert.match(layout, /manifest\.webmanifest/);
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /aspect-ratio:\s*210\s*\/\s*297/);
@@ -118,30 +118,32 @@ test("stellt die Kernkennzahlen als sechs semantisch unterschiedliche Bereiche d
   assert.match(css, /\.core-kpi-grid/);
   assert.match(css, /\.core-kpi-group/);
   assert.match(css, /grid-template-columns: repeat\(auto-fit/);
-  assert.match(layout, /og-momentum\.png/);
-  await access(new URL("public/og-momentum.png", root));
+  assert.match(layout, /og-kompass\.png/);
+  await access(new URL("public/og-kompass.png", root));
 });
 
-test("liefert Momentum Realm als wechselbares, transparentes Fortschrittssystem", async () => {
-  const [app, realm, engine, types, css] = await Promise.all([
+test("integriert das Belohnungssystem in Einstellungen, Kopfzeile und Sidebar", async () => {
+  const [app, engine, types, css] = await Promise.all([
     readFile(new URL("components/life-os-app.tsx", root), "utf8"),
-    readFile(new URL("components/momentum-realm-view.tsx", root), "utf8"),
     readFile(new URL("lib/gamification.ts", root), "utf8"),
     readFile(new URL("lib/types.ts", root), "utf8"),
     readFile(new URL("app/globals.css", root), "utf8"),
   ]);
 
-  assert.match(app, /label: "Momentum Realm"/);
-  assert.match(realm, /Ein Fortschrittssystem · drei Erlebnisweisen/);
-  assert.match(realm, /Klarpunkte-Katalog/);
-  assert.match(realm, /Lebende Chronik/);
-  assert.match(realm, /Urlaub, Ruhe und bewusst ausgesetzte Tage/);
-  assert.match(realm, /Bleibt aus, bis schriftlich freigegebene Inhalte/);
+  assert.doesNotMatch(app, /label: "Momentum Realm"/);
+  assert.doesNotMatch(app, /<MomentumRealmView/);
+  assert.match(app, /className="topbar-progress"/);
+  assert.match(app, /className={`sidebar-reward-progress/);
+  assert.match(app, /Belohnungssystem/);
+  assert.match(app, /Erreichte Etappen als Pop-up feiern/);
+  assert.match(app, /className={`milestone-celebration/);
+  assert.match(app, /Bleibt aus, bis schriftlich freigegebene Inhalte/);
   assert.match(engine, /idempotencyKey = `task:\$\{task\.id\}:completion`/);
   assert.match(engine, /Math\.min\(\s*25,/);
   assert.match(types, /RewardMode = \(typeof REWARD_MODES\)\[number\]/);
   assert.match(types, /VerificationType = \(typeof VERIFICATION_TYPES\)\[number\]/);
-  assert.match(css, /\.momentum-hero/);
+  assert.match(css, /\.reward-mode-settings/);
+  assert.match(css, /\.milestone-celebration/);
   assert.match(css, /\.reward-assessment-dialog/);
 });
 
@@ -273,11 +275,12 @@ test("liefert Sites-Metadaten, D1-Migration und Produktionsbundle", async () => 
   await access(new URL("public/og-drive.png", root));
 });
 
-test("liefert die fünf privaten Schnellaktionen mit Upload und Textassistenz", async () => {
-  const [app, actions, assistantRoute, uploadRoute, types, hosting] =
+test("bündelt vier Erfassungsarten und lässt nur E-Mail und Bewerbung in der Sidebar", async () => {
+  const [app, actions, eventForm, assistantRoute, uploadRoute, types, hosting] =
     await Promise.all([
       readFile(new URL("components/life-os-app.tsx", root), "utf8"),
       readFile(new URL("components/quick-actions.tsx", root), "utf8"),
+      readFile(new URL("components/calendar-event-form.tsx", root), "utf8"),
       readFile(new URL("app/api/assistant/route.ts", root), "utf8"),
       readFile(new URL("app/api/files/route.ts", root), "utf8"),
       readFile(new URL("lib/types.ts", root), "utf8"),
@@ -285,18 +288,32 @@ test("liefert die fünf privaten Schnellaktionen mit Upload und Textassistenz", 
     ]);
 
   assert.match(app, /SidebarQuickActions/);
-  assert.match(actions, /Datei ablegen/);
-  assert.match(actions, /Termin/);
-  assert.match(actions, /Aufgabe/);
-  assert.match(actions, /E-Mail/);
-  assert.match(actions, /Bewerbung/);
+  const sidebarActions = actions.slice(
+    actions.indexOf("const QUICK_ACTIONS"),
+    actions.indexOf("export function SidebarQuickActions"),
+  );
+  assert.match(sidebarActions, /key: "email", label: "E-Mail"/);
+  assert.match(sidebarActions, /key: "application", label: "Bewerbung"/);
+  assert.doesNotMatch(sidebarActions, /key: "upload"/);
+  assert.doesNotMatch(sidebarActions, /key: "event"/);
+  assert.doesNotMatch(sidebarActions, /key: "task"/);
+  assert.match(app, /\["task", "A", "Aufgabe", "Planen und erinnern"\]/);
+  assert.match(app, /\["event", "T", "Termin", "Zeit oder Ereignis"\]/);
+  assert.match(app, /\["income", "\+", "Einnahme", "Geldeingang erfassen"\]/);
+  assert.match(app, /\["cost", "€", "Ausgabe", "Zahlung festhalten"\]/);
+  assert.match(app, /onNewEvent=\{\(\) => openCapture\("event"\)\}/);
+  assert.match(app, /onNewCost=\{\(\) => openCapture\("cost"\)\}/);
+  assert.match(app, /onNewIncome=\{\(\) => openCapture\("income"\)\}/);
+  assert.match(app, /onUpload=\{\(\) => openQuickAction\("upload"\)\}/);
+  assert.match(app, /Datei hochladen/);
+  assert.match(eventForm, /Geburtstagserinnerung/);
   assert.match(actions, /Bewerbungspaket erstellen/);
   assert.match(actions, /Lokale Vorlage/);
   assert.match(assistantRoute, /store:\s*false/);
   assert.match(assistantRoute, /json_schema/);
   assert.match(assistantRoute, /journal-analysis/);
   assert.match(assistantRoute, /redactObviousCredentials/);
-  assert.match(assistantRoute, /useWebSearch:\s*false/);
+  assert.doesNotMatch(assistantRoute, /type:\s*"web_search"/);
   assert.match(uploadRoute, /MAX_FILE_BYTES/);
   assert.match(types, /storage\?: "drive" \| "upload"/);
   assert.equal(JSON.parse(hosting).r2, "FILES");
@@ -501,15 +518,30 @@ test("bündelt Google Workspace sicher und dokumentiert die Sites-Konfiguration"
   assert.match(gmailDraftRoute, /export async function POST/);
 });
 
-test("liefert das Bewerbungsdashboard mit 72 echten Recherchevakanzen", async () => {
-  const [app, applications, research, types, stateHook, actions] =
+test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen", async () => {
+  const [
+    app,
+    applications,
+    research,
+    researchData,
+    types,
+    stateHook,
+    actions,
+    jobResearchPanel,
+    jobResearchRoute,
+    assistantRoute,
+  ] =
     await Promise.all([
       readFile(new URL("components/life-os-app.tsx", root), "utf8"),
       readFile(new URL("components/applications-view.tsx", root), "utf8"),
       readFile(new URL("lib/application-research.ts", root), "utf8"),
+      readFile(new URL("lib/application-research-2026-08-01.ts", root), "utf8"),
       readFile(new URL("lib/types.ts", root), "utf8"),
       readFile(new URL("lib/use-gerri-state.ts", root), "utf8"),
       readFile(new URL("components/quick-actions.tsx", root), "utf8"),
+      readFile(new URL("components/job-research-panel.tsx", root), "utf8"),
+      readFile(new URL("app/api/job-research/route.ts", root), "utf8"),
+      readFile(new URL("app/api/assistant/route.ts", root), "utf8"),
     ]);
 
   assert.match(app, /label: "Bewerbungen"/);
@@ -519,15 +551,41 @@ test("liefert das Bewerbungsdashboard mit 72 echten Recherchevakanzen", async ()
   assert.match(applications, /Erwarteter nächster Schritt/);
   assert.match(applications, /Screenshot der Ausschreibung/);
   assert.match(applications, /Master-CV/);
+  assert.match(applications, /<JobResearchPanel/);
   assert.match(types, /applications: ApplicationProcess\[\]/);
   assert.match(types, /masterCvDocumentId: string \| null/);
+  assert.match(types, /vacancyResearch: VacancyResearch \| null/);
   assert.match(stateHook, /mergeApplicationResearch/);
   assert.match(actions, /Master-CV verwenden/);
   assert.match(actions, /fetch\(masterCv\.downloadUrl/);
-  assert.equal((research.match(/^\s+\[\s*$/gm) ?? []).length >= 72, true);
-  assert.match(research, /Sachbearbeitung Kommunales Krisenmanagement/);
-  assert.match(research, /Business Project Manager Conversational AI/);
-  assert.match(research, /Informationssicherheitsbeauftragter/);
+  assert.match(actions, /interviewPrep/);
+  assert.match(actions, /<JobResearchPanel/);
+  assert.match(jobResearchPanel, /Vakanz recherchieren/);
+  assert.match(jobResearchPanel, /Bestätigen/);
+  assert.match(jobResearchPanel, /Bearbeiten/);
+  assert.match(jobResearchPanel, /Ablehnen/);
+  assert.match(jobResearchPanel, /Für Aussagen verwendete Quellen/);
+  assert.match(jobResearchRoute, /type: "web_search"/);
+  assert.match(jobResearchRoute, /external_web_access: true/);
+  assert.match(jobResearchRoute, /tool_choice: "required"/);
+  assert.match(jobResearchRoute, /web_search_call\.action\.sources/);
+  assert.match(jobResearchRoute, /store: false/);
+  assert.match(jobResearchRoute, /background: true/);
+  assert.match(jobResearchRoute, /verifyJobToken/);
+  assert.match(jobResearchRoute, /payload\.status === "queued"/);
+  assert.match(jobResearchPanel, /Recherche läuft im Hintergrund/);
+  assert.match(jobResearchPanel, /job: \{ id: payload\.job\.id, token: payload\.job\.token \}/);
+  assert.match(jobResearchRoute, /sameOrigin\(request\)/);
+  assert.doesNotMatch(assistantRoute, /type: "web_search"/);
+  assert.match(assistantRoute, /confirmedResearchContext/);
+  assert.match(assistantRoute, /absichtlich keinen Webzugriff/);
+  assert.match(research, /JOB_RADAR_RECORDS/);
+  assert.match(research, /LEGACY_ID_BY_SOURCE_ID/);
+  assert.match(research, /refreshedSeedValue/);
+  assert.equal((researchData.match(/"sourceId":/g) ?? []).length, 105);
+  assert.match(researchData, /Sachbearbeiter\*in Kommunales Krisenmanagement/);
+  assert.match(researchData, /Business Project Manager Conversational AI/);
+  assert.match(researchData, /Product\/Service-orientierte Initiativbewerbung/);
 });
 
 test("normalisiert einen alten Zustand ohne Bewerbungsfelder abwärtskompatibel", async () => {
@@ -544,14 +602,89 @@ test("normalisiert einen alten Zustand ohne Bewerbungsfelder abwärtskompatibel"
   };
   const normalized = mergeApplicationResearch(legacyState.applications);
 
-  assert.equal(normalized.length, 72);
-  assert.equal(normalized.filter((item) => item.shortlisted).length, 15);
+  assert.equal(normalized.length, 105);
+  assert.equal(normalized.filter((item) => item.shortlisted).length, 24);
   assert.equal(
     new Set(normalized.map((item) => item.id)).size,
     APPLICATION_RESEARCH.length,
   );
   assert.equal(normalized[0].status, "research");
   assert.equal(normalized[0].artifacts.length, 0);
+  assert.equal(normalized[0].vacancyResearch?.schemaVersion, 1);
+  assert.equal(normalized[0].sourceVerifiedAt, "2026-08-01");
+  assert.match(normalized[0].sourceUrl, /^https:\/\//);
+});
+
+test("aktualisiert alte Recherchefelder und bewahrt den persönlichen Bewerbungsstand", async () => {
+  const { APPLICATION_RESEARCH, mergeApplicationResearch } = await import(
+    "../lib/application-research.ts"
+  );
+  const current = APPLICATION_RESEARCH[0];
+  const legacy = {
+    ...current,
+    jobTitle: "Sachbearbeitung Kommunales Krisenmanagement / Business Continuity",
+    publishedTerms: "Unbefristet · Voll- oder Teilzeit · Homeoffice",
+    compensation: "EG 10 TVöD / A 11",
+    fitRating: "A",
+    researchSummary:
+      "BWL und Business Administration werden ausdrücklich akzeptiert. Prozesse, Risiken, Projektsteuerung, Beratung und Krisenorganisation passen sehr gut.",
+    sourceUrl: "",
+    sourceVerifiedAt: "2026-07-29",
+    status: "submitted",
+    appliedAt: "2026-07-31",
+    nextStep: "Bewerbungsentscheidung treffen",
+    notes: "Rückruf für Montag vereinbart",
+    artifacts: [
+      {
+        id: "artifact-1",
+        kind: "cover-letter",
+        documentId: "document-1",
+        label: "Anschreiben",
+        createdAt: "2026-07-31T10:00:00.000Z",
+      },
+    ],
+    vacancyResearch: null,
+  };
+
+  const [updated] = mergeApplicationResearch([legacy]);
+
+  assert.match(updated.jobTitle, /Business Continuity Management/);
+  assert.match(updated.sourceUrl, /^https:\/\//);
+  assert.equal(updated.sourceVerifiedAt, "2026-08-01");
+  assert.equal(updated.status, "submitted");
+  assert.equal(updated.appliedAt, "2026-07-31");
+  assert.equal(updated.notes, "Rückruf für Montag vereinbart");
+  assert.equal(updated.artifacts.length, 1);
+  assert.equal(updated.vacancyResearch?.schemaVersion, 1);
+});
+
+test("ersetzt unberührte Altrecherche ohne laufende Bewerbungsakten zu verlieren", async () => {
+  const {
+    APPLICATION_RESEARCH,
+    LEGACY_APPLICATION_RESEARCH,
+    mergeApplicationResearch,
+  } = await import("../lib/application-research.ts");
+  const untouched = mergeApplicationResearch(LEGACY_APPLICATION_RESEARCH);
+
+  assert.equal(untouched.length, APPLICATION_RESEARCH.length);
+  assert.equal(new Set(untouched.map((item) => item.id)).size, untouched.length);
+
+  const startedLegacy = LEGACY_APPLICATION_RESEARCH.map((application) =>
+    application.id === "vacancy-25"
+      ? {
+          ...application,
+          status: "submitted",
+          appliedAt: "2026-07-31",
+          notes: "Bereits versendet und deshalb als eigene Akte behalten",
+        }
+      : application,
+  );
+  const withStartedProcess = mergeApplicationResearch(startedLegacy);
+  const retained = withStartedProcess.find((item) => item.id === "vacancy-25");
+
+  assert.equal(withStartedProcess.length, APPLICATION_RESEARCH.length + 1);
+  assert.equal(retained?.status, "submitted");
+  assert.equal(retained?.notes, "Bereits versendet und deshalb als eigene Akte behalten");
 });
 
 test("hält native Auswahlmenüs in allen App-Bereichen kontrastreich", async () => {

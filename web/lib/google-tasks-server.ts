@@ -73,6 +73,7 @@ export type ProvisionedGerrisTaskList = {
 export type GerrisTask = {
   id: string;
   taskListId: string;
+  taskListTitle: string;
   legacyId: string | null;
   title: string;
   notes: string;
@@ -84,6 +85,9 @@ export type GerrisTask = {
   webViewLink: string | null;
   assigned: boolean;
   parentId: string | null;
+  reminderAt: string | null;
+  reminderCalendarId: string | null;
+  reminderEventId: string | null;
   area: LifeArea;
   quadrant: TaskQuadrant;
   estimateMinutes: number;
@@ -93,8 +97,10 @@ export type GerrisTask = {
 
 export type CreateTaskInput = {
   title: string;
+  taskListId?: string;
   notes?: string;
   dueAt?: string | null;
+  reminderAt?: string | null;
   completed?: boolean;
   legacyId?: string | null;
   area?: LifeArea;
@@ -208,6 +214,34 @@ function optionalLegacyId(value: unknown): string | null | undefined {
   return value.trim();
 }
 
+function optionalTaskListId(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !value.trim() || value.length > 1_024) {
+    throw new GoogleValidationError("Die Aufgabenliste ist ungültig.");
+  }
+  return value.trim();
+}
+
+function optionalReminderAt(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (typeof value !== "string") {
+    throw new GoogleValidationError("Der Erinnerungszeitpunkt ist ungültig.");
+  }
+  const reminderAt = new Date(value);
+  const maximum = Date.now() + 10 * 365 * 86_400_000;
+  if (
+    Number.isNaN(reminderAt.getTime()) ||
+    reminderAt.getTime() < Date.now() - 60_000 ||
+    reminderAt.getTime() > maximum
+  ) {
+    throw new GoogleValidationError(
+      "Die Erinnerung muss zwischen jetzt und zehn Jahren liegen.",
+    );
+  }
+  return reminderAt.toISOString();
+}
+
 function optionalArea(value: unknown): LifeArea | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string" || !LIFE_AREAS.has(value as LifeArea)) {
@@ -230,8 +264,10 @@ export function parseCreateTaskInput(value: unknown): CreateTaskInput {
   }
   return {
     title: requiredTitle(value.title),
+    taskListId: optionalTaskListId(value.taskListId),
     notes: optionalNotes(value.notes),
     dueAt: optionalDue(value.dueAt),
+    reminderAt: optionalReminderAt(value.reminderAt),
     completed: optionalBoolean(value.completed, "Der Aufgabenstatus"),
     legacyId: optionalLegacyId(value.legacyId),
     area: optionalArea(value.area),
@@ -412,6 +448,22 @@ async function requireGerrisTaskList(
     );
   }
   return taskList;
+}
+
+async function requireTaskList(
+  connection: GoogleConnection,
+  requestedTaskListId?: string,
+): Promise<GerrisTaskList> {
+  if (!requestedTaskListId) return requireGerrisTaskList(connection);
+  const selected = (await allTaskLists(connection)).find(
+    (list) => list.id === requestedTaskListId,
+  );
+  if (!selected) {
+    throw new GoogleValidationError(
+      "Die ausgewählte Google-Tasks-Liste ist nicht mehr verfügbar.",
+    );
+  }
+  return normalizedTaskList(selected);
 }
 
 function provisioningLease(): {
@@ -667,7 +719,7 @@ async function sidecarForLegacyId(
 }
 
 function mergeTask(
-  taskListId: string,
+  taskList: GerrisTaskList,
   task: GoogleTask,
   sidecar: Sidecar | null,
 ): GerrisTask {
@@ -676,7 +728,8 @@ function mergeTask(
   }
   return {
     id: task.id,
-    taskListId,
+    taskListId: taskList.id,
+    taskListTitle: taskList.title,
     legacyId: sidecar?.legacyId || null,
     title: task.title?.trim() || "Unbenannte Aufgabe",
     notes: task.notes || "",
@@ -688,6 +741,9 @@ function mergeTask(
     webViewLink: task.webViewLink || null,
     assigned: Boolean(task.assignmentInfo),
     parentId: task.parent || null,
+    reminderAt: sidecar?.reminderAt || null,
+    reminderCalendarId: sidecar?.reminderCalendarId || null,
+    reminderEventId: sidecar?.reminderEventId || null,
     area: LIFE_AREAS.has(sidecar?.area as LifeArea)
       ? (sidecar?.area as LifeArea)
       : "alltag",
@@ -724,7 +780,7 @@ export async function listGerrisTasks(
   ]);
   const tasks = googleTasks
     .filter((task) => !task.deleted)
-    .map((task) => mergeTask(taskList.id, task, metadata.get(task.id || "") || null))
+    .map((task) => mergeTask(taskList, task, metadata.get(task.id || "") || null))
     .sort((left, right) => {
       if (left.completed !== right.completed) return left.completed ? 1 : -1;
       if (left.dueAt !== right.dueAt) {
@@ -737,16 +793,46 @@ export async function listGerrisTasks(
   return { taskList, tasks };
 }
 
+export async function listTasksAcrossGoogleLists(
+  connection: GoogleConnection,
+): Promise<{ taskLists: GerrisTaskList[]; tasks: GerrisTask[] }> {
+  const taskLists = await listGoogleTaskLists(connection);
+  const groups = await Promise.all(
+    taskLists.map(async (taskList) => {
+      const [googleTasks, metadata] = await Promise.all([
+        allTasks(connection, taskList.id),
+        taskSidecars(connection.ownerEmail, taskList.id),
+      ]);
+      return googleTasks
+        .filter((task) => !task.deleted)
+        .map((task) =>
+          mergeTask(taskList, task, metadata.get(task.id || "") || null),
+        );
+    }),
+  );
+  const tasks = groups.flat().sort((left, right) => {
+    if (left.completed !== right.completed) return left.completed ? 1 : -1;
+    if (left.dueAt !== right.dueAt) {
+      if (!left.dueAt) return 1;
+      if (!right.dueAt) return -1;
+      return left.dueAt.localeCompare(right.dueAt);
+    }
+    return left.title.localeCompare(right.title, "de");
+  });
+  return { taskLists, tasks };
+}
+
 export async function getGerrisTask(
   connection: GoogleConnection,
   taskId: string,
+  requestedTaskListId?: string,
 ): Promise<GerrisTask> {
-  const taskList = await requireGerrisTaskList(connection);
+  const taskList = await requireTaskList(connection, requestedTaskListId);
   const [task, metadata] = await Promise.all([
     getGoogleTask(connection, taskList.id, taskId),
     sidecarForTask(connection.ownerEmail, taskList.id, taskId),
   ]);
-  return mergeTask(taskList.id, task, metadata);
+  return mergeTask(taskList, task, metadata);
 }
 
 function sidecarValues(
@@ -771,6 +857,9 @@ function sidecarValues(
       existing?.progress ??
       (input.completed === true ? 100 : 0),
     confidential: input.confidential ?? existing?.confidential ?? true,
+    reminderAt: input.reminderAt ?? existing?.reminderAt ?? null,
+    reminderCalendarId: existing?.reminderCalendarId ?? null,
+    reminderEventId: existing?.reminderEventId ?? null,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
@@ -801,12 +890,11 @@ async function existingLegacyTask(
   const metadata = await sidecarForLegacyId(connection.ownerEmail, legacyId);
   if (!metadata) return null;
   try {
-    const task = await getGoogleTask(
-      connection,
-      metadata.taskListId,
-      metadata.googleTaskId,
-    );
-    return mergeTask(metadata.taskListId, task, metadata);
+    const [task, taskList] = await Promise.all([
+      getGoogleTask(connection, metadata.taskListId, metadata.googleTaskId),
+      requireTaskList(connection, metadata.taskListId),
+    ]);
+    return mergeTask(taskList, task, metadata);
   } catch (error) {
     if (!(error instanceof GoogleApiError) || error.status !== 404) throw error;
     await getDb()
@@ -830,7 +918,7 @@ export async function createGerrisTask(
     const existing = await existingLegacyTask(connection, input.legacyId);
     if (existing) return { task: existing, created: false };
   }
-  const taskList = await requireGerrisTaskList(connection);
+  const taskList = await requireTaskList(connection, input.taskListId);
   const googleBody: Record<string, unknown> = {
     title: input.title,
   };
@@ -863,7 +951,7 @@ export async function createGerrisTask(
     .onConflictDoNothing()
     .returning();
   if (inserted[0]) {
-    return { task: mergeTask(taskList.id, created, inserted[0]), created: true };
+    return { task: mergeTask(taskList, created, inserted[0]), created: true };
   }
 
   if (input.legacyId) {
@@ -884,8 +972,52 @@ export async function createGerrisTask(
     created.id,
   );
   return {
-    task: mergeTask(taskList.id, created, metadata),
+    task: mergeTask(taskList, created, metadata),
     created: true,
+  };
+}
+
+export async function saveTaskReminderMetadata(
+  connection: GoogleConnection,
+  task: GerrisTask,
+  reminder: {
+    reminderAt: string;
+    calendarId: string;
+    eventId: string;
+  },
+): Promise<GerrisTask> {
+  const existing = await sidecarForTask(
+    connection.ownerEmail,
+    task.taskListId,
+    task.id,
+  );
+  if (!existing) {
+    throw new GoogleApiError(
+      "Die Erinnerungsverknüpfung konnte nicht gespeichert werden.",
+      502,
+    );
+  }
+  const [saved] = await getDb()
+    .update(googleTaskMetadata)
+    .set({
+      reminderAt: reminder.reminderAt,
+      reminderCalendarId: reminder.calendarId,
+      reminderEventId: reminder.eventId,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(
+      and(
+        eq(googleTaskMetadata.ownerEmail, connection.ownerEmail),
+        eq(googleTaskMetadata.taskListId, task.taskListId),
+        eq(googleTaskMetadata.googleTaskId, task.id),
+      ),
+    )
+    .returning();
+  return {
+    ...task,
+    reminderAt: saved?.reminderAt || reminder.reminderAt,
+    reminderCalendarId: saved?.reminderCalendarId || reminder.calendarId,
+    reminderEventId: saved?.reminderEventId || reminder.eventId,
   };
 }
 
@@ -894,8 +1026,9 @@ export async function updateGerrisTask(
   taskId: string,
   input: UpdateTaskInput,
   requestEtag?: string | null,
+  requestedTaskListId?: string,
 ): Promise<GerrisTask> {
-  const taskList = await requireGerrisTaskList(connection);
+  const taskList = await requireTaskList(connection, requestedTaskListId);
   const googleBody: Record<string, unknown> = {};
   if (input.title !== undefined) googleBody.title = input.title;
   if (input.notes !== undefined) googleBody.notes = input.notes;
@@ -936,7 +1069,7 @@ export async function updateGerrisTask(
     input.estimateMinutes !== undefined ||
     input.progress !== undefined ||
     input.confidential !== undefined;
-  if (!sidecarChanged) return mergeTask(taskList.id, task, existing);
+  if (!sidecarChanged) return mergeTask(taskList, task, existing);
 
   const sidecarInput: Partial<CreateTaskInput> = {
     ...input,
@@ -974,7 +1107,7 @@ export async function updateGerrisTask(
       },
     })
     .returning();
-  return mergeTask(taskList.id, task, saved || existing);
+  return mergeTask(taskList, task, saved || existing);
 }
 
 export async function deleteGerrisTask(
@@ -982,8 +1115,9 @@ export async function deleteGerrisTask(
   taskId: string,
   confirmAssigned = false,
   etag?: string | null,
+  requestedTaskListId?: string,
 ): Promise<void> {
-  const taskList = await requireGerrisTaskList(connection);
+  const taskList = await requireTaskList(connection, requestedTaskListId);
   const task = await getGoogleTask(connection, taskList.id, taskId);
   if (task.assignmentInfo && !confirmAssigned) {
     throw new GoogleValidationError(

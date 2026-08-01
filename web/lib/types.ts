@@ -1,7 +1,6 @@
 export type ViewKey =
   | "today"
   | "tasks"
-  | "progress"
   | "calendar"
   | "finance"
   | "documents"
@@ -21,6 +20,7 @@ export type TaskQuadrant = "do" | "plan" | "delegate" | "drop";
 export type Task = {
   id: string;
   taskListId?: string;
+  taskListTitle?: string;
   legacyId?: string | null;
   title: string;
   notes?: string;
@@ -36,6 +36,9 @@ export type Task = {
   webViewLink?: string | null;
   assigned?: boolean;
   parentId?: string | null;
+  reminderAt?: string | null;
+  reminderCalendarId?: string | null;
+  reminderEventId?: string | null;
   confidential: boolean;
 };
 
@@ -214,6 +217,8 @@ export type GamificationState = {
   rewardMode: RewardMode;
   drRossEnabled: boolean;
   surprisesEnabled: boolean;
+  celebrationsEnabled: boolean;
+  milestoneStepXp: number;
   quietHours: { start: string; end: string };
   profiles: TaskGamificationProfile[];
   ledger: RewardLedgerEntry[];
@@ -357,10 +362,13 @@ export type CalendarEvent = {
     | "school_childcare"
     | "health"
     | "public_office"
-    | "learning";
+    | "learning"
+    | "birthday";
   private: boolean;
   calendarId?: string;
   allDay?: boolean;
+  availability?: "busy" | "free";
+  recurrence?: "none" | "yearly";
   location?: string;
   note?: string;
   reminderMinutes?: number;
@@ -709,6 +717,117 @@ export type ApplicationArtifact = {
   createdAt: string;
 };
 
+export type JobResearchFactKey =
+  | "role.title"
+  | "company.name"
+  | "role.purpose"
+  | "role.tasks"
+  | "role.must_skills"
+  | "role.nice_skills"
+  | "role.tools"
+  | "offer.location"
+  | "offer.contract"
+  | "offer.hours"
+  | "offer.salary"
+  | "offer.work_model"
+  | "offer.travel"
+  | "offer.shifts"
+  | "offer.reporting_line"
+  | "offer.benefits"
+  | "process.deadline"
+  | "process.contact"
+  | "process.selection"
+  | "process.interview"
+  | "process.onboarding"
+  | "company.context"
+  | "company.current_developments"
+  | "market.salary"
+  | "market.talent_supply"
+  | "market.skill_demand"
+  | "market.competing_roles"
+  | "market.remote_prevalence"
+  | "process.retention_risks";
+
+export type JobResearchEvidenceClass =
+  | "job_ad_explicit"
+  | "employer_official_assertion"
+  | "market_primary"
+  | "market_secondary"
+  | "user_provided_ad_text"
+  | "model_inference";
+
+export type JobResearchEvidenceStatus =
+  | "supported"
+  | "ambiguous"
+  | "contradicted"
+  | "stale"
+  | "unsupported";
+
+export type JobResearchDecisionStatus =
+  | "pending"
+  | "confirmed"
+  | "edited"
+  | "rejected";
+
+export type JobResearchClaim = {
+  id: string;
+  factKey: JobResearchFactKey;
+  value: string;
+  evidenceClass: JobResearchEvidenceClass;
+  evidenceStatus: JobResearchEvidenceStatus;
+  sourceUrls: string[];
+  asOf: string | null;
+  whyItMatters: string;
+  decision: {
+    status: JobResearchDecisionStatus;
+    value: string | null;
+    decidedAt: string | null;
+  };
+};
+
+export type JobResearchGap = {
+  factKey: JobResearchFactKey;
+  priority: "blocking" | "high" | "medium" | "low";
+  question: string;
+  rationale: string;
+};
+
+export type JobResearchSource = {
+  url: string;
+  title: string;
+  domain: string;
+  discoveredBy: "consulted" | "citation" | "both";
+};
+
+export type VacancyResearch = {
+  schemaVersion: 1;
+  retrievalStatus:
+    | "exact_page_accessed"
+    | "snippet_only"
+    | "blocked_or_login"
+    | "not_found"
+    | "ambiguous";
+  requestedUrl: string;
+  canonicalUrl: string | null;
+  adFacts: JobResearchClaim[];
+  enrichment: JobResearchClaim[];
+  gaps: JobResearchGap[];
+  conflicts: string[];
+  warnings: string[];
+  sources: JobResearchSource[];
+  researchedAt: string;
+  promptVersion: string;
+  model: string;
+  responseId: string;
+  validation: {
+    consultedSources: number;
+    totalClaims: number;
+    supportedClaims: number;
+    unsupportedClaims: number;
+    matchedSourceUrls: number;
+  };
+};
+
 export type ApplicationProcess = {
   id: string;
   researchRank: number | null;
@@ -735,6 +854,7 @@ export type ApplicationProcess = {
   nextStepAt: string | null;
   notes: string;
   artifacts: ApplicationArtifact[];
+  vacancyResearch: VacancyResearch | null;
 };
 
 export type AppState = {
@@ -773,7 +893,13 @@ export type SyncStatus =
   | "fehler"
   | "konflikt";
 
-export type CaptureKind = "task" | "cost" | "income" | "document" | "journal";
+export type CaptureKind =
+  | "task"
+  | "event"
+  | "cost"
+  | "income"
+  | "document"
+  | "journal";
 
 export const LIFE_AREA_LABELS: Record<LifeArea, string> = {
   alltag: "Alltag",

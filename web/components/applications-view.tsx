@@ -7,8 +7,13 @@ import {
   type FormEvent,
 } from "react";
 
-import { createEmptyApplication } from "../lib/application-research";
+import { JobResearchPanel } from "./job-research-panel";
+import {
+  APPLICATION_RESEARCH,
+  createEmptyApplication,
+} from "../lib/application-research";
 import { formatDate, formatRelativeDate } from "../lib/format";
+import { applyConfirmedResearchClaim } from "../lib/job-research";
 import {
   APPLICATION_STATUS_LABELS,
   SALARY_OUTLOOK_LABELS,
@@ -19,7 +24,9 @@ import {
   type ApplicationStatus,
   type DocumentKind,
   type DocumentRef,
+  type JobResearchClaim,
   type SalaryOutlook,
+  type VacancyResearch,
 } from "../lib/types";
 
 const ARTIFACT_LABELS: Record<ApplicationArtifactKind, string> = {
@@ -318,6 +325,9 @@ export function ApplicationsView({
   toast,
 }: ApplicationsViewProps) {
   const { applications } = state;
+  const researchPoolCount = APPLICATION_RESEARCH.length;
+  const researchVerifiedAt =
+    APPLICATION_RESEARCH[0]?.sourceVerifiedAt ?? new Date().toISOString();
   const [selectedId, setSelectedId] = useState(
     applications.find((application) => application.shortlisted)?.id ??
       applications[0]?.id ??
@@ -393,12 +403,14 @@ export function ApplicationsView({
     <div className="view-stack applications-view">
       <section className="page-intro applications-intro">
         <div>
-          <span className="eyebrow">Bewerbungssteuerung · Recherche vom 29.07.2026</span>
+          <span className="eyebrow">
+            Bewerbungssteuerung · Recherche vom {formatDate(researchVerifiedAt)}
+          </span>
           <h1 tabIndex={-1}>Jede Chance. Jeder nächste Schritt. Eine klare Akte.</h1>
           <p>
-            Verfolge Bewerbungen, Fristen, Konditionen und Gespräche. Alle 72
-            recherchierten Vakanzen sind bereits enthalten; nur tatsächlich
-            versendete Bewerbungen zählen als Bewerbung.
+            Verfolge Bewerbungen, Fristen, Konditionen und Gespräche. Alle{" "}
+            {researchPoolCount} recherchierten Vakanzen sind bereits enthalten;
+            nur tatsächlich versendete Bewerbungen zählen als Bewerbung.
           </p>
         </div>
         <div className="page-intro-action">
@@ -714,6 +726,31 @@ function ApplicationDetail({
     toast("Verknüpfung aus der Bewerbungsakte entfernt");
   };
 
+  const updateResearch = (
+    research: VacancyResearch,
+    decidedClaim?: JobResearchClaim,
+  ) => {
+    let next: ApplicationProcess = {
+      ...draft,
+      vacancyResearch: research,
+      sourceVerifiedAt: research.researchedAt.slice(0, 10),
+      sourceUrl:
+        research.retrievalStatus === "exact_page_accessed" && research.canonicalUrl
+          ? research.canonicalUrl
+          : draft.sourceUrl,
+    };
+    if (decidedClaim) {
+      next = applyConfirmedResearchClaim(next, decidedClaim);
+    }
+    setDraft(next);
+    onUpdate(next);
+    toast(
+      decidedClaim
+        ? "Rechercheentscheidung in der Bewerbungsakte gespeichert"
+        : "Vakanzrecherche in der Bewerbungsakte gespeichert",
+    );
+  };
+
   return (
     <form className="panel application-detail" onSubmit={save}>
       <header className="application-detail-heading">
@@ -918,6 +955,14 @@ function ApplicationDetail({
           ) : null}
         </div>
       </div>
+
+      <JobResearchPanel
+        companyName={draft.company}
+        onChange={updateResearch}
+        research={draft.vacancyResearch}
+        roleTitle={draft.jobTitle}
+        sourceUrl={draft.sourceUrl}
+      />
 
       <div className="application-detail-section">
         <div className="application-section-heading">

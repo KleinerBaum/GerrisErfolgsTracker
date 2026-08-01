@@ -36,6 +36,13 @@
       "when": 1785538302434,
       "tag": "0004_brief_killer_shrike",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1785589955494,
+      "tag": "0005_regular_ikaris",
+      "breakpoints": true
     }
   ]
 }

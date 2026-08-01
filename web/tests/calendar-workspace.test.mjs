@@ -17,11 +17,11 @@ async function readRepositoryGuide() {
 }
 
 test("liefert die informative Kalenderzentrale mit vier Ansichten", async () => {
-  const [view, styles, app, actions, types] = await Promise.all([
+  const [view, styles, app, eventForm, types] = await Promise.all([
     readFile(new URL("components/calendar-view.tsx", root), "utf8"),
     readFile(new URL("app/globals.css", root), "utf8"),
     readFile(new URL("components/life-os-app.tsx", root), "utf8"),
-    readFile(new URL("components/quick-actions.tsx", root), "utf8"),
+    readFile(new URL("components/calendar-event-form.tsx", root), "utf8"),
     readFile(new URL("lib/types.ts", root), "utf8"),
   ]);
 
@@ -43,17 +43,23 @@ test("liefert die informative Kalenderzentrale mit vier Ansichten", async () => 
   assert.match(styles, /\.calendar-agenda-view/);
   assert.match(app, /<CalendarWorkspace/);
   assert.match(app, /onEventsChange=\{setExternalEvents\}/);
-  assert.match(actions, /Zielkalender/);
-  assert.match(actions, /calendarId,/);
-  assert.match(actions, /type="range"/);
-  assert.match(actions, /Ganztägig/);
-  assert.match(actions, /Privater Termin/);
-  assert.match(actions, /Per E-Mail teilen/);
-  assert.match(actions, /Bewerbungsgespräch/);
-  assert.match(actions, /Arbeitsagentur \/ Jobcenter/);
-  assert.match(actions, /Familie \/ Kinder/);
-  assert.match(actions, /Gesundheit \/ Vorsorge/);
-  assert.match(actions, /ohne weitere Bestätigung/);
+  assert.match(eventForm, /Art des Termins/);
+  assert.match(eventForm, /Zielkalender/);
+  assert.match(eventForm, /calendarId,/);
+  assert.match(eventForm, /type="range"/);
+  assert.match(eventForm, /Ganztägig/);
+  assert.match(eventForm, /Privater Termin/);
+  assert.match(eventForm, /Per E-Mail teilen/);
+  assert.match(eventForm, /Bewerbungsgespräch/);
+  assert.match(eventForm, /Arbeitsagentur \/ Jobcenter/);
+  assert.match(eventForm, /Familie \/ Kinder/);
+  assert.match(eventForm, /Gesundheit \/ Vorsorge/);
+  assert.match(eventForm, /Geburtstagserinnerung/);
+  assert.match(eventForm, /Name der Person/);
+  assert.match(eventForm, /Geburtsdatum/);
+  assert.match(eventForm, /recurrence: isBirthday \? "yearly" : "none"/);
+  assert.match(eventForm, /availability: isBirthday \? "free" : "busy"/);
+  assert.match(eventForm, /kein Zeitfenster reserviert/);
   assert.match(styles, /\.event-duration-field/);
   assert.match(styles, /\.event-switch-track/);
   assert.match(types, /export type GoogleCalendar/);
@@ -106,6 +112,9 @@ test("verwaltet Google-Kalender mit begrenzten Scopes und schreibgeschützten GE
   assert.match(server, /url\.searchParams\.set\("sendUpdates", "all"\)/);
   assert.match(server, /attendees: \[\{ email: input\.attendeeEmail \}\]/);
   assert.match(server, /input\.private === false \? "default" : "private"/);
+  assert.match(server, /kind === "birthday" \? "free"/);
+  assert.match(server, /transparency: input\.availability === "free" \? "transparent" : "opaque"/);
+  assert.match(server, /recurrence: \["RRULE:FREQ=YEARLY"\]/);
   assert.match(server, /\? \{ date: input\.startDate \}/);
   assert.match(server, /\? \{ date: input\.endDate \}/);
   assert.match(server, /export async function updateCalendarEvent/);

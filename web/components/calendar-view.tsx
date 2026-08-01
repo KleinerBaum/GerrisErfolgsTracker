@@ -132,7 +132,7 @@ const eventMinutesOnDay = (
 
 const mergedBusyMinutes = (events: CalendarEvent[], day: Date): number => {
   const intervals = eventsForDay(events, day)
-    .filter((event) => !event.allDay)
+    .filter((event) => !event.allDay && event.availability !== "free")
     .map((event) => eventMinutesOnDay(event, day))
     .map(({ start, end }) => ({
       start: Math.max(8 * 60, start),
@@ -177,7 +177,7 @@ const longestFreeWindow = (
   const from = 8 * 60;
   const to = 20 * 60;
   const intervals = eventsForDay(events, day)
-    .filter((event) => !event.allDay)
+    .filter((event) => !event.allDay && event.availability !== "free")
     .map((event) => eventMinutesOnDay(event, day))
     .map((interval) => ({
       start: Math.max(from, interval.start),
@@ -205,7 +205,7 @@ const longestFreeWindow = (
 
 const conflictCount = (events: CalendarEvent[], day: Date): number => {
   const timed = eventsForDay(events, day)
-    .filter((event) => !event.allDay)
+    .filter((event) => !event.allDay && event.availability !== "free")
     .map((event) => ({
       start: new Date(event.startAt).getTime(),
       end: new Date(event.endAt).getTime(),
@@ -240,6 +240,7 @@ const eventColor = (
 ): string => {
   const calendar = calendars.find((candidate) => candidate.id === event.calendarId);
   if (calendar) return calendar.backgroundColor;
+  if (event.kind === "birthday") return "#d77a8e";
   if (event.kind === "payment") return "#d6a657";
   if (event.kind === "focus") return "#aa88db";
   return "#5e9fd6";
@@ -515,8 +516,15 @@ function DayCalendar({
           <span>Ganztägig</span>
           <div>
             {allDayEvents.map((event) => (
-              <article key={event.id} style={eventStyle(eventColor(event, calendars))}>
-                {event.title}
+              <article
+                className={event.availability === "free" ? "calendar-free-event" : undefined}
+                key={event.id}
+                style={eventStyle(eventColor(event, calendars))}
+              >
+                <span>{event.title}</span>
+                {event.availability === "free" ? (
+                  <small>Verfügbar · blockiert keine Zeit</small>
+                ) : null}
               </article>
             ))}
           </div>

@@ -45,6 +45,9 @@ export const googleTaskMetadata = sqliteTable(
     confidential: integer("confidential", { mode: "boolean" })
       .notNull()
       .default(true),
+    reminderAt: text("reminder_at"),
+    reminderCalendarId: text("reminder_calendar_id"),
+    reminderEventId: text("reminder_event_id"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

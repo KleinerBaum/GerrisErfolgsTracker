@@ -14,6 +14,7 @@ import {
   SidebarQuickActions,
   type QuickActionKind,
 } from "./quick-actions";
+import { CalendarEventForm } from "./calendar-event-form";
 import {
   DriveExplorer,
   DriveSidebarTree,
@@ -24,27 +25,22 @@ import { FinanceView } from "./finance-view";
 import { ApplicationsView } from "./applications-view";
 import { DiaryView } from "./diary-view";
 import { CalendarView as CalendarWorkspace } from "./calendar-view";
-import { MomentumRealmView } from "./momentum-realm-view";
 import { PlanningHealthBanner } from "./planning-health-banner";
 import { RewardAssessmentDialog } from "./reward-assessment-dialog";
 import { createDemoState } from "../lib/demo-data";
 import { COST_TEMPLATES } from "../lib/finance-catalog";
 import { diaryRhythmDays, upsertDiaryEntry } from "../lib/diary";
 import {
-  addGoal,
   anchorRhythm,
   applyCostPaymentReward,
   applyDayCloseReward,
   applyTaskCompletionReward,
-  buildWorldUpgrade,
+  completionMessage,
   createDefaultGamification,
   ledgerTotals,
   levelForXp,
   markTaskCompletionForRhythm,
-  recordRewardFeedback,
-  redeemPersonalReward,
-  setAnchorDayStatus,
-  setDailyAnchor,
+  REWARD_MODE_LABELS,
   upsertTaskProfile,
   withGamification,
 } from "../lib/gamification";
@@ -71,10 +67,12 @@ import {
   getGoogleTasksStatus,
   getGoogleWorkspaceStatus,
   GoogleClientError,
+  listGoogleTaskLists,
   listGoogleTasks,
   provisionGoogleTasks,
   updateGoogleTask,
   type GoogleTasksStatus,
+  type GoogleTaskList,
   type GoogleWorkspaceStatus,
 } from "../lib/google-tasks-client";
 import {
@@ -93,9 +91,8 @@ import {
   COST_CADENCE_LABELS,
   LIFE_AREA_LABELS,
   QUADRANT_LABELS,
+  REWARD_MODES,
   type AccountBalances,
-  type AnchorDayStatus,
-  type AnchorRole,
   type AppState,
   type ApplicationArtifact,
   type ApplicationProcess,
@@ -107,20 +104,15 @@ import {
   type DocumentRef,
   type IntegrationConfig,
   type Income,
-  type Goal,
-  type LifeArea,
+  type GamificationState,
   type Task,
-  type RewardFeedbackRating,
   type RewardMode,
-  type RewardPresentation,
   type TaskGamificationProfile,
   type TaskQuadrant,
   type DayIntentKind,
   type OpenTopic,
   type PlanningHealthReport,
   type ViewKey,
-  type WorldDistrictKey,
-  type WorldUpgradeKind,
 } from "../lib/types";
 import { useGerriState } from "../lib/use-gerri-state";
 
@@ -132,7 +124,6 @@ const NAV_ITEMS: Array<{
 }> = [
   { key: "today", label: "Heute", short: "Heute", mark: "H" },
   { key: "tasks", label: "Aufgaben", short: "Aufgaben", mark: "A" },
-  { key: "progress", label: "Momentum Realm", short: "Realm", mark: "M" },
   { key: "calendar", label: "Kalender", short: "Kalender", mark: "K" },
   { key: "finance", label: "Finanzen", short: "Kosten", mark: "€" },
   { key: "documents", label: "Unterlagen", short: "Ablage", mark: "U" },
@@ -148,7 +139,6 @@ const NAV_ITEMS: Array<{
 const VIEW_TITLES: Record<ViewKey, string> = {
   today: "Heute im Blick",
   tasks: "Aufgaben & Fokus",
-  progress: "Momentum Realm & Belohnungswelten",
   calendar: "Kalender & Erinnerungen",
   finance: "Kosten im Überblick",
   documents: "Wichtige Unterlagen",
@@ -161,6 +151,13 @@ const uid = (prefix: string): string =>
 
 const dateAtNine = (value: string): string =>
   new Date(`${value}T09:00:00`).toISOString();
+
+const localDateTimeInput = (minutesFromNow = 60): string => {
+  const date = new Date(Date.now() + minutesFromNow * 60_000);
+  date.setSeconds(0, 0);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+};
 
 const daysFromNow = (value: string): number => calendarDayDifference(value);
 
@@ -212,12 +209,15 @@ export function LifeOsApp({
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [captureKind, setCaptureKind] = useState<CaptureKind>("task");
-  const [quickAction, setQuickAction] = useState<
-    Exclude<QuickActionKind, "task"> | null
-  >(null);
+  const [quickAction, setQuickAction] = useState<QuickActionKind | null>(null);
   const [applicationDraft, setApplicationDraft] =
     useState<ApplicationProcess | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [milestoneCelebration, setMilestoneCelebration] = useState<{
+    title: string;
+    detail: string;
+    reachedXp: number;
+  } | null>(null);
   const [selectedDocument, setSelectedDocument] =
     useState<DocumentRef | null>(null);
   const [notice, setNotice] = useState("");
@@ -228,6 +228,7 @@ export function LifeOsApp({
   const [planningLoading, setPlanningLoading] = useState(false);
   const [planningError, setPlanningError] = useState("");
   const [taskStatus, setTaskStatus] = useState<GoogleTasksStatus | null>(null);
+  const [taskLists, setTaskLists] = useState<GoogleTaskList[]>([]);
   const [workspaceStatus, setWorkspaceStatus] =
     useState<GoogleWorkspaceStatus | null>(null);
   const [taskSyncing, setTaskSyncing] = useState(false);
@@ -346,7 +347,12 @@ export function LifeOsApp({
       setTaskStatus(nextStatus);
       setTaskConnectUrl(nextStatus.connectUrl);
       if (!nextStatus.authorized) return;
-      replaceTasks(await listGoogleTasks());
+      const [tasks, taskListPayload] = await Promise.all([
+        listGoogleTasks(),
+        listGoogleTaskLists(),
+      ]);
+      setTaskLists(taskListPayload.lists);
+      replaceTasks(tasks);
     } catch (caught) {
       rememberGoogleError(caught, "Google Tasks konnte nicht geladen werden.");
     } finally {
@@ -383,8 +389,12 @@ export function LifeOsApp({
         setWorkspaceStatus(nextWorkspaceStatus);
         setTaskConnectUrl(nextStatus.connectUrl);
         if (!nextStatus.authorized) return;
-        const googleTasks = await listGoogleTasks();
+        const [googleTasks, taskListPayload] = await Promise.all([
+          listGoogleTasks(),
+          listGoogleTaskLists(),
+        ]);
         if (!active) return;
+        setTaskLists(taskListPayload.lists);
         const googleIds = new Set(
           googleTasks.flatMap((task) =>
             [task.id, task.legacyId].filter(
@@ -455,6 +465,7 @@ export function LifeOsApp({
       setQuickAction(null);
       setApplicationDraft(null);
       setSettingsOpen(false);
+      setMilestoneCelebration(null);
       setSelectedDocument(null);
       setRewardTaskId("");
       clearSelectedDriveFile(null);
@@ -481,10 +492,6 @@ export function LifeOsApp({
 
   const openQuickAction = (kind: QuickActionKind) => {
     setMobileSidebarOpen(false);
-    if (kind === "task") {
-      openCapture("task");
-      return;
-    }
     if (kind === "application") setApplicationDraft(null);
     setCaptureOpen(false);
     setQuickAction(kind);
@@ -692,7 +699,7 @@ export function LifeOsApp({
       ...current,
       costs: [cost, ...current.costs],
     }));
-    setNotice("Kostenposten gespeichert");
+    setNotice("Ausgabe gespeichert");
   };
 
   const saveIncome = (income: Income) => {
@@ -1084,100 +1091,58 @@ export function LifeOsApp({
     setNotice("Belohnungswelt gewechselt · Fortschritt vollständig erhalten");
   };
 
-  const changeDailyAnchor = (taskId: string, role: AnchorRole | null) => {
+  const changeCelebrations = (enabled: boolean) => {
     updateState((current) => {
-      const task = current.tasks.find((candidate) => candidate.id === taskId);
-      if (!task) return current;
       const gamification =
         current.gamification ??
         createDefaultGamification(current.points, current.updatedAt);
-      return withGamification(
-        current,
-        setDailyAnchor(
-          gamification,
-          task,
-          isoDateInput(),
-          role,
-          new Date().toISOString(),
+      return withGamification(current, {
+        ...gamification,
+        celebrationsEnabled: enabled,
+      });
+    });
+  };
+
+  const changeMilestoneStep = (milestoneStepXp: number) => {
+    if (![100, 250, 500, 1000].includes(milestoneStepXp)) return;
+    updateState((current) => {
+      const gamification =
+        current.gamification ??
+        createDefaultGamification(current.points, current.updatedAt);
+      return withGamification(current, { ...gamification, milestoneStepXp });
+    });
+    setNotice(`Neue Fortschrittsetappe: alle ${milestoneStepXp.toLocaleString("de-DE")} XP`);
+  };
+
+  const changeAdaptiveFocus = (points: number) => {
+    updateState((current) => {
+      const gamification =
+        current.gamification ??
+        createDefaultGamification(current.points, current.updatedAt);
+      return withGamification(current, {
+        ...gamification,
+        adaptiveWeights: {
+          points,
+          fantasy: 100 - points,
+          lastAdjustedAt: null,
+        },
+      });
+    });
+    setNotice("Schwerpunkt für Momentum Realm angepasst");
+  };
+
+  const toggleRewardCatalogItem = (rewardId: string, active: boolean) => {
+    updateState((current) => {
+      const gamification =
+        current.gamification ??
+        createDefaultGamification(current.points, current.updatedAt);
+      return withGamification(current, {
+        ...gamification,
+        rewardCatalog: gamification.rewardCatalog.map((reward) =>
+          reward.id === rewardId ? { ...reward, active } : reward,
         ),
-      );
+      });
     });
-  };
-
-  const changeAnchorDayStatus = (status: AnchorDayStatus) => {
-    updateState((current) => {
-      const gamification =
-        current.gamification ??
-        createDefaultGamification(current.points, current.updatedAt);
-      return withGamification(
-        current,
-        setAnchorDayStatus(gamification, isoDateInput(), status),
-      );
-    });
-    setNotice(
-      status === "PLANNED"
-        ? "Heute zählt als geplanter Ankertag"
-        : "Heute bleibt bewusst außerhalb des Rhythmus",
-    );
-  };
-
-  const buildRealm = (
-    district: WorldDistrictKey,
-    kind: WorldUpgradeKind,
-  ) => {
-    const gamification =
-      state.gamification ?? createDefaultGamification(state.points, state.updatedAt);
-    const result = buildWorldUpgrade(
-      gamification,
-      district,
-      kind,
-      new Date().toISOString(),
-    );
-    if (result.error) {
-      setNotice(result.error);
-      return;
-    }
-    updateState((current) => withGamification(current, result.gamification));
-    setNotice(result.entry?.description ?? "Welt ausgebaut");
-  };
-
-  const redeemReward = (rewardId: string) => {
-    const gamification =
-      state.gamification ?? createDefaultGamification(state.points, state.updatedAt);
-    const result = redeemPersonalReward(
-      gamification,
-      rewardId,
-      new Date().toISOString(),
-    );
-    if (result.error) {
-      setNotice(result.error);
-      return;
-    }
-    updateState((current) => withGamification(current, result.gamification));
-    setNotice("Persönliche Belohnung als eingelöst markiert · kein Kauf ausgelöst");
-  };
-
-  const saveRewardFeedback = (
-    ledgerEntryId: string,
-    presentation: RewardPresentation,
-    rating: RewardFeedbackRating,
-  ) => {
-    updateState((current) => {
-      const gamification =
-        current.gamification ??
-        createDefaultGamification(current.points, current.updatedAt);
-      return withGamification(
-        current,
-        recordRewardFeedback(
-          gamification,
-          ledgerEntryId,
-          presentation,
-          rating,
-          new Date().toISOString(),
-        ),
-      );
-    });
-    setNotice("Wirkung gespeichert · Anpassungen bleiben langsam und begrenzt");
   };
 
   const changeSurprises = (enabled: boolean) => {
@@ -1208,16 +1173,6 @@ export function LifeOsApp({
     });
   };
 
-  const saveGoal = (goal: Goal) => {
-    updateState((current) => {
-      const gamification =
-        current.gamification ??
-        createDefaultGamification(current.points, current.updatedAt);
-      return withGamification(current, addGoal(gamification, goal));
-    });
-    setNotice("Kampagne mit Meilensteinen gespeichert");
-  };
-
   const openDocument = (document: DocumentRef) => {
     setSelectedDocument(document);
   };
@@ -1235,7 +1190,35 @@ export function LifeOsApp({
   const currentGamification =
     state.gamification ?? createDefaultGamification(state.points, state.updatedAt);
   const progressTotals = ledgerTotals(currentGamification.ledger);
+  const celebrationCopy = completionMessage("CELEBRATE", currentGamification);
+  const previousEarnedXp = useRef(progressTotals.earnedXp);
   const rewardTask = state.tasks.find((task) => task.id === rewardTaskId) ?? null;
+
+  useEffect(() => {
+    const previous = previousEarnedXp.current;
+    const current = progressTotals.earnedXp;
+    const step = currentGamification.milestoneStepXp;
+    const previousMilestone = Math.floor(previous / step) * step;
+    const currentMilestone = Math.floor(current / step) * step;
+
+    if (
+      currentGamification.celebrationsEnabled &&
+      current > previous &&
+      currentMilestone > previousMilestone
+    ) {
+      setMilestoneCelebration({
+        title: `${currentMilestone.toLocaleString("de-DE")} XP erreicht`,
+        detail: celebrationCopy.text,
+        reachedXp: currentMilestone,
+      });
+    }
+    previousEarnedXp.current = current;
+  }, [
+    celebrationCopy.text,
+    currentGamification.celebrationsEnabled,
+    currentGamification.milestoneStepXp,
+    progressTotals.earnedXp,
+  ]);
 
   return (
     <div
@@ -1350,15 +1333,10 @@ export function LifeOsApp({
         />
 
         <div className="sidebar-footer">
-          <div className="level-block">
-            <span>
-              Level {levelForXp(progressTotals.earnedXp)}
-              <strong>{progressTotals.earnedXp.toLocaleString("de-DE")} XP</strong>
-            </span>
-            <div className="level-track">
-              <span style={{ width: `${(progressTotals.earnedXp % 250) / 2.5}%` }} />
-            </div>
-          </div>
+          <SidebarRewardProgress
+            gamification={currentGamification}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
           <button
             className="privacy-button"
             onClick={() => setSettingsOpen(true)}
@@ -1384,11 +1362,22 @@ export function LifeOsApp({
           >
             Menü
           </button>
-          <div>
-            <span className="dayline">
-              {formatDateLong(new Date().toISOString())}
-            </span>
-            <strong>{VIEW_TITLES[view]}</strong>
+          <div className="topbar-context">
+            <div>
+              <span className="dayline">
+                {formatDateLong(new Date().toISOString())}
+              </span>
+              <strong>{VIEW_TITLES[view]}</strong>
+            </div>
+            <div className="topbar-progress" aria-label="Gesamter Fortschritt">
+              <span>Gesamter Fortschritt</span>
+              <strong>{progressTotals.earnedXp.toLocaleString("de-DE")} XP</strong>
+              <small>
+                Level {levelForXp(progressTotals.earnedXp)} ·{" "}
+                {progressTotals.balanceXp.toLocaleString("de-DE")} Klarpunkte verfügbar
+              </small>
+              <p>{celebrationCopy.text}</p>
+            </div>
           </div>
           <div className="topbar-actions">
             <span className={`sync-state sync-${syncStatus}`}>
@@ -1444,28 +1433,13 @@ export function LifeOsApp({
               syncing={taskSyncing}
             />
           ) : null}
-          {view === "progress" ? (
-            <MomentumRealmView
-              onAddGoal={saveGoal}
-              onAnchorChange={changeDailyAnchor}
-              onAnchorDayStatusChange={changeAnchorDayStatus}
-              onBuild={buildRealm}
-              onDrRossChange={changeDrRoss}
-              onFeedback={saveRewardFeedback}
-              onModeChange={changeRewardMode}
-              onOpenTasks={() => navigate("tasks")}
-              onRedeem={redeemReward}
-              onSurprisesChange={changeSurprises}
-              state={state}
-            />
-          ) : null}
           {view === "calendar" ? (
             <CalendarWorkspace
               calendarLive={calendarLive}
               externalEvents={externalEvents}
               integrations={integrations}
               onEventsChange={setExternalEvents}
-              onNewEvent={() => openQuickAction("event")}
+              onNewEvent={() => openCapture("event")}
               onPlanCost={planCostInGoogleCalendar}
               onPlanningModeChange={changePlanningMode}
               onPlanningRefresh={refreshPlanning}
@@ -1493,8 +1467,9 @@ export function LifeOsApp({
               driveController={driveExplorer}
               integrations={integrations}
               onCloseSelected={() => setSelectedDocument(null)}
-              onNew={() => openCapture("document")}
+              onLinkDocument={() => openCapture("document")}
               onOpen={openDocument}
+              onUpload={() => openQuickAction("upload")}
               selectedDocument={selectedDocument}
               state={state}
               toast={setNotice}
@@ -1518,7 +1493,6 @@ export function LifeOsApp({
               externalEvents={externalEvents}
               onCompleteTask={completeTask}
               onCreateApplication={createApplication}
-              onOpenAppointment={() => openQuickAction("event")}
               onOpenCapture={openCapture}
               onPlanTask={planTaskForTomorrow}
               onSave={saveDiary}
@@ -1541,19 +1515,25 @@ export function LifeOsApp({
         onClick={() =>
           view === "applications"
             ? openQuickAction("application")
-            : openCapture(
-                view === "finance"
-                  ? "cost"
-                  : view === "journal"
-                    ? "journal"
-                    : "task",
-              )
+            : view === "documents"
+              ? openQuickAction("upload")
+              : openCapture(
+                  view === "finance"
+                    ? "cost"
+                    : view === "calendar"
+                      ? "event"
+                      : view === "journal"
+                        ? "journal"
+                        : "task",
+                )
         }
         type="button"
       >
         <span>+</span>
         {view === "applications"
           ? "Bewerbung erstellen"
+          : view === "documents"
+            ? "Datei hochladen"
           : view === "journal"
             ? "Notiz erfassen"
             : "Neu erfassen"}
@@ -1576,14 +1556,23 @@ export function LifeOsApp({
 
       {captureOpen ? (
         <CaptureDialog
+          calendarConnectUrl={
+            workspaceStatus?.capabilities.calendar.connectUrl || ""
+          }
+          calendarReminderGranted={Boolean(
+            workspaceStatus?.capabilities.calendar.granted,
+          )}
           initialKind={captureKind}
           integrations={integrations}
           onClose={() => setCaptureOpen(false)}
           onSaveCost={saveCost}
           onSaveDocument={saveDocument}
+          onSaveEvent={saveEvent}
           onSaveIncome={saveIncome}
           onSaveJournal={saveCompactDiary}
           onSaveTask={saveTask}
+          taskLists={taskLists}
+          toast={setNotice}
         />
       ) : null}
 
@@ -1599,15 +1588,19 @@ export function LifeOsApp({
             setApplicationDraft(null);
           }}
           onSaveDocument={saveDocument}
-          onSaveEvent={saveEvent}
+          onUpdateApplication={updateApplication}
           toast={setNotice}
         />
       ) : null}
 
       {settingsOpen ? (
         <SettingsDialog
+          gamification={currentGamification}
           integrations={integrations}
+          onAdaptiveFocusChange={changeAdaptiveFocus}
+          onCelebrationsChange={changeCelebrations}
           onClose={() => setSettingsOpen(false)}
+          onDrRossChange={changeDrRoss}
           onExport={exportBackup}
           onImport={(raw) => {
             try {
@@ -1630,9 +1623,52 @@ export function LifeOsApp({
             setNotice("Beispieldaten zurückgesetzt · Google Tasks bleibt erhalten");
           }}
           onRefreshGoogle={() => void refreshWorkspaceStatus()}
+          onMilestoneStepChange={changeMilestoneStep}
+          onRewardCatalogToggle={toggleRewardCatalogItem}
+          onRewardModeChange={changeRewardMode}
+          onSurprisesChange={changeSurprises}
           syncCopy={syncCopy}
           workspaceStatus={workspaceStatus}
         />
+      ) : null}
+
+      {milestoneCelebration ? (
+        <div
+          className="milestone-celebration-backdrop"
+          onMouseDown={() => setMilestoneCelebration(null)}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="milestone-celebration-title"
+            aria-modal="true"
+            className={`milestone-celebration mode-${currentGamification.rewardMode.toLowerCase()}`}
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="celebration-burst" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+            <span className="eyebrow">Fortschrittsetappe erreicht</span>
+            <strong className="celebration-score">
+              {milestoneCelebration.reachedXp.toLocaleString("de-DE")} XP
+            </strong>
+            <h2 id="milestone-celebration-title">{milestoneCelebration.title}</h2>
+            <p>{milestoneCelebration.detail}</p>
+            <small>
+              {REWARD_MODE_LABELS[currentGamification.rewardMode]} · dein gemeinsamer
+              Fortschritt bleibt erhalten
+            </small>
+            <button
+              className="button button-primary"
+              onClick={() => setMilestoneCelebration(null)}
+              type="button"
+            >
+              Weiter im Flow
+            </button>
+          </section>
+        </div>
       ) : null}
 
       {rewardTask ? (
@@ -1665,6 +1701,83 @@ export function LifeOsApp({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function SidebarRewardProgress({
+  gamification,
+  onOpenSettings,
+}: {
+  gamification: GamificationState;
+  onOpenSettings: () => void;
+}) {
+  const totals = ledgerTotals(gamification.ledger);
+  const level = levelForXp(totals.earnedXp);
+  const nextMilestone =
+    (Math.floor(totals.earnedXp / gamification.milestoneStepXp) + 1) *
+    gamification.milestoneStepXp;
+  const remainingXp = nextMilestone - totals.earnedXp;
+  const latestReward = [...gamification.ledger]
+    .reverse()
+    .find((entry) => entry.xpDelta > 0 && entry.kind !== "OPENING_BALANCE");
+
+  return (
+    <section className={`sidebar-reward-progress mode-${gamification.rewardMode.toLowerCase()}`}>
+      <div className="sidebar-reward-heading">
+        <span>Deine Belohnungswelt</span>
+        <button onClick={onOpenSettings} type="button">
+          Anpassen
+        </button>
+      </div>
+      <strong>
+        {gamification.rewardMode === "ADAPTIVE"
+          ? "Adaptive Belohnungswelt"
+          : REWARD_MODE_LABELS[gamification.rewardMode]}
+      </strong>
+      {gamification.rewardMode === "POINTS" ? (
+        <div className="sidebar-reward-details">
+          <span>
+            <b>{totals.balanceXp.toLocaleString("de-DE")}</b> verfügbar
+          </span>
+          <span>
+            <b>{remainingXp.toLocaleString("de-DE")}</b> XP bis zur Etappe
+          </span>
+        </div>
+      ) : null}
+      {gamification.rewardMode === "FANTASY" ? (
+        <div className="sidebar-reward-details">
+          <span>
+            <b>{totals.energy}</b> Energie · {totals.runes} Runen
+          </span>
+          <span>
+            <b>{gamification.world.upgrades.length}</b> Welten-Ausbaustufen
+          </span>
+        </div>
+      ) : null}
+      {gamification.rewardMode === "ADAPTIVE" ? (
+        <div className="sidebar-reward-details">
+          <span>
+            <b>Level {level}</b> · {totals.balanceXp.toLocaleString("de-DE")} Klarpunkte
+          </span>
+          <span>
+            <b>{gamification.adaptiveWeights.points} %</b> Klarheit ·{" "}
+            {gamification.adaptiveWeights.fantasy} % Chronik
+          </span>
+        </div>
+      ) : null}
+      <div className="sidebar-reward-track" aria-label={`${remainingXp} XP bis zur nächsten Etappe`}>
+        <span
+          style={{
+            width: `${((totals.earnedXp % gamification.milestoneStepXp) / gamification.milestoneStepXp) * 100}%`,
+          }}
+        />
+      </div>
+      <small>
+        {latestReward
+          ? `Zuletzt: ${latestReward.description}`
+          : `Nächste Etappe bei ${nextMilestone.toLocaleString("de-DE")} XP`}
+      </small>
+    </section>
   );
 }
 
@@ -2121,7 +2234,7 @@ function TodayView({
                 <div>
                   <strong>{task.title}</strong>
                   <span>
-                    {LIFE_AREA_LABELS[task.area]} ·{" "}
+                    {task.taskListTitle || LIFE_AREA_LABELS[task.area]} ·{" "}
                     {task.dueAt ? formatRelativeDate(task.dueAt) : "Ohne Frist"} ·{" "}
                     {task.estimateMinutes} Min.
                   </span>
@@ -2536,7 +2649,9 @@ function TasksView({
                 {tasks.map((task) => (
                   <article className="task-card" key={task.id}>
                     <div className="task-card-top">
-                      <span>{LIFE_AREA_LABELS[task.area]}</span>
+                      <span>
+                        {task.taskListTitle || LIFE_AREA_LABELS[task.area]}
+                      </span>
                       <small>
                         {status?.authorized ? "Google Tasks" : "Lokaler Altbestand"}
                         {task.confidential ? " · Privat" : ""}
@@ -2547,6 +2662,12 @@ function TasksView({
                       {task.dueAt ? formatRelativeDate(task.dueAt) : "Ohne Frist"} ·{" "}
                       {task.estimateMinutes} Minuten
                     </p>
+                    {task.reminderAt ? (
+                      <p className="task-reminder-copy">
+                        E-Mail-Erinnerung am {formatDate(task.reminderAt)} um{" "}
+                        {formatTime(task.reminderAt)} Uhr
+                      </p>
+                    ) : null}
                     <div className="task-progress labeled">
                       <span style={{ width: `${task.progress}%` }} />
                       <small>{task.progress}%</small>
@@ -2648,7 +2769,8 @@ function DocumentsView({
   integrations,
   onOpen,
   onCloseSelected,
-  onNew,
+  onLinkDocument,
+  onUpload,
   selectedDocument,
   toast,
 }: {
@@ -2657,7 +2779,8 @@ function DocumentsView({
   integrations: IntegrationConfig;
   onOpen: (document: DocumentRef) => void;
   onCloseSelected: () => void;
-  onNew: () => void;
+  onLinkDocument: () => void;
+  onUpload: () => void;
   selectedDocument: DocumentRef | null;
   toast: (message: string) => void;
 }) {
@@ -2710,8 +2833,15 @@ function DocumentsView({
             >
               Drive-Ordner öffnen
             </a>
-            <button className="button button-primary" onClick={onNew} type="button">
+            <button
+              className="button button-soft"
+              onClick={onLinkDocument}
+              type="button"
+            >
               Unterlage verknüpfen
+            </button>
+            <button className="button button-primary" onClick={onUpload} type="button">
+              Datei hochladen
             </button>
           </div>
         }
@@ -2726,7 +2856,7 @@ function DocumentsView({
             <strong>Zusätzliche private Sites-Dateien</strong>
             <small>Getrennt von Google Drive · nur für dich</small>
           </p>
-          <button onClick={onNew} type="button">Hochladen</button>
+          <button onClick={onUpload} type="button">Hochladen</button>
         </div>
         <div>
           <span className="integration-initial">PC</span>
@@ -2876,8 +3006,12 @@ function PageIntro({
 type CaptureDialogProps = {
   initialKind: CaptureKind;
   integrations: IntegrationConfig;
+  taskLists: GoogleTaskList[];
+  calendarReminderGranted: boolean;
+  calendarConnectUrl: string;
   onClose: () => void;
   onSaveTask: (task: Task) => Promise<boolean>;
+  onSaveEvent: (event: CalendarEvent) => void;
   onSaveCost: (cost: Cost) => void;
   onSaveIncome: (income: Income) => void;
   onSaveDocument: (document: DocumentRef) => void;
@@ -2887,24 +3021,36 @@ type CaptureDialogProps = {
     win: string,
     nextStep: string,
   ) => void;
+  toast: (message: string) => void;
 };
 
 function CaptureDialog({
   initialKind,
   integrations,
+  taskLists,
+  calendarReminderGranted,
+  calendarConnectUrl,
   onClose,
   onSaveTask,
+  onSaveEvent,
   onSaveCost,
   onSaveIncome,
   onSaveDocument,
   onSaveJournal,
+  toast,
 }: CaptureDialogProps) {
   const [kind, setKind] = useState<CaptureKind>(initialKind);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(isoDateInput());
-  const [area, setArea] = useState<LifeArea>("persoenlich");
+  const [taskId] = useState(() => uid("task"));
+  const [taskListId, setTaskListId] = useState(taskLists[0]?.id || "");
   const [quadrant, setQuadrant] = useState<TaskQuadrant>("do");
   const [minutes, setMinutes] = useState(20);
+  const [reminderMode, setReminderMode] = useState<"none" | "at" | "minutes">(
+    "none",
+  );
+  const [reminderDateTime, setReminderDateTime] = useState(localDateTimeInput);
+  const [reminderMinutes, setReminderMinutes] = useState(30);
   const [amount, setAmount] = useState("");
   const [category, setCategory] =
     useState<Cost["category"]>("Lebensmittel & Haushalt");
@@ -2923,23 +3069,66 @@ function CaptureDialog({
   const [nextStep, setNextStep] = useState("");
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const selectedTaskListId = taskLists.some((list) => list.id === taskListId)
+    ? taskListId
+    : taskLists[0]?.id || "";
+  const isPrimaryEntry = !["document", "journal"].includes(kind);
+  const captureEyebrow =
+    kind === "document"
+      ? "Google Drive"
+      : kind === "journal"
+        ? "Kurze Notiz"
+        : "Einmal auswählen · passend erfassen";
+  const captureTitle =
+    kind === "document"
+      ? "Unterlage verknüpfen"
+      : kind === "journal"
+        ? "Was möchtest du im Tagebuch festhalten?"
+        : "Was möchtest du hinzufügen?";
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (kind === "task") {
       if (!title.trim() || saving) return;
+      if (!selectedTaskListId) {
+        setSubmitError(
+          "Die Google-Tasks-Listen konnten noch nicht geladen werden. Bitte schließe den Dialog und gleiche die Aufgaben erneut ab.",
+        );
+        return;
+      }
+      if (reminderMode !== "none" && !calendarReminderGranted) {
+        setSubmitError(
+          "Für E-Mail-Erinnerungen muss Google Kalender einmalig freigegeben werden.",
+        );
+        return;
+      }
+      const reminderAt =
+        reminderMode === "at"
+          ? new Date(reminderDateTime)
+          : reminderMode === "minutes"
+            ? new Date(Date.now() + reminderMinutes * 60_000)
+            : null;
+      if (
+        reminderAt &&
+        (Number.isNaN(reminderAt.getTime()) || reminderAt.getTime() < Date.now())
+      ) {
+        setSubmitError("Bitte wähle einen Erinnerungszeitpunkt in der Zukunft.");
+        return;
+      }
       setSaving(true);
       setSubmitError("");
       const saved = await onSaveTask({
-        id: uid("task"),
+        id: taskId,
+        taskListId: selectedTaskListId,
         title: title.trim(),
-        area,
+        area: "persoenlich",
         quadrant,
         dueAt: date ? dateAtNine(date) : null,
+        reminderAt: reminderAt?.toISOString() || null,
         estimateMinutes: minutes,
         progress: 0,
         completed: false,
-        confidential: area !== "alltag",
+        confidential: true,
       });
       setSaving(false);
       if (!saved) {
@@ -2963,7 +3152,7 @@ function CaptureDialog({
         status: daysFromNow(dateAtNine(date)) <= 3 ? "due" : "planned",
         payee: payee.trim(),
         contactEmail: contactEmail.trim(),
-        note: "Über Schnellerfassung angelegt",
+        note: "Über die gemeinsame Erfassung angelegt",
         confidential: true,
         active: true,
         account,
@@ -3009,43 +3198,58 @@ function CaptureDialog({
       <section
         aria-labelledby="capture-title"
         aria-modal="true"
-        className="capture-dialog"
+        className={`capture-dialog${isPrimaryEntry ? " unified-entry-dialog" : ""}`}
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
       >
         <div className="dialog-handle" />
         <header className="dialog-heading">
           <div>
-            <span className="eyebrow">Einmal erfassen</span>
-            <h2 id="capture-title">Was möchtest du festhalten?</h2>
+            <span className="eyebrow">{captureEyebrow}</span>
+            <h2 id="capture-title">{captureTitle}</h2>
           </div>
           <button aria-label="Schließen" onClick={onClose} type="button">
             Schließen
           </button>
         </header>
-        <div className="capture-tabs" role="tablist">
-          {(
-            [
-              ["task", "Aufgabe"],
-              ["cost", "Kosten"],
-              ["income", "Einnahme"],
-              ["document", "Unterlage"],
-              ["journal", "Tagebuch"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              aria-selected={kind === key}
-              className={kind === key ? "active" : ""}
-              key={key}
-              onClick={() => setKind(key)}
-              role="tab"
-              type="button"
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {isPrimaryEntry ? (
+          <>
+            <p className="capture-choice-intro">
+              Wähle zuerst den Typ. Danach siehst du ausschließlich die dafür
+              passenden Angaben.
+            </p>
+            <div className="capture-tabs primary-entry-tabs" role="tablist">
+              {(
+                [
+                  ["task", "A", "Aufgabe", "Planen und erinnern"],
+                  ["event", "T", "Termin", "Zeit oder Ereignis"],
+                  ["income", "+", "Einnahme", "Geldeingang erfassen"],
+                  ["cost", "€", "Ausgabe", "Zahlung festhalten"],
+                ] as const
+              ).map(([key, mark, label, detail]) => (
+                <button
+                  aria-selected={kind === key}
+                  className={kind === key ? "active" : ""}
+                  key={key}
+                  onClick={() => {
+                    setKind(key);
+                    setSubmitError("");
+                  }}
+                  role="tab"
+                  type="button"
+                >
+                  <span aria-hidden="true">{mark}</span>
+                  <strong>{label}</strong>
+                  <small>{detail}</small>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : null}
 
+        {kind === "event" ? (
+          <CalendarEventForm onClose={onClose} onSave={onSaveEvent} toast={toast} />
+        ) : (
         <form className="capture-form" onSubmit={submit}>
           <label>
             {kind === "journal"
@@ -3087,14 +3291,16 @@ function CaptureDialog({
                 <label>
                   Bereich
                   <select
-                    onChange={(event) =>
-                      setArea(event.target.value as LifeArea)
-                    }
-                    value={area}
+                    disabled={!taskLists.length}
+                    onChange={(event) => setTaskListId(event.target.value)}
+                    value={selectedTaskListId}
                   >
-                    {(Object.keys(LIFE_AREA_LABELS) as LifeArea[]).map((value) => (
-                      <option key={value} value={value}>
-                        {LIFE_AREA_LABELS[value]}
+                    {!taskLists.length ? (
+                      <option value="">Listen werden geladen …</option>
+                    ) : null}
+                    {taskLists.map((list) => (
+                      <option key={list.id} value={list.id}>
+                        {list.title}
                       </option>
                     ))}
                   </select>
@@ -3137,6 +3343,64 @@ function CaptureDialog({
                   />
                 </label>
               </div>
+              <fieldset className="task-reminder-fieldset">
+                <legend>Erinnerung</legend>
+                <label>
+                  Wann möchtest du erinnert werden?
+                  <select
+                    onChange={(event) =>
+                      setReminderMode(
+                        event.target.value as "none" | "at" | "minutes",
+                      )
+                    }
+                    value={reminderMode}
+                  >
+                    <option value="none">Keine Erinnerung</option>
+                    <option value="at">Bestimmter Tag und Uhrzeit</option>
+                    <option value="minutes">In einigen Minuten</option>
+                  </select>
+                </label>
+                {reminderMode === "at" ? (
+                  <label>
+                    Tag und Uhrzeit
+                    <input
+                      min={localDateTimeInput(1)}
+                      onChange={(event) => setReminderDateTime(event.target.value)}
+                      required
+                      type="datetime-local"
+                      value={reminderDateTime}
+                    />
+                  </label>
+                ) : null}
+                {reminderMode === "minutes" ? (
+                  <label>
+                    In wie vielen Minuten?
+                    <input
+                      min="1"
+                      onChange={(event) =>
+                        setReminderMinutes(Number(event.target.value))
+                      }
+                      required
+                      step="1"
+                      type="number"
+                      value={reminderMinutes}
+                    />
+                  </label>
+                ) : null}
+                {reminderMode !== "none" ? (
+                  <p className="form-trust">
+                    Die Aufgabe landet in Google Tasks. Zum gewählten Zeitpunkt
+                    erinnert dich Google Kalender per Benachrichtigung und
+                    E-Mail an dein verbundenes Gmail-Konto.
+                    {!calendarReminderGranted && calendarConnectUrl ? (
+                      <>
+                        {" "}
+                        <a href={calendarConnectUrl}>Google Kalender freigeben</a>
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
+              </fieldset>
             </>
           ) : null}
 
@@ -3438,6 +3702,7 @@ function CaptureDialog({
             </button>
           </div>
         </form>
+        )}
       </section>
     </div>
   );
@@ -3521,27 +3786,51 @@ function DocumentViewer({
 }
 
 function SettingsDialog({
+  gamification,
   integrations,
   syncCopy,
   workspaceStatus,
+  onAdaptiveFocusChange,
+  onCelebrationsChange,
   onClose,
+  onDrRossChange,
   onExport,
   onImport,
+  onMilestoneStepChange,
   onReset,
   onRefreshGoogle,
+  onRewardCatalogToggle,
+  onRewardModeChange,
+  onSurprisesChange,
 }: {
+  gamification: GamificationState;
   integrations: IntegrationConfig;
   syncCopy: string;
   workspaceStatus: GoogleWorkspaceStatus | null;
+  onAdaptiveFocusChange: (points: number) => void;
+  onCelebrationsChange: (enabled: boolean) => void;
   onClose: () => void;
+  onDrRossChange: (enabled: boolean) => void;
   onExport: () => void;
   onImport: (raw: string) => void;
+  onMilestoneStepChange: (milestoneStepXp: number) => void;
   onReset: () => void;
   onRefreshGoogle: () => void;
+  onRewardCatalogToggle: (rewardId: string, active: boolean) => void;
+  onRewardModeChange: (mode: RewardMode) => void;
+  onSurprisesChange: (enabled: boolean) => void;
 }) {
   const importRef = useRef<HTMLInputElement>(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const [googleError, setGoogleError] = useState("");
+  const rewardTotals = ledgerTotals(gamification.ledger);
+  const approvedNamedMessages = gamification.approvedMessages.filter(
+    (message) =>
+      message.active &&
+      message.contentType !== "GENERIC_AI" &&
+      Boolean(message.approvedAt) &&
+      Boolean(message.permissionReference.trim()),
+  );
   const capabilityRows: Array<{
     key: keyof GoogleWorkspaceStatus["capabilities"];
     label: string;
@@ -3625,6 +3914,196 @@ function SettingsDialog({
               Noch nicht übernommene Altaufgaben bleiben bis zur Migration lokal.
               Drive-Dateien verbleiben bei Google.
             </p>
+          </div>
+        </div>
+        <div className="settings-section reward-settings-section">
+          <span className="eyebrow">Belohnungssystem</span>
+          <h3>Wähle die Darstellung, die dich gerade trägt</h3>
+          <p>
+            Alle Welten nutzen denselben Fortschritt. Beim Wechsel gehen weder XP,
+            Klarpunkte noch Ressourcen verloren.
+          </p>
+          <div className="reward-settings-balance" aria-label="Gemeinsamer Fortschritt">
+            <div>
+              <span>Gemeinsamer Fortschritt</span>
+              <strong>{rewardTotals.earnedXp.toLocaleString("de-DE")} XP</strong>
+            </div>
+            <small>
+              Level {levelForXp(rewardTotals.earnedXp)} ·{" "}
+              {rewardTotals.balanceXp.toLocaleString("de-DE")} Klarpunkte verfügbar
+            </small>
+          </div>
+          <div className="reward-mode-settings" aria-label="Belohnungswelt wählen">
+            {REWARD_MODES.map((mode) => (
+              <button
+                aria-pressed={gamification.rewardMode === mode}
+                className={gamification.rewardMode === mode ? "active" : ""}
+                key={mode}
+                onClick={() => onRewardModeChange(mode)}
+                type="button"
+              >
+                <span aria-hidden="true">
+                  {mode === "POINTS" ? "K" : mode === "FANTASY" ? "C" : "M"}
+                </span>
+                <strong>{REWARD_MODE_LABELS[mode]}</strong>
+                <small>
+                  {mode === "POINTS"
+                    ? "Direkte XP, Level und persönliche Belohnungen."
+                    : mode === "FANTASY"
+                      ? "Ressourcen und Ausbauten machen Fortschritt sichtbar."
+                      : "Passt Klarpunkte und Chronik behutsam an deine Rückmeldungen an."}
+                </small>
+              </button>
+            ))}
+          </div>
+
+          <div className="reward-customization-panel">
+            <div className="reward-customization-heading">
+              <div>
+                <span>Aktive Welt</span>
+                <strong>{REWARD_MODE_LABELS[gamification.rewardMode]} anpassen</strong>
+              </div>
+              <span className="status-chip">Sofort wirksam</span>
+            </div>
+
+            <label className="reward-setting-row">
+              <span>
+                <strong>Erreichte Etappen als Pop-up feiern</strong>
+                <small>Öffnet einmalig beim Überschreiten der nächsten XP-Grenze.</small>
+              </span>
+              <input
+                checked={gamification.celebrationsEnabled}
+                onChange={(event) => onCelebrationsChange(event.target.checked)}
+                type="checkbox"
+              />
+            </label>
+            <label className="reward-setting-select">
+              <span>
+                <strong>Abstand der Fortschrittsetappen</strong>
+                <small>Die nächste Feier orientiert sich an diesem festen XP-Rhythmus.</small>
+              </span>
+              <select
+                onChange={(event) => onMilestoneStepChange(Number(event.target.value))}
+                value={gamification.milestoneStepXp}
+              >
+                <option value={100}>Alle 100 XP</option>
+                <option value={250}>Alle 250 XP</option>
+                <option value={500}>Alle 500 XP</option>
+                <option value={1000}>Alle 1.000 XP</option>
+              </select>
+            </label>
+
+            {gamification.rewardMode === "POINTS" ? (
+              <div className="mode-specific-settings">
+                <div className="mode-settings-intro">
+                  <strong>Persönliche Belohnungen</strong>
+                  <small>
+                    Lege fest, welche Ideen im Klarpunkte-Katalog aktiv sind. Es wird
+                    niemals automatisch etwas gekauft oder gebucht.
+                  </small>
+                </div>
+                <div className="reward-catalog-settings">
+                  {gamification.rewardCatalog.map((reward) => (
+                    <label key={reward.id}>
+                      <span>
+                        <strong>{reward.title}</strong>
+                        <small>{reward.cost} Klarpunkte</small>
+                      </span>
+                      <input
+                        checked={reward.active}
+                        onChange={(event) =>
+                          onRewardCatalogToggle(reward.id, event.target.checked)
+                        }
+                        type="checkbox"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {gamification.rewardMode === "FANTASY" ? (
+              <div className="mode-specific-settings">
+                <div className="fantasy-resource-summary">
+                  <span><b>{rewardTotals.energy}</b> Energie</span>
+                  <span><b>{rewardTotals.runes}</b> Runen</span>
+                  <span><b>{gamification.world.upgrades.length}</b> Ausbauten</span>
+                </div>
+                <label className="reward-setting-row">
+                  <span>
+                    <strong>Kosmetische Überraschungen</strong>
+                    <small>
+                      Kleine Weltfunde, spätestens nach acht geeigneten Abschlüssen
+                      und höchstens zweimal pro Woche.
+                    </small>
+                  </span>
+                  <input
+                    checked={gamification.surprisesEnabled}
+                    onChange={(event) => onSurprisesChange(event.target.checked)}
+                    type="checkbox"
+                  />
+                </label>
+              </div>
+            ) : null}
+
+            {gamification.rewardMode === "ADAPTIVE" ? (
+              <div className="mode-specific-settings">
+                <div className="mode-settings-intro">
+                  <strong>Gewünschter Ausgangsschwerpunkt</strong>
+                  <small>
+                    Rückmeldungen dürfen die Gewichtung später nur langsam und
+                    begrenzt verändern.
+                  </small>
+                </div>
+                <div className="adaptive-focus-options" aria-label="Ausgangsschwerpunkt">
+                  {[65, 50, 35].map((points) => (
+                    <button
+                      aria-pressed={gamification.adaptiveWeights.points === points}
+                      className={gamification.adaptiveWeights.points === points ? "active" : ""}
+                      key={points}
+                      onClick={() => onAdaptiveFocusChange(points)}
+                      type="button"
+                    >
+                      <strong>
+                        {points === 65
+                          ? "Klarpunkte zuerst"
+                          : points === 50
+                            ? "Ausgewogen"
+                            : "Chronik zuerst"}
+                      </strong>
+                      <small>{points} % Klarheit · {100 - points} % Chronik</small>
+                    </button>
+                  ))}
+                </div>
+                <label className="reward-setting-row">
+                  <span>
+                    <strong>Kosmetische Überraschungen zulassen</strong>
+                    <small>Ergänzt die Chronik, ohne wichtige Funktionen zu sperren.</small>
+                  </span>
+                  <input
+                    checked={gamification.surprisesEnabled}
+                    onChange={(event) => onSurprisesChange(event.target.checked)}
+                    type="checkbox"
+                  />
+                </label>
+                <label className="reward-setting-row">
+                  <span>
+                    <strong>Freigegebene Dr.-Roß-Begleitung</strong>
+                    <small>
+                      {approvedNamedMessages.length
+                        ? `${approvedNamedMessages.length} dokumentiert freigegebene Inhalte verfügbar.`
+                        : "Bleibt aus, bis schriftlich freigegebene Inhalte mit Nachweis vorliegen."}
+                    </small>
+                  </span>
+                  <input
+                    checked={gamification.drRossEnabled}
+                    disabled={!approvedNamedMessages.length}
+                    onChange={(event) => onDrRossChange(event.target.checked)}
+                    type="checkbox"
+                  />
+                </label>
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="settings-section">

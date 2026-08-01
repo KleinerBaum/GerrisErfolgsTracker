@@ -4,9 +4,9 @@ import type { ReactNode } from "react";
 
 import "./globals.css";
 
-const title = "Gerris Kompass · Momentum Realm";
+const title = "Gerris Kompass · Ein klarer nächster Schritt";
 const description =
-  "Aufgaben, Termine, Finanzen, Bewerbungen und Tagebuch im Blick – mit transparenten Klarpunkten, lebender Chronik und adaptivem Fortschritt.";
+  "Aufgaben, Termine, Finanzen, Bewerbungen und Tagebuch im Blick – mit einem gemeinsamen Fortschritt und deiner passenden Belohnungswelt.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -40,10 +40,10 @@ export async function generateMetadata(): Promise<Metadata> {
       url: baseUrl,
       images: [
         {
-          url: `${baseUrl}/og-momentum.png`,
+          url: `${baseUrl}/og-kompass.png`,
           width: 1659,
           height: 948,
-          alt: "Gerris Kompass – Momentum Realm mit Klarpunkten, lebender Chronik und adaptiver Belohnungswelt",
+          alt: "Gerris Kompass – ein Fortschritt und deine passende Belohnungswelt",
         },
       ],
     },
@@ -51,7 +51,7 @@ export async function generateMetadata(): Promise<Metadata> {
       card: "summary_large_image",
       title,
       description,
-      images: [`${baseUrl}/og-momentum.png`],
+      images: [`${baseUrl}/og-kompass.png`],
     },
   };
 }

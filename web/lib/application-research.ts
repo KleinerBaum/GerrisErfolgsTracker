@@ -1,6 +1,17 @@
+import {
+  JOB_RADAR_RECORDS,
+  JOB_RADAR_VERIFIED_AT,
+  type JobRadarRecord,
+} from "./application-research-2026-08-01.ts";
 import type {
   ApplicationProcess,
   ApplicationResearchTier,
+  JobResearchClaim,
+  JobResearchEvidenceClass,
+  JobResearchEvidenceStatus,
+  JobResearchFactKey,
+  JobResearchGap,
+  JobResearchSource,
   SalaryOutlook,
 } from "./types";
 
@@ -17,8 +28,27 @@ type VacancySeed = readonly [
   researchSummary: string,
 ];
 
-const VERIFIED_AT = "2026-07-29";
-const SHORTLIST = new Set([1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 14, 18, 19, 23]);
+const LEGACY_VERIFIED_AT = "2026-07-29";
+const LEGACY_SHORTLIST = new Set([
+  1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 14, 18, 19, 23,
+]);
+
+function isSavedVacancyResearch(
+  value: unknown,
+): value is NonNullable<ApplicationProcess["vacancyResearch"]> {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<
+    NonNullable<ApplicationProcess["vacancyResearch"]>
+  >;
+  return (
+    candidate.schemaVersion === 1 &&
+    typeof candidate.requestedUrl === "string" &&
+    typeof candidate.researchedAt === "string" &&
+    Array.isArray(candidate.adFacts) &&
+    Array.isArray(candidate.enrichment) &&
+    Array.isArray(candidate.sources)
+  );
+}
 
 const VACANCY_SEEDS = [
   [
@@ -887,13 +917,13 @@ const VACANCY_SEEDS = [
   ],
 ] as const satisfies readonly VacancySeed[];
 
-function tierFor(rank: number): ApplicationResearchTier {
+function legacyTierFor(rank: number): ApplicationResearchTier {
   if (rank <= 32) return "top";
   if (rank <= 54) return "plausible";
   return "stretch";
 }
 
-function vacancy(seed: VacancySeed): ApplicationProcess {
+function legacyVacancy(seed: VacancySeed): ApplicationProcess {
   const [
     rank,
     jobTitle,
@@ -909,8 +939,8 @@ function vacancy(seed: VacancySeed): ApplicationProcess {
   return {
     id: `vacancy-${rank}`,
     researchRank: rank,
-    researchTier: tierFor(rank),
-    shortlisted: SHORTLIST.has(rank),
+    researchTier: legacyTierFor(rank),
+    shortlisted: LEGACY_SHORTLIST.has(rank),
     jobTitle,
     company,
     location,
@@ -921,7 +951,7 @@ function vacancy(seed: VacancySeed): ApplicationProcess {
     fitRating,
     researchSummary,
     sourceUrl: "",
-    sourceVerifiedAt: VERIFIED_AT,
+    sourceVerifiedAt: LEGACY_VERIFIED_AT,
     status: "research",
     appliedAt: null,
     applicationChannel: "",
@@ -934,35 +964,519 @@ function vacancy(seed: VacancySeed): ApplicationProcess {
     nextStepAt: deadline,
     notes: "",
     artifacts: [],
+    vacancyResearch: null,
   };
 }
 
-export const APPLICATION_RESEARCH: ApplicationProcess[] =
-  VACANCY_SEEDS.map(vacancy);
+export const LEGACY_APPLICATION_RESEARCH: ApplicationProcess[] =
+  VACANCY_SEEDS.map(legacyVacancy);
+
+const LEGACY_APPLICATION_BY_ID = new Map(
+  LEGACY_APPLICATION_RESEARCH.map((application) => [application.id, application]),
+);
+
+const LEGACY_ID_BY_SOURCE_ID: Readonly<Record<string, string>> = {
+  J001: "vacancy-1",
+  J002: "vacancy-2",
+  J003: "vacancy-3",
+  J004: "vacancy-4",
+  J005: "vacancy-5",
+  J006: "vacancy-30",
+  J007: "vacancy-26",
+  J008: "vacancy-27",
+  J009: "vacancy-24",
+  J010: "vacancy-31",
+  J011: "vacancy-44",
+  J012: "vacancy-36",
+  J013: "vacancy-54",
+  J014: "vacancy-38",
+  J015: "vacancy-39",
+  J016: "vacancy-32",
+  J017: "vacancy-11",
+  J018: "vacancy-34",
+  J019: "vacancy-46",
+  J020: "vacancy-60",
+  J021: "vacancy-61",
+  J022: "vacancy-62",
+  J023: "vacancy-9",
+  J024: "vacancy-6",
+  J025: "vacancy-7",
+  J026: "vacancy-20",
+  J027: "vacancy-8",
+  J028: "vacancy-43",
+  J031: "vacancy-12",
+  J032: "vacancy-29",
+  J033: "vacancy-65",
+  J034: "vacancy-66",
+  J035: "vacancy-10",
+  J036: "vacancy-13",
+  J037: "vacancy-41",
+  J040: "vacancy-18",
+  J041: "vacancy-19",
+  J043: "vacancy-35",
+  J044: "vacancy-15",
+  J045: "vacancy-16",
+  J046: "vacancy-17",
+  J051: "vacancy-45",
+  J053: "vacancy-51",
+  J063: "vacancy-21",
+  J064: "vacancy-22",
+  J065: "vacancy-48",
+  J066: "vacancy-47",
+  J067: "vacancy-23",
+  J069: "vacancy-55",
+  J070: "vacancy-56",
+  J071: "vacancy-71",
+  J072: "vacancy-72",
+  J073: "vacancy-67",
+  J074: "vacancy-70",
+  J075: "vacancy-42",
+  J076: "vacancy-52",
+  J077: "vacancy-58",
+  J078: "vacancy-53",
+  J079: "vacancy-68",
+  J080: "vacancy-69",
+  J087: "vacancy-63",
+  J088: "vacancy-59",
+  J089: "vacancy-64",
+  J093: "vacancy-33",
+};
+
+function knownPublishedValue(value: string): string {
+  const normalized = value.trim();
+  if (!normalized) return "";
+  return /^(nicht|keine angabe|offen\b)/i.test(normalized) ? "" : normalized;
+}
+
+function uniqueHttpUrls(values: string[]): string[] {
+  const urls = values.flatMap((value) => {
+    try {
+      const parsed = new URL(value);
+      return ["http:", "https:"].includes(parsed.protocol) ? [parsed.toString()] : [];
+    } catch {
+      return [];
+    }
+  });
+  return [...new Set(urls)];
+}
+
+function sourceEvidence(record: JobRadarRecord): {
+  evidenceClass: JobResearchEvidenceClass;
+  evidenceStatus: JobResearchEvidenceStatus;
+} {
+  const quality = `${record.sourceQuality} ${record.sourcePortal}`.toLowerCase();
+  if (/dritt|indeed|vorliste|manuell|snippet|suchtreffer/.test(quality)) {
+    return { evidenceClass: "market_secondary", evidenceStatus: "ambiguous" };
+  }
+  if (/offiziell|arbeitgeber|stellenübersicht|service\.bund/.test(quality)) {
+    return { evidenceClass: "job_ad_explicit", evidenceStatus: "supported" };
+  }
+  return { evidenceClass: "user_provided_ad_text", evidenceStatus: "ambiguous" };
+}
+
+function researchSources(record: JobRadarRecord): JobResearchSource[] {
+  const urls = uniqueHttpUrls([record.jobUrl, record.applicationUrl]);
+  return urls.map((url) => ({
+    url,
+    title:
+      url === record.applicationUrl && record.applicationUrl !== record.jobUrl
+        ? `Bewerbungsportal · ${record.sourcePortal || record.company}`
+        : `Stellenbeschreibung · ${record.sourcePortal || record.company}`,
+    domain: new URL(url).hostname,
+    discoveredBy: "consulted",
+  }));
+}
+
+function researchClaim(
+  record: JobRadarRecord,
+  factKey: JobResearchFactKey,
+  value: string,
+  whyItMatters: string,
+): JobResearchClaim | null {
+  const normalized = knownPublishedValue(value);
+  if (!normalized) return null;
+  const { evidenceClass, evidenceStatus } = sourceEvidence(record);
+  const confirmed = evidenceStatus === "supported";
+  const asOf = record.fetchedAt ?? JOB_RADAR_VERIFIED_AT;
+  return {
+    id: `${record.sourceId}-${factKey.replaceAll(".", "-")}`,
+    factKey,
+    value: normalized,
+    evidenceClass,
+    evidenceStatus,
+    sourceUrls: uniqueHttpUrls([record.jobUrl, record.applicationUrl]),
+    asOf,
+    whyItMatters,
+    decision: {
+      status: confirmed ? "confirmed" : "pending",
+      value: confirmed ? normalized : null,
+      decidedAt: confirmed ? `${asOf}T12:00:00.000Z` : null,
+    },
+  };
+}
+
+function contactResearch(record: JobRadarRecord): string {
+  const details = [
+    knownPublishedValue(record.functionalContact)
+      ? `Fachlich: ${record.functionalContact}`
+      : "",
+    knownPublishedValue(record.recruitingContact)
+      ? `Recruiting/HR: ${record.recruitingContact}`
+      : "",
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(record.email) ? `E-Mail: ${record.email}` : "",
+    knownPublishedValue(record.phone) ? `Telefon: ${record.phone}` : "",
+    record.contactNote ? `Hinweis: ${record.contactNote}` : "",
+  ];
+  return details.filter(Boolean).join(" · ");
+}
+
+function firstContactEmail(record: JobRadarRecord): string {
+  return /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.exec(record.email)?.[0] ?? "";
+}
+
+function contactPerson(record: JobRadarRecord): string {
+  return [
+    knownPublishedValue(record.functionalContact)
+      ? `Fachlich: ${record.functionalContact}`
+      : "",
+    knownPublishedValue(record.recruitingContact)
+      ? `HR: ${record.recruitingContact}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function salaryOutlook(record: JobRadarRecord): SalaryOutlook {
+  const value = record.salaryTarget.toLowerCase();
+  if (value === "ja") return "yes";
+  if (value.startsWith("ja") || value.includes("grenzfall")) {
+    return value.startsWith("nein") ? "no" : "borderline";
+  }
+  if (value.startsWith("nein")) return "no";
+  return "open";
+}
+
+function researchTier(record: JobRadarRecord): ApplicationResearchTier {
+  if (["A+", "A"].includes(record.priority)) return "top";
+  if (["B+", "B"].includes(record.priority)) return "plausible";
+  return "stretch";
+}
+
+function importedVacancyResearch(
+  record: JobRadarRecord,
+): NonNullable<ApplicationProcess["vacancyResearch"]> {
+  const location = [record.location, record.workplaceAddress].filter(Boolean).join(" · ");
+  const contact = contactResearch(record);
+  const claims = [
+    researchClaim(record, "role.title", record.jobTitle, "Grundlage für Anschreiben und CV-Titel."),
+    researchClaim(record, "company.name", record.company, "Ordnet Bewerbung und Arbeitgeberbezug eindeutig zu."),
+    researchClaim(record, "role.tasks", record.tasks, "Dient als Basis für passende Projekterfolge und Beispiele."),
+    researchClaim(
+      record,
+      "role.must_skills",
+      record.mustRequirements,
+      "Zeigt formale und fachliche Mindestanforderungen vor der Bewerbung.",
+    ),
+    researchClaim(
+      record,
+      "role.nice_skills",
+      record.niceToHave,
+      "Hilft bei der Priorisierung zusätzlicher Belege im Profil.",
+    ),
+    researchClaim(record, "offer.location", location, "Relevant für Pendelweg und Arbeitsmodell."),
+    researchClaim(record, "offer.contract", record.contractType, "Wichtig für die langfristige Einordnung."),
+    researchClaim(record, "offer.hours", record.workingTime, "Bestimmt den zeitlichen Rahmen der Stelle."),
+    researchClaim(record, "offer.salary", record.compensation, "Basis für Tarif- und Gehaltsabgleich."),
+    researchClaim(record, "offer.work_model", record.workModel, "Relevant für Präsenz, Pendeln und Alltag."),
+    researchClaim(
+      record,
+      "process.deadline",
+      record.deadline ?? "",
+      "Steuert Priorität und Bewerbungsplanung.",
+    ),
+    researchClaim(record, "process.contact", contact, "Erleichtert gezielte fachliche Rückfragen."),
+    researchClaim(
+      record,
+      "process.selection",
+      record.applicationProcess,
+      "Verhindert fehlende Unterlagen oder einen falschen Bewerbungsweg.",
+    ),
+  ].filter((claim): claim is JobResearchClaim => Boolean(claim));
+  const gaps: JobResearchGap[] = [];
+  if (!knownPublishedValue(record.compensation)) {
+    gaps.push({
+      factKey: "offer.salary",
+      priority: "high",
+      question: "Welche Vergütung oder Tarifzuordnung gilt für die konkrete Stelle?",
+      rationale: "Die Vorrecherche enthält keine belastbare konkrete Angabe.",
+    });
+  }
+  if (!record.deadline) {
+    gaps.push({
+      factKey: "process.deadline",
+      priority: "high",
+      question: "Bis wann bleibt das Bewerbungsportal geöffnet?",
+      rationale: "Es wurde keine klare Bewerbungsfrist veröffentlicht.",
+    });
+  }
+  if (!contact) {
+    gaps.push({
+      factKey: "process.contact",
+      priority: "medium",
+      question: "Wer beantwortet fachliche und organisatorische Rückfragen?",
+      rationale: "In der Vorrecherche ist keine belastbare Ansprechperson genannt.",
+    });
+  }
+  const { evidenceStatus } = sourceEvidence(record);
+  const supportedClaims = claims.filter(
+    (claim) => claim.evidenceStatus === "supported",
+  ).length;
+  const sources = researchSources(record);
+  return {
+    schemaVersion: 1,
+    retrievalStatus:
+      sources.length === 0
+        ? "not_found"
+        : evidenceStatus === "supported"
+          ? "exact_page_accessed"
+          : "snippet_only",
+    requestedUrl: record.jobUrl || record.applicationUrl,
+    canonicalUrl: record.jobUrl || record.applicationUrl || null,
+    adFacts: claims,
+    enrichment: [],
+    gaps,
+    conflicts: [],
+    warnings: [
+      `Importierte Vorrecherche mit Quellenstand ${record.fetchedAt ?? JOB_RADAR_VERIFIED_AT}.`,
+      ...(evidenceStatus === "supported"
+        ? []
+        : ["Quelle oder einzelne Angaben vor der Bewerbung manuell gegenprüfen."]),
+      ...(record.dailyStatus === "Frist verstrichen"
+        ? ["Die Bewerbungsfrist war beim Import bereits verstrichen."]
+        : []),
+    ],
+    sources,
+    researchedAt: `${record.fetchedAt ?? JOB_RADAR_VERIFIED_AT}T12:00:00.000Z`,
+    promptVersion: "jobradar-import-v1",
+    model: "user-provided-research",
+    responseId: `excel-jobradar-${record.sourceId}`,
+    validation: {
+      consultedSources: sources.length,
+      totalClaims: claims.length,
+      supportedClaims,
+      unsupportedClaims: claims.filter(
+        (claim) => claim.evidenceStatus === "unsupported",
+      ).length,
+      matchedSourceUrls: claims.reduce(
+        (sum, claim) => sum + claim.sourceUrls.length,
+        0,
+      ),
+    },
+  };
+}
+
+function jobRadarVacancy(record: JobRadarRecord, rank: number): ApplicationProcess {
+  const publishedTerms = [
+    knownPublishedValue(record.contractType),
+    knownPublishedValue(record.workingTime),
+    knownPublishedValue(record.workModel),
+    record.workplaceAddress,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const researchSummary = [
+    `Passung ${record.fitScore.toLocaleString("de-DE")}/10: ${record.fitReason}`,
+    record.risk ? `Hürde: ${record.risk}` : "",
+    record.tasks ? `Aufgaben: ${record.tasks}` : "",
+    record.tags.length ? `Themen: ${record.tags.join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return {
+    id: LEGACY_ID_BY_SOURCE_ID[record.sourceId] ?? `vacancy-jobradar-${record.sourceId}`,
+    researchRank: rank,
+    researchTier: researchTier(record),
+    shortlisted: ["A+", "A"].includes(record.priority),
+    jobTitle: record.jobTitle,
+    company: record.company,
+    location: record.location,
+    deadline: record.deadline,
+    publishedTerms,
+    compensation: record.compensation,
+    salaryOutlook: salaryOutlook(record),
+    fitRating: `${record.priority} · ${record.fitScore.toLocaleString("de-DE")}/10`,
+    researchSummary,
+    sourceUrl: record.jobUrl || record.applicationUrl,
+    sourceVerifiedAt: record.fetchedAt ?? JOB_RADAR_VERIFIED_AT,
+    status: record.dailyStatus === "Frist verstrichen" ? "closed" : "research",
+    appliedAt: null,
+    applicationChannel: "",
+    appliedTerms: "",
+    contactPerson: contactPerson(record),
+    contactEmail: firstContactEmail(record),
+    nextStep: record.nextStep || "Ausschreibungsstatus prüfen und priorisieren",
+    nextStepAt: record.deadline,
+    notes: "",
+    artifacts: [],
+    vacancyResearch: importedVacancyResearch(record),
+  };
+}
+
+export const APPLICATION_RESEARCH: ApplicationProcess[] = JOB_RADAR_RECORDS.map(
+  jobRadarVacancy,
+);
+
+function refreshedSeedValue<K extends keyof ApplicationProcess>(
+  key: K,
+  seeded: ApplicationProcess,
+  current: ApplicationProcess,
+  legacy: ApplicationProcess | undefined,
+): ApplicationProcess[K] {
+  const value = current[key];
+  if (value === null || value === undefined || value === "") return seeded[key];
+  return legacy && Object.is(value, legacy[key]) ? seeded[key] : value;
+}
+
+function canonicalSourceUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function normalizedIdentity(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("de-DE")
+    .replace(/(?:m|w|d)\s*[|/]\s*(?:m|w|d)(?:\s*[|/]\s*(?:m|w|d))?/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function sameVacancy(left: ApplicationProcess, right: ApplicationProcess): boolean {
+  const leftUrl = canonicalSourceUrl(left.sourceUrl);
+  const rightUrl = canonicalSourceUrl(right.sourceUrl);
+  if (leftUrl && rightUrl && leftUrl === rightUrl) return true;
+  return (
+    normalizedIdentity(left.jobTitle) === normalizedIdentity(right.jobTitle) &&
+    normalizedIdentity(left.company) === normalizedIdentity(right.company)
+  );
+}
+
+function mergeSeededApplication(
+  seeded: ApplicationProcess,
+  current: ApplicationProcess,
+): ApplicationProcess {
+  const legacy = LEGACY_APPLICATION_BY_ID.get(current.id);
+  const researchValue = <K extends keyof ApplicationProcess>(key: K) =>
+    refreshedSeedValue(key, seeded, current, legacy);
+  return {
+    ...seeded,
+    id: current.id,
+    shortlisted:
+      legacy && current.shortlisted === legacy.shortlisted
+        ? seeded.shortlisted
+        : current.shortlisted,
+    jobTitle: researchValue("jobTitle"),
+    company: researchValue("company"),
+    location: researchValue("location"),
+    deadline: researchValue("deadline"),
+    publishedTerms: researchValue("publishedTerms"),
+    compensation: researchValue("compensation"),
+    salaryOutlook: researchValue("salaryOutlook"),
+    fitRating: researchValue("fitRating"),
+    researchSummary: researchValue("researchSummary"),
+    sourceUrl: researchValue("sourceUrl"),
+    sourceVerifiedAt: researchValue("sourceVerifiedAt"),
+    status:
+      legacy && current.status === legacy.status ? seeded.status : current.status,
+    appliedAt: current.appliedAt ?? null,
+    applicationChannel: current.applicationChannel ?? "",
+    appliedTerms: current.appliedTerms ?? "",
+    contactPerson: researchValue("contactPerson"),
+    contactEmail: researchValue("contactEmail"),
+    nextStep: researchValue("nextStep"),
+    nextStepAt: researchValue("nextStepAt"),
+    notes: current.notes ?? "",
+    artifacts: Array.isArray(current.artifacts) ? current.artifacts : [],
+    vacancyResearch: isSavedVacancyResearch(current.vacancyResearch)
+      ? current.vacancyResearch
+      : seeded.vacancyResearch,
+  };
+}
+
+const LEGACY_RESEARCH_FIELDS = [
+  "researchRank",
+  "researchTier",
+  "shortlisted",
+  "jobTitle",
+  "company",
+  "location",
+  "deadline",
+  "publishedTerms",
+  "compensation",
+  "salaryOutlook",
+  "fitRating",
+  "researchSummary",
+  "sourceUrl",
+  "sourceVerifiedAt",
+  "status",
+  "appliedAt",
+  "applicationChannel",
+  "appliedTerms",
+  "contactPerson",
+  "contactEmail",
+  "nextStep",
+  "nextStepAt",
+  "notes",
+] as const satisfies readonly (keyof ApplicationProcess)[];
+
+function isUntouchedLegacySeed(application: ApplicationProcess): boolean {
+  const legacy = LEGACY_APPLICATION_BY_ID.get(application.id);
+  return Boolean(
+    legacy &&
+      LEGACY_RESEARCH_FIELDS.every((key) =>
+        Object.is(application[key], legacy[key]),
+      ) &&
+      (!Array.isArray(application.artifacts) || application.artifacts.length === 0) &&
+      !isSavedVacancyResearch(application.vacancyResearch),
+  );
+}
 
 export function mergeApplicationResearch(
   existing: ApplicationProcess[] | undefined,
 ): ApplicationProcess[] {
   const saved = Array.isArray(existing) ? existing : [];
   const savedById = new Map(saved.map((application) => [application.id, application]));
+  const usedSavedIds = new Set<string>();
   const seeded = APPLICATION_RESEARCH.map((application) => {
-    const current = savedById.get(application.id);
+    const current =
+      savedById.get(application.id) ??
+      saved.find(
+        (candidate) =>
+          !usedSavedIds.has(candidate.id) && sameVacancy(application, candidate),
+      );
     if (!current) return { ...application, artifacts: [] };
-    return {
-      ...application,
-      ...current,
-      shortlisted:
-        typeof current.shortlisted === "boolean"
-          ? current.shortlisted
-          : application.shortlisted,
-      artifacts: Array.isArray(current.artifacts) ? current.artifacts : [],
-    };
+    usedSavedIds.add(current.id);
+    return mergeSeededApplication(application, current);
   });
-  const own = saved.filter(
-    (application) =>
-      !application.id.startsWith("vacancy-") ||
-      !APPLICATION_RESEARCH.some((seed) => seed.id === application.id),
-  );
+  const own = saved
+    .filter(
+      (application) =>
+        !usedSavedIds.has(application.id) && !isUntouchedLegacySeed(application),
+    )
+    .map((application) => ({
+      ...application,
+      artifacts: Array.isArray(application.artifacts) ? application.artifacts : [],
+      vacancyResearch: isSavedVacancyResearch(application.vacancyResearch)
+        ? application.vacancyResearch
+        : null,
+    }));
   return [...seeded, ...own];
 }
 
@@ -993,5 +1507,6 @@ export function createEmptyApplication(id: string): ApplicationProcess {
     nextStepAt: null,
     notes: "",
     artifacts: [],
+    vacancyResearch: null,
   };
 }

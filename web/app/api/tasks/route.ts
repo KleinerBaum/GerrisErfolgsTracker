@@ -1,10 +1,14 @@
 import {
   createGerrisTask,
-  listGerrisTasks,
+  deleteGerrisTask,
+  listTasksAcrossGoogleLists,
   parseCreateTaskInput,
+  saveTaskReminderMetadata,
 } from "../../../lib/google-tasks-server";
+import { createCalendarEvent } from "../../../lib/google-calendar-server";
 import {
   googleErrorResponse,
+  GoogleApiError,
   GoogleValidationError,
   requireGoogleConnection,
   sameOrigin,
@@ -17,7 +21,7 @@ export async function GET(request: Request) {
     const connection = await requireGoogleConnection(request, {
       capability: "tasks",
     });
-    const result = await listGerrisTasks(connection);
+    const result = await listTasksAcrossGoogleLists(connection);
     return Response.json(
       {
         ...result,
@@ -45,12 +49,67 @@ export async function POST(request: Request) {
     const payload = await request.json().catch(() => {
       throw new GoogleValidationError("Die Aufgabendaten sind kein gültiges JSON.");
     });
-    const result = await createGerrisTask(
-      connection,
-      parseCreateTaskInput(payload),
-    );
+    const input = parseCreateTaskInput(payload);
+    const result = await createGerrisTask(connection, input);
+    let task = result.task;
+    if (input.reminderAt) {
+      try {
+        const calendarConnection = await requireGoogleConnection(request, {
+          capability: "calendar",
+        });
+        const start = new Date(input.reminderAt);
+        const event = await createCalendarEvent(calendarConnection, {
+          title: `Aufgabe: ${task.title}`,
+          startAt: start.toISOString(),
+          endAt: new Date(start.getTime() + 15 * 60_000).toISOString(),
+          kind: "focus",
+          note: [
+            `Google-Tasks-Liste: ${task.taskListTitle}`,
+            task.notes?.trim() || "",
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+          private: true,
+          reminderMinutes: 0,
+          reminderMethods: ["email", "popup"],
+          sourceType: "task",
+          sourceId: task.id,
+          sourceOccurrence: "reminder",
+        });
+        if (!event.calendarId || !event.googleEventId) {
+          throw new GoogleApiError(
+            "Google Kalender hat keine Erinnerungsverknüpfung geliefert.",
+            502,
+          );
+        }
+        task = await saveTaskReminderMetadata(connection, task, {
+          reminderAt: input.reminderAt,
+          calendarId: event.calendarId,
+          eventId: event.googleEventId,
+        });
+      } catch (error) {
+        if (result.created) {
+          try {
+            await deleteGerrisTask(
+              connection,
+              task.id,
+              false,
+              task.etag,
+              task.taskListId,
+            );
+          } catch {
+            throw new GoogleApiError(
+              "Die Aufgabe wurde angelegt, aber die Erinnerung konnte nicht vollständig eingerichtet werden. Bitte prüfe Google Tasks und Google Kalender.",
+              502,
+              true,
+            );
+          }
+        }
+        throw error;
+      }
+    }
     return Response.json(
-      { task: result.task, created: result.created },
+      { task, created: result.created },
       {
         status: result.created ? 201 : 200,
         headers: { "cache-control": "private, no-store" },

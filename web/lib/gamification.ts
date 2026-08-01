@@ -274,6 +274,8 @@ export function createDefaultGamification(
     rewardMode: "ADAPTIVE",
     drRossEnabled: false,
     surprisesEnabled: true,
+    celebrationsEnabled: true,
+    milestoneStepXp: 250,
     quietHours: { start: "21:00", end: "08:00" },
     profiles: [],
     ledger: legacyPoints > 0 ? [openingEntry(legacyPoints, createdAt)] : [],
@@ -393,6 +395,10 @@ export function normalizeGamificationState(
     rewardMode: modeValues.has(value.rewardMode) ? value.rewardMode : "ADAPTIVE",
     drRossEnabled: Boolean(value.drRossEnabled) && hasApprovedNamedMessage,
     surprisesEnabled: value.surprisesEnabled !== false,
+    celebrationsEnabled: value.celebrationsEnabled !== false,
+    milestoneStepXp: [100, 250, 500, 1000].includes(value.milestoneStepXp)
+      ? value.milestoneStepXp
+      : 250,
     quietHours: {
       start: typeof value.quietHours?.start === "string" ? value.quietHours.start : "21:00",
       end: typeof value.quietHours?.end === "string" ? value.quietHours.end : "08:00",

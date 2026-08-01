@@ -190,7 +190,7 @@ export function FinanceView({
             onClick={onNewCost}
             type="button"
           >
-            Kosten erfassen
+            Ausgabe hinzufügen
           </button>
         </div>
       </header>

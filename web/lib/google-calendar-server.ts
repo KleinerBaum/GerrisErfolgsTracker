@@ -30,6 +30,7 @@ const EVENT_KINDS = new Set<CalendarEvent["kind"]>([
   "health",
   "public_office",
   "learning",
+  "birthday",
 ]);
 
 type GoogleEventDate = {
@@ -49,6 +50,7 @@ type GoogleCalendarEvent = {
   updated?: string;
   status?: string;
   visibility?: string;
+  transparency?: string;
   summary?: string;
   description?: string;
   location?: string;
@@ -65,6 +67,7 @@ type GoogleCalendarEvent = {
     useDefault?: boolean;
     overrides?: GoogleEventReminder[];
   };
+  recurrence?: string[];
   recurringEventId?: string;
   originalStartTime?: GoogleEventDate;
 };
@@ -102,12 +105,15 @@ export type CreateCalendarEventInput = {
   location?: string;
   note?: string;
   reminderMinutes?: number;
+  reminderMethods?: Array<"popup" | "email">;
   timeZone?: string;
   allDay?: boolean;
   startDate?: string;
   endDate?: string;
   private?: boolean;
   attendeeEmail?: string;
+  availability?: "busy" | "free";
+  recurrence?: "none" | "yearly";
   sourceType?: PlanningSourceType;
   sourceId?: string;
   sourceOccurrence?: string;
@@ -126,6 +132,8 @@ export type UpdateCalendarEventInput = Partial<
     | "endDate"
     | "private"
     | "attendeeEmail"
+    | "availability"
+    | "recurrence"
   >
 > & {
   calendarId: string;
@@ -325,6 +333,22 @@ function validReminder(value: unknown): number | undefined {
   return value;
 }
 
+function validAvailability(value: unknown): "busy" | "free" {
+  if (value === undefined || value === null || value === "") return "busy";
+  if (value !== "busy" && value !== "free") {
+    throw new GoogleValidationError("Die Verfügbarkeit ist ungültig.");
+  }
+  return value;
+}
+
+function validRecurrence(value: unknown): "none" | "yearly" {
+  if (value === undefined || value === null || value === "") return "none";
+  if (value !== "none" && value !== "yearly") {
+    throw new GoogleValidationError("Die Wiederholung ist ungültig.");
+  }
+  return value;
+}
+
 export function parseCreateCalendarEventInput(
   value: unknown,
 ): CreateCalendarEventInput {
@@ -332,12 +356,16 @@ export function parseCreateCalendarEventInput(
     throw new GoogleValidationError("Die Termindaten fehlen.");
   }
   const input = value as Record<string, unknown>;
+  const kind = validKind(input.kind);
   const startAt = validIsoDate(input.startAt, "Der Beginn");
   const endAt = validIsoDate(input.endAt, "Das Ende");
   if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
     throw new GoogleValidationError("Das Ende muss nach dem Beginn liegen.");
   }
-  const allDay = validOptionalBoolean(input.allDay, "Ganztägig") ?? false;
+  const allDay =
+    kind === "birthday"
+      ? true
+      : validOptionalBoolean(input.allDay, "Ganztägig") ?? false;
   const startDate = allDay
     ? validDateOnly(input.startDate, "Das Startdatum")
     : undefined;
@@ -356,7 +384,7 @@ export function parseCreateCalendarEventInput(
     startAt,
     endAt,
     calendarId: validCalendarId(input.calendarId),
-    kind: validKind(input.kind),
+    kind,
     location: optionalString(input.location, "Der Ort", 1_024),
     note: optionalString(input.note, "Die Notiz", 20_000),
     reminderMinutes: validReminder(input.reminderMinutes),
@@ -364,8 +392,16 @@ export function parseCreateCalendarEventInput(
     allDay,
     startDate,
     endDate,
-    private: validOptionalBoolean(input.private, "Die Sichtbarkeit") ?? true,
-    attendeeEmail: validAttendeeEmail(input.attendeeEmail),
+    private:
+      kind === "birthday"
+        ? true
+        : validOptionalBoolean(input.private, "Die Sichtbarkeit") ?? true,
+    attendeeEmail:
+      kind === "birthday" ? undefined : validAttendeeEmail(input.attendeeEmail),
+    availability:
+      kind === "birthday" ? "free" : validAvailability(input.availability),
+    recurrence:
+      kind === "birthday" ? "yearly" : validRecurrence(input.recurrence),
     sourceType: validSourceType(input.sourceType),
     sourceId: validMetadataString(input.sourceId, "Die Quellen-ID"),
     sourceOccurrence: validMetadataString(
@@ -565,6 +601,10 @@ function toCalendarEvent(
     private: value.visibility === "private",
     calendarId: targetCalendarId,
     allDay: Boolean(value.start?.date),
+    availability: value.transparency === "transparent" ? "free" : "busy",
+    recurrence: value.recurrence?.some((rule) => /^RRULE:FREQ=YEARLY(?:;|$)/.test(rule))
+      ? "yearly"
+      : "none",
     ...(location ? { location } : {}),
     ...(note ? { note } : {}),
     ...(reminder === undefined ? {} : { reminderMinutes: reminder }),
@@ -739,7 +779,7 @@ export async function listCalendarEvents(
       window?.timeMax || new Date(now + HORIZON_MILLISECONDS).toISOString(),
     maxResults: String(MAX_PAGE_RESULTS),
     fields:
-      "nextPageToken,timeZone,items(id,etag,updated,status,visibility,summary,description,location,start,end,extendedProperties,reminders,recurringEventId,originalStartTime)",
+      "nextPageToken,timeZone,items(id,etag,updated,status,visibility,transparency,summary,description,location,start,end,extendedProperties,reminders,recurrence,recurringEventId,originalStartTime)",
   });
   const googleEvents: GoogleCalendarEvent[] = [];
   const seenPageTokens = new Set<string>();
@@ -794,13 +834,21 @@ export async function createCalendarEvent(
   if (input.attendeeEmail) url.searchParams.set("sendUpdates", "all");
   url.searchParams.set(
     "fields",
-    "id,etag,updated,status,visibility,summary,description,location,start,end,extendedProperties,reminders,recurringEventId,originalStartTime",
+    "id,etag,updated,status,visibility,transparency,summary,description,location,start,end,extendedProperties,reminders,recurrence,recurringEventId,originalStartTime",
   );
   const sourceType = input.sourceType || "calendar";
   const sourceId = input.sourceId || crypto.randomUUID();
   const sourceOccurrence = input.sourceOccurrence || "main";
   const reminders =
-    input.reminderMinutes === undefined
+    input.reminderMethods !== undefined
+      ? {
+          useDefault: false,
+          overrides: input.reminderMethods.map((method) => ({
+            method,
+            minutes: input.reminderMinutes ?? 0,
+          })),
+        }
+      : input.reminderMinutes === undefined
       ? { useDefault: true }
       : input.reminderMinutes === 0
         ? { useDefault: false, overrides: [] }
@@ -819,6 +867,7 @@ export async function createCalendarEvent(
         description: input.note,
         location: input.location,
         visibility: input.private === false ? "default" : "private",
+        transparency: input.availability === "free" ? "transparent" : "opaque",
         start:
           input.allDay && input.startDate
             ? { date: input.startDate }
@@ -835,6 +884,9 @@ export async function createCalendarEvent(
               },
         ...(input.attendeeEmail
           ? { attendees: [{ email: input.attendeeEmail }] }
+          : {}),
+        ...(input.recurrence === "yearly"
+          ? { recurrence: ["RRULE:FREQ=YEARLY"] }
           : {}),
         reminders,
         extendedProperties: {
@@ -878,7 +930,7 @@ export async function getCalendarEvent(
   const url = calendarEventUrl(targetCalendarId, eventId);
   url.searchParams.set(
     "fields",
-    "id,etag,updated,status,visibility,summary,description,location,start,end,extendedProperties,reminders,recurringEventId,originalStartTime",
+    "id,etag,updated,status,visibility,transparency,summary,description,location,start,end,extendedProperties,reminders,recurrence,recurringEventId,originalStartTime",
   );
   const response = await calendarJson<GoogleCalendarEvent>(
     connection,
@@ -954,7 +1006,7 @@ export async function updateCalendarEvent(
   const url = calendarEventUrl(input.calendarId, eventId);
   url.searchParams.set(
     "fields",
-    "id,etag,updated,status,visibility,summary,description,location,start,end,extendedProperties,reminders",
+    "id,etag,updated,status,visibility,transparency,summary,description,location,start,end,extendedProperties,reminders,recurrence",
   );
   const response = await calendarJson<GoogleCalendarEvent>(
     connection,
@@ -1031,7 +1083,7 @@ export async function findManagedCalendarEvents(
   }
   url.searchParams.set(
     "fields",
-    "timeZone,items(id,etag,updated,status,visibility,summary,description,location,start,end,extendedProperties,reminders)",
+    "timeZone,items(id,etag,updated,status,visibility,transparency,summary,description,location,start,end,extendedProperties,reminders,recurrence)",
   );
   const page = await calendarJson<GoogleCalendarPage>(
     connection,

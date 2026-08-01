@@ -103,6 +103,7 @@ unter **Umgebungsvariablen** an:
 | `GOOGLE_TASKS_LIST_NAME` | `Gerris Kompass` |
 | `GOOGLE_CALENDAR_ID` | `primary` |
 | `OPENAI_MODEL` | `gpt-5.6-sol` |
+| `OPENAI_RESEARCH_MODEL` | `gpt-5.6` (optional; nur für die öffentliche Vakanzrecherche) |
 
 Lege diese Werte ausschließlich unter **Geheimnisse** an:
 
@@ -124,6 +125,27 @@ sind getrennte Speicherorte: Eine lokale Änderung aktualisiert Sites nicht.
 Nach jeder Änderung an Sites-Umgebungsvariablen oder -Geheimnissen muss eine
 gespeicherte, validierte Version erneut **privat** bereitgestellt werden, damit
 die neue Umgebungsrevision aktiv wird.
+
+Die Bewerbungsfunktion trennt zwei Verarbeitungsschritte: Die
+Vakanzrecherche erhält ausschließlich die öffentliche Stellen-URL, optionale
+öffentliche Anzeigentexte und grobe Rollenhinweise. Erst nach der sichtbaren
+Bestätigung oder Bearbeitung einzelner Aussagen werden diese zusammen mit dem
+privaten CV und persönlichen Angaben in einem zweiten OpenAI-Aufruf ohne
+Websuche für Anschreiben, CV-Anpassung und Interviewvorbereitung verwendet.
+Zurückgegebene Quellen werden serverseitig gegen die tatsächlich konsultierten
+Webquellen geprüft und in der Oberfläche anklickbar angezeigt.
+Lang laufende Qualitätsrecherchen starten im Responses-Hintergrundmodus; die
+Oberfläche fragt ihren kurzlebigen, signierten und eigentümergebundenen Auftrag
+bis zum vollständigen Ergebnis ab. Der OpenAI-Aufruf bleibt dabei auf
+`store: false` gesetzt.
+
+Aufgabe, Termin, Einnahme und Ausgabe werden appweit über dieselbe
+kontextsensitive Erfassung angelegt. Bei Terminen bestimmt die Terminart die
+weiteren Felder. Eine Geburtstagserinnerung wird automatisch privat,
+ganztägig, jährlich wiederkehrend und mit Google-Verfügbarkeit `transparent`
+gespeichert. Sie erscheint damit im Kalender, blockiert aber kein Zeitfenster.
+Datei-Uploads beginnen ausschließlich im Bereich **Unterlagen**; in der
+Sidebar bleiben unter **Schnell erledigt** nur E-Mail und Bewerbung.
 
 ## 4. Öffentlichen iCal-Zugriff abschalten
 
@@ -147,7 +169,9 @@ Vor der Veröffentlichung:
    angezeigt wird.
 3. Lege eine Aufgabe an, ändere sie, schließe sie ab und lösche sie wieder.
    Alle Aufgabenansichten müssen denselben Google-Tasks-Stand zeigen.
-4. Lege einen Testtermin an und entferne ihn wieder.
+4. Lege einen Testtermin an und entferne ihn wieder. Lege zusätzlich einen
+   Testgeburtstag an und prüfe in Google Kalender, dass er jährlich wiederholt,
+   ganztägig angezeigt und als „Verfügbar“ geführt wird.
 5. Prüfe die Kalenderauswahl, lege einen eindeutig benannten Testkalender an
    und entferne ihn anschließend in Google Kalender wieder.
 6. Öffne den Drive-Stammordner und versuche keinen Zugriff außerhalb dieses
