@@ -152,6 +152,18 @@ export function normalizeMasterCvContent(value: unknown): MasterCvContent | null
 }
 
 export function masterCvToPlainText(masterCv: MasterCvContent): string {
+  const isGerman = masterCv.language.toLowerCase().startsWith("de");
+  const confidenceLabels: Record<CareerEvidenceConfidence, string> = isGerman
+    ? {
+        source_only: "aus Quelle übernommen",
+        user_confirmed: "vom Nutzer bestätigt",
+        externally_corroborated: "extern belegt",
+      }
+    : {
+        source_only: "source only",
+        user_confirmed: "user confirmed",
+        externally_corroborated: "externally corroborated",
+      };
   const profile = [
     masterCv.name,
     masterCv.headline,
@@ -164,11 +176,13 @@ export function masterCvToPlainText(masterCv: MasterCvContent): string {
   ]);
   const evidence = masterCv.passport.evidence.flatMap((item) => {
     const restrictions = item.restrictions.length
-      ? `Restrictions: ${item.restrictions.join(" | ")}`
+      ? `${isGerman ? "Einschränkungen" : "Restrictions"}: ${item.restrictions.join(" | ")}`
       : "";
     return [
       `[${item.evidenceId}] ${item.safeWording}`,
-      `Source: ${item.sourceName || item.sourceType} · Confidence: ${item.confidence}`,
+      `${isGerman ? "Quelle" : "Source"}: ${item.sourceName || item.sourceType} · ${
+        isGerman ? "Evidenzstatus" : "Confidence"
+      }: ${confidenceLabels[item.confidence]}`,
       restrictions,
     ].filter(Boolean);
   });
@@ -177,7 +191,9 @@ export function masterCvToPlainText(masterCv: MasterCvContent): string {
     "",
     ...sections,
     "",
-    "CAREER EVIDENCE REGISTER — USE ONLY THE SAFE WORDING BELOW",
+    isGerman
+      ? "EVIDENZREGISTER ZUM BERUFLICHEN PROFIL — NUR DIE NACHSTEHENDEN SICHEREN FORMULIERUNGEN VERWENDEN"
+      : "CAREER EVIDENCE REGISTER — USE ONLY THE SAFE WORDING BELOW",
     ...evidence,
   ].join("\n");
 }

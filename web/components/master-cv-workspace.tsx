@@ -264,7 +264,10 @@ export function MasterCvWorkspace({
               <strong>{masterCvContent.headline || masterCvContent.name}</strong>
               <br />
               {masterCvContent.sections.length} Abschnitte ·{" "}
-              {masterCvContent.passport.evidence.length} Evidenzen · gespeichert{" "}
+              {masterCvContent.passport.evidence.length} Evidenzen · Sprache{" "}
+              {masterCvContent.language.toLowerCase().startsWith("de")
+                ? "Deutsch"
+                : masterCvContent.language.toUpperCase()} · gespeichert{" "}
               {formatRelativeDate(masterCvContent.updatedAt)}
             </p>
           ) : masterCvDocument ? (

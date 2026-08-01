@@ -125,3 +125,45 @@ test("normalisiert gespeicherte Inhalte und gibt die bearbeitete Fassung mit Evi
   assert.match(plainText, /\[EV-1\] Built a controlled workflow\./);
   assert.match(plainText, /Do not add unsupported metrics/);
 });
+
+test("lokalisiert das Evidenzregister für einen deutschen Master-CV", () => {
+  const parsed = parseMasterCvBundle(
+    docxFixture(),
+    passportFixture({
+      preferences: {
+        target_directions: ["HR-Digitalisierung / Angewandte KI"],
+        document_preferences: { language: "de" },
+      },
+      evidence: [
+        {
+          evidence_id: "EV-DE-1",
+          claim: "Kontrollierter Workflow",
+          safe_wording: "Entwicklung eines kontrollierten Workflows.",
+          source_type: "current_cv",
+          source_name: "Master-CV.docx",
+          confidence: "user_confirmed",
+          restrictions: ["Keine unbelegten Kennzahlen ergänzen."],
+          role_relevance: ["HR-Digitalisierung / Angewandte KI"],
+          captured_at: "2026-08-02T08:00:00.000Z",
+        },
+      ],
+    }),
+    "2026-08-02T08:00:00.000Z",
+  );
+  const content = normalizeMasterCvContent({
+    schemaVersion: 1,
+    sourceDocumentId: "upload-cv-de",
+    passportDocumentId: "upload-passport-de",
+    ...parsed,
+    importedAt: "2026-08-02T08:00:00.000Z",
+    updatedAt: "2026-08-02T08:10:00.000Z",
+    editRevision: 0,
+  });
+
+  assert.ok(content);
+  const plainText = masterCvToPlainText(content);
+  assert.match(plainText, /EVIDENZREGISTER ZUM BERUFLICHEN PROFIL/);
+  assert.match(plainText, /Quelle: Master-CV\.docx · Evidenzstatus: vom Nutzer bestätigt/);
+  assert.match(plainText, /Einschränkungen: Keine unbelegten Kennzahlen ergänzen\./);
+  assert.doesNotMatch(plainText, /CAREER EVIDENCE REGISTER/);
+});
