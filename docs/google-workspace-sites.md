@@ -56,7 +56,7 @@ implementierte Funktion sie verwendet.
    - Erstelle einen Client vom Typ **Webanwendung**.
    - Name: `Gerris Kompass Sites`
    - Autorisierte Weiterleitungs-URI:
-     `https://gerris-kompass.gerrit22.chatgpt.site/api/google/callback`
+     `https://gerris-kompass.gerri-f-aus-e.chatgpt.site/api/google/callback`
    - Für den serverseitigen Flow ist keine autorisierte JavaScript-Quelle
      erforderlich.
 
@@ -98,7 +98,7 @@ unter **Umgebungsvariablen** an:
 | Name | Wert |
 | --- | --- |
 | `GOOGLE_CLIENT_ID` | Client-ID der OAuth-Webanwendung |
-| `GOOGLE_REDIRECT_URI` | `https://gerris-kompass.gerrit22.chatgpt.site/api/google/callback` |
+| `GOOGLE_REDIRECT_URI` | `https://gerris-kompass.gerri-f-aus-e.chatgpt.site/api/google/callback` |
 | `GOOGLE_DRIVE_ROOT_FOLDER_ID` | `1_XCyuIovFJQSQ80zVy3gVkBuM8Tutgwe` |
 | `GOOGLE_TASKS_LIST_NAME` | `Gerris Kompass` |
 | `GOOGLE_CALENDAR_ID` | `primary` |

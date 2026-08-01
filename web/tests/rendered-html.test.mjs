@@ -58,6 +58,21 @@ test("enthält den vollständigen privaten Organisationsbereich", async () => {
   assert.doesNotMatch(page + app + layout, /codex-preview|Starter Project/);
 });
 
+test("liefert die Kompass-Marke auch über die Browser-Standardroute", async () => {
+  const [layout, favicon] = await Promise.all([
+    readFile(new URL("app/layout.tsx", root), "utf8"),
+    readFile(new URL("app/favicon.ico/route.ts", root), "utf8"),
+    access(new URL("app/icon.png", root)),
+    access(new URL("app/apple-icon.png", root)),
+  ]);
+
+  assert.match(layout, /url: "\/icon\.png"/);
+  assert.match(layout, /url: "\/apple-icon\.png"/);
+  assert.match(layout, /shortcut: "\/favicon\.ico"/);
+  assert.match(favicon, /content-type": "image\/svg\+xml/);
+  assert.match(favicon, /x-content-type-options": "nosniff"/);
+});
+
 test("formatiert Termine in der festen deutschen App-Zeitzone", async () => {
   const format = await importTypeScriptModule(new URL("lib/format.ts", root));
 
@@ -367,7 +382,7 @@ test("bündelt Google Workspace sicher und dokumentiert die Sites-Konfiguration"
   assert.match(envExample, /^GOOGLE_CLIENT_ID=$/m);
   assert.match(
     envExample,
-    /^GOOGLE_REDIRECT_URI=https:\/\/gerris-kompass\.gerrit22\.chatgpt\.site\/api\/google\/callback$/m,
+    /^GOOGLE_REDIRECT_URI=https:\/\/gerris-kompass\.gerri-f-aus-e\.chatgpt\.site\/api\/google\/callback$/m,
   );
   assert.match(envExample, /^GOOGLE_TASKS_LIST_NAME=Gerris Kompass$/m);
   assert.match(envExample, /^GOOGLE_CALENDAR_ID=primary$/m);

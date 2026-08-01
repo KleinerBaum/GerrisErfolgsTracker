@@ -24,6 +24,13 @@ export async function generateMetadata(): Promise<Metadata> {
     description,
     applicationName: "Gerris Kompass",
     metadataBase: new URL(baseUrl),
+    icons: {
+      icon: [{ url: "/icon.png", type: "image/png", sizes: "512x512" }],
+      shortcut: "/favicon.ico",
+      apple: [
+        { url: "/apple-icon.png", type: "image/png", sizes: "180x180" },
+      ],
+    },
     robots: { index: false, follow: false },
     manifest: "/manifest.webmanifest",
     openGraph: {
