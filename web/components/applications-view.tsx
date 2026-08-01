@@ -9,6 +9,9 @@ import {
 
 import { JobResearchPanel } from "./job-research-panel";
 import {
+  MasterCvWorkspace,
+} from "./master-cv-workspace";
+import {
   APPLICATION_RESEARCH,
   createEmptyApplication,
 } from "../lib/application-research";
@@ -25,6 +28,8 @@ import {
   type DocumentKind,
   type DocumentRef,
   type JobResearchClaim,
+  type MasterCvContent,
+  type MasterCvImportBundle,
   type SalaryOutlook,
   type VacancyResearch,
 } from "../lib/types";
@@ -61,7 +66,6 @@ const ACTIVE_STATUSES = new Set<ApplicationStatus>([
 
 const APPLICATION_FILE_TYPES =
   ".pdf,.doc,.docx,.odt,.rtf,.txt,.md,.jpg,.jpeg,.png,.webp";
-const MASTER_CV_FILE_TYPES = ".pdf,.doc,.docx,.odt,.rtf,.txt,.md";
 
 type UploadResponse = {
   fileId?: string;
@@ -77,8 +81,8 @@ type ApplicationsViewProps = {
   state: AppState;
   onCreateApplication: (application: ApplicationProcess) => void;
   onUpdateApplication: (application: ApplicationProcess) => void;
-  onSaveMasterCv: (document: DocumentRef) => void;
-  onSetMasterCv: (documentId: string | null) => void;
+  onImportMasterCv: (bundle: MasterCvImportBundle) => void;
+  onSaveMasterCvContent: (content: MasterCvContent) => void;
   onAttachArtifact: (
     applicationId: string,
     document: DocumentRef,
@@ -190,135 +194,12 @@ function salaryClass(outlook: SalaryOutlook): string {
   return "open";
 }
 
-function MasterCvPanel({
-  documents,
-  masterCvDocumentId,
-  onSaveMasterCv,
-  onSetMasterCv,
-  toast,
-}: {
-  documents: DocumentRef[];
-  masterCvDocumentId: string | null;
-  onSaveMasterCv: (document: DocumentRef) => void;
-  onSetMasterCv: (documentId: string | null) => void;
-  toast: (message: string) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-  const masterCv = documents.find(
-    (document) => document.id === masterCvDocumentId,
-  );
-  const cvDocuments = documents.filter(
-    (document) =>
-      document.storage === "upload" &&
-      document.kind !== "folder" &&
-      /\.(pdf|doc|docx|odt|rtf|txt|md)$/i.test(document.name),
-  );
-
-  const upload = async (file: File | undefined) => {
-    if (!file || busy) return;
-    if (file.size > 8 * 1024 * 1024) {
-      toast("Der Master-CV darf für die Generierung höchstens 8 MB groß sein");
-      return;
-    }
-    setBusy(true);
-    try {
-      const document = await uploadPrivateFile({
-        file,
-        destination: "Persönlich/Bewerbungen/Master-CV",
-        tags: ["Bewerbungen", "Master-CV"],
-        note: "Orientierungsgrundlage für maßgeschneiderte Lebensläufe",
-      });
-      onSaveMasterCv(document);
-      toast("Master-CV privat hinterlegt");
-    } catch (error) {
-      toast(
-        error instanceof Error
-          ? error.message
-          : "Der Master-CV konnte nicht hinterlegt werden",
-      );
-    } finally {
-      setBusy(false);
-      if (inputRef.current) inputRef.current.value = "";
-    }
-  };
-
-  return (
-    <section className="panel master-cv-panel">
-      <div className="master-cv-mark" aria-hidden="true">
-        CV
-      </div>
-      <div className="master-cv-copy">
-        <span className="eyebrow">Orientierungsgrundlage</span>
-        <h2>Master-CV</h2>
-        {masterCv ? (
-          <p>
-            <strong>{masterCv.name}</strong> ·{" "}
-            {masterCv.sizeBytes ? formatBytes(masterCv.sizeBytes) : "privat abgelegt"} ·
-            aktualisiert {formatRelativeDate(masterCv.modifiedAt)}
-          </p>
-        ) : (
-          <p>
-            Hinterlege deinen vollständigen Lebenslauf einmal. Das
-            Bewerbungsstudio nutzt ihn dann auf Wunsch als private Grundlage und
-            erfindet keine Stationen.
-          </p>
-        )}
-      </div>
-      <div className="master-cv-actions">
-        {cvDocuments.length ? (
-          <label>
-            <span className="visually-hidden">Vorhandenen Master-CV auswählen</span>
-            <select
-              aria-label="Vorhandenen Master-CV auswählen"
-              onChange={(event) => onSetMasterCv(event.target.value || null)}
-              value={masterCvDocumentId ?? ""}
-            >
-              <option value="">Kein Master-CV ausgewählt</option>
-              {cvDocuments.map((document) => (
-                <option key={document.id} value={document.id}>
-                  {document.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <input
-          accept={MASTER_CV_FILE_TYPES}
-          className="visually-hidden"
-          onChange={(event) => void upload(event.target.files?.[0])}
-          ref={inputRef}
-          type="file"
-        />
-        <button
-          className="button button-soft"
-          disabled={busy}
-          onClick={() => inputRef.current?.click()}
-          type="button"
-        >
-          {busy ? "CV wird geschützt abgelegt …" : masterCv ? "Neue Version" : "CV hinterlegen"}
-        </button>
-        {masterCv?.downloadUrl ? (
-          <a
-            className="button button-ghost"
-            href={masterCv.downloadUrl}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Öffnen
-          </a>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
 export function ApplicationsView({
   state,
   onCreateApplication,
   onUpdateApplication,
-  onSaveMasterCv,
-  onSetMasterCv,
+  onImportMasterCv,
+  onSaveMasterCvContent,
   onAttachArtifact,
   onRemoveArtifact,
   onOpenStudio,
@@ -469,11 +350,18 @@ export function ApplicationsView({
         </article>
       </section>
 
-      <MasterCvPanel
+      <MasterCvWorkspace
+        careerPassportDocumentId={state.careerPassportDocumentId}
         documents={state.documents}
+        key={
+          state.masterCvContent
+            ? `${state.masterCvContent.sourceDocumentId}-${state.masterCvContent.editRevision}`
+            : state.masterCvDocumentId ?? "master-cv-empty"
+        }
         masterCvDocumentId={state.masterCvDocumentId}
-        onSaveMasterCv={onSaveMasterCv}
-        onSetMasterCv={onSetMasterCv}
+        masterCvContent={state.masterCvContent}
+        onImport={onImportMasterCv}
+        onSave={onSaveMasterCvContent}
         toast={toast}
       />
 

@@ -106,6 +106,8 @@ import {
   type IntegrationConfig,
   type Income,
   type GamificationState,
+  type MasterCvContent,
+  type MasterCvImportBundle,
   type Task,
   type RewardMode,
   type TaskGamificationProfile,
@@ -804,20 +806,31 @@ export function LifeOsApp({
     updateState((current) => ({ ...current, contacts }));
   };
 
-  const saveMasterCv = (document: DocumentRef) => {
+  const importMasterCv = (bundle: MasterCvImportBundle) => {
     updateState((current) => ({
       ...current,
-      documents: [document, ...current.documents],
-      masterCvDocumentId: document.id,
+      documents: [
+        bundle.cvDocument,
+        bundle.passportDocument,
+        ...current.documents.filter(
+          (document) =>
+            document.id !== bundle.cvDocument.id &&
+            document.id !== bundle.passportDocument.id,
+        ),
+      ],
+      masterCvDocumentId: bundle.cvDocument.id,
+      careerPassportDocumentId: bundle.passportDocument.id,
+      masterCvContent: bundle.masterCvContent,
     }));
+    setNotice("Master-CV und Career Passport importiert");
   };
 
-  const setMasterCv = (documentId: string | null) => {
+  const saveMasterCvContent = (content: MasterCvContent) => {
     updateState((current) => ({
       ...current,
-      masterCvDocumentId: documentId,
+      masterCvContent: content,
     }));
-    setNotice(documentId ? "Master-CV ausgewählt" : "Master-CV-Verknüpfung gelöst");
+    setNotice("Bearbeiteter Master-CV gespeichert");
   };
 
   const attachApplicationArtifact = (
@@ -1504,10 +1517,10 @@ export function LifeOsApp({
             <ApplicationsView
               onAttachArtifact={attachApplicationArtifact}
               onCreateApplication={createApplication}
+              onImportMasterCv={importMasterCv}
               onOpenStudio={openApplicationStudio}
               onRemoveArtifact={removeApplicationArtifact}
-              onSaveMasterCv={saveMasterCv}
-              onSetMasterCv={setMasterCv}
+              onSaveMasterCvContent={saveMasterCvContent}
               onUpdateApplication={updateApplication}
               state={state}
               toast={setNotice}
@@ -1619,6 +1632,7 @@ export function LifeOsApp({
           integrations={integrations}
           kind={quickAction}
           masterCvDocumentId={state.masterCvDocumentId}
+          masterCvContent={state.masterCvContent}
           applicationDraft={applicationDraft}
           onClose={() => {
             setQuickAction(null);

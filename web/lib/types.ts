@@ -736,6 +736,69 @@ export type ApplicationArtifact = {
   createdAt: string;
 };
 
+export type CareerEvidenceConfidence =
+  | "source_only"
+  | "user_confirmed"
+  | "externally_corroborated";
+
+export type CareerPassportSource = {
+  sourceId: string;
+  name: string;
+  sourceType: string;
+  isPrimary: boolean;
+  notes: string[];
+};
+
+export type CareerPassportEvidence = {
+  evidenceId: string;
+  claim: string;
+  safeWording: string;
+  sourceType: string;
+  sourceName: string;
+  confidence: CareerEvidenceConfidence;
+  restrictions: string[];
+  roleRelevance: string[];
+  capturedAt: string | null;
+};
+
+export type CareerPassportSnapshot = {
+  schemaVersion: string;
+  profileName: string;
+  targetDirections: string[];
+  sourceDocuments: CareerPassportSource[];
+  evidence: CareerPassportEvidence[];
+  documentVersionStatus: string | null;
+  importedAt: string;
+};
+
+export type MasterCvSection = {
+  id: string;
+  heading: string;
+  content: string;
+};
+
+export type MasterCvContent = {
+  schemaVersion: 1;
+  sourceDocumentId: string;
+  passportDocumentId: string;
+  name: string;
+  headline: string;
+  subheadline: string;
+  contactLine: string;
+  language: string;
+  sections: MasterCvSection[];
+  passport: CareerPassportSnapshot;
+  importedAt: string;
+  updatedAt: string;
+  editRevision: number;
+};
+
+export type MasterCvImportBundle = {
+  cvDocument: DocumentRef;
+  passportDocument: DocumentRef;
+  masterCvContent: MasterCvContent;
+};
+
 export type JobResearchFactKey =
   | "role.title"
   | "company.name"
@@ -916,6 +979,8 @@ export type AppState = {
   calendarEvents: CalendarEvent[];
   applications: ApplicationProcess[];
   masterCvDocumentId: string | null;
+  careerPassportDocumentId: string | null;
+  masterCvContent: MasterCvContent | null;
   contacts: Contact[];
   journal: JournalEntry[];
   dashboardSettings: DashboardSettings;

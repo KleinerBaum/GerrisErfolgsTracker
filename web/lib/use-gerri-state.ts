@@ -8,6 +8,7 @@ import { diaryRhythmDays, normalizeDiaryEntries } from "./diary";
 import { normalizeDashboardSettings } from "./dashboard";
 import { isoDateInput } from "./format";
 import { ledgerTotals, normalizeGamificationState } from "./gamification";
+import { normalizeMasterCvContent } from "./master-cv";
 import type { AppState, CostCategory, SyncStatus } from "./types";
 
 const STORAGE_KEY = "gerris-kompass-state-v1";
@@ -77,6 +78,11 @@ function normalizeState(value: AppState): AppState {
       typeof candidate.masterCvDocumentId === "string"
         ? candidate.masterCvDocumentId
         : null,
+    careerPassportDocumentId:
+      typeof candidate.careerPassportDocumentId === "string"
+        ? candidate.careerPassportDocumentId
+        : null,
+    masterCvContent: normalizeMasterCvContent(candidate.masterCvContent),
     journal,
     gamification,
     points: ledgerTotals(gamification.ledger).balanceXp,

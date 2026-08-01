@@ -581,6 +581,8 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
     jobResearchPanel,
     jobResearchRoute,
     assistantRoute,
+    masterCvWorkspace,
+    masterCvRoute,
   ] =
     await Promise.all([
       readFile(new URL("components/life-os-app.tsx", root), "utf8"),
@@ -593,6 +595,8 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
       readFile(new URL("components/job-research-panel.tsx", root), "utf8"),
       readFile(new URL("app/api/job-research/route.ts", root), "utf8"),
       readFile(new URL("app/api/assistant/route.ts", root), "utf8"),
+      readFile(new URL("components/master-cv-workspace.tsx", root), "utf8"),
+      readFile(new URL("app/api/master-cv/route.ts", root), "utf8"),
     ]);
 
   assert.match(app, /label: "Bewerbungen"/);
@@ -601,13 +605,17 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(applications, /Konditionen meiner Bewerbung/);
   assert.match(applications, /Erwarteter nächster Schritt/);
   assert.match(applications, /Screenshot der Ausschreibung/);
-  assert.match(applications, /Master-CV/);
+  assert.match(masterCvWorkspace, /Master-CV/);
   assert.match(applications, /<JobResearchPanel/);
   assert.match(types, /applications: ApplicationProcess\[\]/);
   assert.match(types, /masterCvDocumentId: string \| null/);
+  assert.match(types, /masterCvContent: MasterCvContent \| null/);
+  assert.match(types, /careerPassportDocumentId: string \| null/);
   assert.match(types, /vacancyResearch: VacancyResearch \| null/);
   assert.match(stateHook, /mergeApplicationResearch/);
+  assert.match(stateHook, /normalizeMasterCvContent/);
   assert.match(actions, /Master-CV verwenden/);
+  assert.match(actions, /masterCvToPlainText\(masterCvContent\)/);
   assert.match(actions, /fetch\(masterCv\.downloadUrl/);
   assert.match(actions, /interviewPrep/);
   assert.match(actions, /<JobResearchPanel/);
@@ -630,6 +638,12 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.doesNotMatch(assistantRoute, /type: "web_search"/);
   assert.match(assistantRoute, /confirmedResearchContext/);
   assert.match(assistantRoute, /absichtlich keinen Webzugriff/);
+  assert.match(masterCvWorkspace, /Inhalte bearbeiten/);
+  assert.match(masterCvWorkspace, /Quellen & Evidenz ansehen/);
+  assert.match(masterCvWorkspace, /Gemeinsam importieren/);
+  assert.match(masterCvRoute, /parseMasterCvBundle/);
+  assert.match(masterCvRoute, /env\.FILES\.put/);
+  assert.match(masterCvRoute, /sameOrigin\(request\)/);
   assert.match(research, /JOB_RADAR_RECORDS/);
   assert.match(research, /LEGACY_ID_BY_SOURCE_ID/);
   assert.match(research, /refreshedSeedValue/);

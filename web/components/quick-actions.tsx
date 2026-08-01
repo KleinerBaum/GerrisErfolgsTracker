@@ -10,11 +10,13 @@ import {
 import { JobResearchPanel } from "./job-research-panel";
 import { gmailDraftUrl } from "../lib/google-links";
 import { applyConfirmedResearchClaim } from "../lib/job-research";
+import { masterCvToPlainText } from "../lib/master-cv";
 import {
   type ApplicationProcess,
   type DocumentKind,
   type DocumentRef,
   type IntegrationConfig,
+  type MasterCvContent,
   type VacancyResearch,
 } from "../lib/types";
 
@@ -63,6 +65,7 @@ type QuickActionDialogProps = {
   documents: DocumentRef[];
   applicationDraft: ApplicationProcess | null;
   masterCvDocumentId: string | null;
+  masterCvContent: MasterCvContent | null;
   integrations: IntegrationConfig;
   onClose: () => void;
   onSaveDocument: (document: DocumentRef) => void;
@@ -94,6 +97,7 @@ export function QuickActionDialog({
   applicationDraft,
   integrations,
   masterCvDocumentId,
+  masterCvContent,
   onClose,
   onSaveDocument,
   onUpdateApplication,
@@ -141,6 +145,7 @@ export function QuickActionDialog({
             documents={documents}
             initialApplication={applicationDraft}
             masterCvDocumentId={masterCvDocumentId}
+            masterCvContent={masterCvContent}
             onUpdateApplication={onUpdateApplication}
             toast={toast}
           />
@@ -1041,6 +1046,7 @@ function ApplicationStudio({
   documents,
   initialApplication,
   masterCvDocumentId,
+  masterCvContent,
   onUpdateApplication,
   toast,
 }: {
@@ -1048,6 +1054,7 @@ function ApplicationStudio({
   documents: DocumentRef[];
   initialApplication: ApplicationProcess | null;
   masterCvDocumentId: string | null;
+  masterCvContent: MasterCvContent | null;
   onUpdateApplication: (application: ApplicationProcess) => void;
   toast: (message: string) => void;
 }) {
@@ -1147,7 +1154,13 @@ function ApplicationStudio({
     };
     try {
       let sourceCv = cv;
-      if (!sourceCv && useMasterCv && masterCv?.downloadUrl) {
+      if (!sourceCv && useMasterCv && masterCvContent) {
+        sourceCv = new File(
+          [masterCvToPlainText(masterCvContent)],
+          "Master-CV-bearbeitet.txt",
+          { type: "text/plain;charset=utf-8" },
+        );
+      } else if (!sourceCv && useMasterCv && masterCv?.downloadUrl) {
         const response = await fetch(masterCv.downloadUrl, {
           headers: { accept: masterCv.contentType || "application/octet-stream" },
         });
@@ -1447,7 +1460,9 @@ function ApplicationStudio({
           <div>
             <strong>Master-CV verwenden</strong>
             <small>
-              {masterCv.name} · privat hinterlegt und nur für dieses Paket geladen
+              {masterCvContent
+                ? `Bearbeitete Fassung · Version ${masterCvContent.editRevision + 1} · mit Evidenzregister`
+                : `${masterCv.name} · privat hinterlegt und nur für dieses Paket geladen`}
             </small>
           </div>
           <b>{useMasterCv && !cv ? "Ausgewählt" : "Auswählen"}</b>
@@ -1539,9 +1554,10 @@ function ApplicationStudio({
       </div>
       <p className="form-trust">
         Der ausgewählte Lebenslauf und deine Antworten werden nur für dieses
-        Paket verarbeitet. Der Master-CV bleibt unverändert in deiner privaten
-        Ablage; generierte Texte werden nicht automatisch gespeichert. Das
-        System erfindet keine Stationen oder Erfolge.
+        Paket verarbeitet. Beim Master-CV wird die zuletzt gespeicherte,
+        bearbeitbare Arbeitsfassung mit ihrem sicheren Evidenzregister genutzt;
+        das DOCX-Original bleibt unverändert. Generierte Texte werden nicht
+        automatisch gespeichert. Das System erfindet keine Stationen oder Erfolge.
       </p>
       <div className="dialog-actions">
         <button

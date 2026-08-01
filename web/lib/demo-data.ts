@@ -221,6 +221,8 @@ export function createDemoState(ownerName = "Gerri"): AppState {
       artifacts: [],
     })),
     masterCvDocumentId: null,
+    careerPassportDocumentId: null,
+    masterCvContent: null,
     contacts: [],
     dashboardSettings: createDefaultDashboardSettings(1700),
     journal: [

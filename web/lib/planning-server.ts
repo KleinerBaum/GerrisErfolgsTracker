@@ -73,6 +73,7 @@ import {
   createDefaultDashboardSettings,
   normalizeDashboardSettings,
 } from "./dashboard";
+import { normalizeMasterCvContent } from "./master-cv";
 
 const NO_CALENDAR_ERROR = "Kalenderdaten konnten nicht geladen werden.";
 const MAX_CALENDARS_FOR_PLANNING = 12;
@@ -124,6 +125,8 @@ function emptyState(): AppState {
     calendarEvents: [],
     applications: [],
     masterCvDocumentId: null,
+    careerPassportDocumentId: null,
+    masterCvContent: null,
     contacts: [],
     journal: [],
     dashboardSettings: createDefaultDashboardSettings(0),
@@ -147,6 +150,11 @@ function parsedStoredState(value: string | null | undefined): AppState {
     }
     return {
       ...(state as AppState),
+      careerPassportDocumentId:
+        typeof state.careerPassportDocumentId === "string"
+          ? state.careerPassportDocumentId
+          : null,
+      masterCvContent: normalizeMasterCvContent(state.masterCvContent),
       contacts: Array.isArray(state.contacts) ? state.contacts : [],
       dashboardSettings: normalizeDashboardSettings(
         state.dashboardSettings,
