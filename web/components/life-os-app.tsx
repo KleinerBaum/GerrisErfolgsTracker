@@ -24,10 +24,30 @@ import { FinanceView } from "./finance-view";
 import { ApplicationsView } from "./applications-view";
 import { DiaryView } from "./diary-view";
 import { CalendarView as CalendarWorkspace } from "./calendar-view";
+import { MomentumRealmView } from "./momentum-realm-view";
 import { PlanningHealthBanner } from "./planning-health-banner";
+import { RewardAssessmentDialog } from "./reward-assessment-dialog";
 import { createDemoState } from "../lib/demo-data";
 import { COST_TEMPLATES } from "../lib/finance-catalog";
 import { diaryRhythmDays, upsertDiaryEntry } from "../lib/diary";
+import {
+  addGoal,
+  anchorRhythm,
+  applyCostPaymentReward,
+  applyDayCloseReward,
+  applyTaskCompletionReward,
+  buildWorldUpgrade,
+  createDefaultGamification,
+  ledgerTotals,
+  levelForXp,
+  markTaskCompletionForRhythm,
+  recordRewardFeedback,
+  redeemPersonalReward,
+  setAnchorDayStatus,
+  setDailyAnchor,
+  upsertTaskProfile,
+  withGamification,
+} from "../lib/gamification";
 import {
   calendarDayDifference,
   formatCurrency,
@@ -74,6 +94,8 @@ import {
   LIFE_AREA_LABELS,
   QUADRANT_LABELS,
   type AccountBalances,
+  type AnchorDayStatus,
+  type AnchorRole,
   type AppState,
   type ApplicationArtifact,
   type ApplicationProcess,
@@ -85,13 +107,20 @@ import {
   type DocumentRef,
   type IntegrationConfig,
   type Income,
+  type Goal,
   type LifeArea,
   type Task,
+  type RewardFeedbackRating,
+  type RewardMode,
+  type RewardPresentation,
+  type TaskGamificationProfile,
   type TaskQuadrant,
   type DayIntentKind,
   type OpenTopic,
   type PlanningHealthReport,
   type ViewKey,
+  type WorldDistrictKey,
+  type WorldUpgradeKind,
 } from "../lib/types";
 import { useGerriState } from "../lib/use-gerri-state";
 
@@ -103,6 +132,7 @@ const NAV_ITEMS: Array<{
 }> = [
   { key: "today", label: "Heute", short: "Heute", mark: "H" },
   { key: "tasks", label: "Aufgaben", short: "Aufgaben", mark: "A" },
+  { key: "progress", label: "Momentum Realm", short: "Realm", mark: "M" },
   { key: "calendar", label: "Kalender", short: "Kalender", mark: "K" },
   { key: "finance", label: "Finanzen", short: "Kosten", mark: "€" },
   { key: "documents", label: "Unterlagen", short: "Ablage", mark: "U" },
@@ -118,6 +148,7 @@ const NAV_ITEMS: Array<{
 const VIEW_TITLES: Record<ViewKey, string> = {
   today: "Heute im Blick",
   tasks: "Aufgaben & Fokus",
+  progress: "Momentum Realm & Belohnungswelten",
   calendar: "Kalender & Erinnerungen",
   finance: "Kosten im Überblick",
   documents: "Wichtige Unterlagen",
@@ -132,6 +163,35 @@ const dateAtNine = (value: string): string =>
   new Date(`${value}T09:00:00`).toISOString();
 
 const daysFromNow = (value: string): number => calendarDayDifference(value);
+
+function reconcileCompletedTaskRewards(
+  state: AppState,
+  tasks: Task[],
+): AppState {
+  let gamification =
+    state.gamification ?? createDefaultGamification(state.points, state.updatedAt);
+  for (const task of tasks
+    .filter((candidate) => candidate.completed)
+    .sort((left, right) =>
+      (left.completedAt ?? left.updatedAt ?? "").localeCompare(
+        right.completedAt ?? right.updatedAt ?? "",
+      ),
+    )) {
+    gamification = markTaskCompletionForRhythm(gamification, task.id);
+    const profile = gamification.profiles.find(
+      (candidate) => candidate.taskId === task.id && candidate.confirmedAt,
+    );
+    if (!profile) continue;
+    gamification = applyTaskCompletionReward({
+      gamification,
+      task,
+      allTasks: tasks,
+      profile,
+      completedAt: task.completedAt ?? task.updatedAt ?? state.updatedAt,
+    }).gamification;
+  }
+  return { ...withGamification(state, gamification), tasks };
+}
 
 const formatFileSize = (bytes: number): string =>
   bytes < 1_048_576
@@ -174,6 +234,7 @@ export function LifeOsApp({
   const [taskError, setTaskError] = useState("");
   const [taskConnectUrl, setTaskConnectUrl] = useState("");
   const [taskActionId, setTaskActionId] = useState("");
+  const [rewardTaskId, setRewardTaskId] = useState("");
   const taskInitialLoadStarted = useRef(false);
   const planningInitialLoadStarted = useRef(false);
   const planningRequestActive = useRef(false);
@@ -250,7 +311,7 @@ export function LifeOsApp({
 
   const replaceTasks = useCallback(
     (tasks: Task[]) => {
-      updateState((current) => ({ ...current, tasks }));
+      updateState((current) => reconcileCompletedTaskRewards(current, tasks));
     },
     [updateState],
   );
@@ -335,8 +396,7 @@ export function LifeOsApp({
           (task) => !task.taskListId && !googleIds.has(task.id),
         );
         updateState((current) => ({
-          ...current,
-          tasks: googleTasks,
+          ...reconcileCompletedTaskRewards(current, googleTasks),
           pendingTaskImports: pendingTasks,
         }));
         setTaskError("");
@@ -396,6 +456,7 @@ export function LifeOsApp({
       setApplicationDraft(null);
       setSettingsOpen(false);
       setSelectedDocument(null);
+      setRewardTaskId("");
       clearSelectedDriveFile(null);
       setMobileSidebarOpen(false);
     };
@@ -436,7 +497,10 @@ export function LifeOsApp({
     setQuickAction("application");
   };
 
-  const completeTask = async (taskId: string) => {
+  const finishTask = async (
+    taskId: string,
+    profile: TaskGamificationProfile | null,
+  ) => {
     const task = state.tasks.find((candidate) => candidate.id === taskId);
     if (!task || task.completed || taskActionId) return;
     setTaskActionId(taskId);
@@ -446,14 +510,34 @@ export function LifeOsApp({
         completed: true,
         progress: 100,
       });
-      updateState((current) => ({
-        ...current,
-        points: current.points + 15,
-        tasks: current.tasks.map((candidate) =>
+      const completedAt = updated.completedAt || new Date().toISOString();
+      updateState((current) => {
+        const tasks = current.tasks.map((candidate) =>
           candidate.id === taskId ? updated : candidate,
-        ),
-      }));
-      setNotice("In Google Tasks erledigt · 15 Punkte gesammelt");
+        );
+        const baseGamification =
+          current.gamification ??
+          createDefaultGamification(current.points, current.updatedAt);
+        const withProfile = profile
+          ? upsertTaskProfile(baseGamification, profile)
+          : baseGamification;
+        const reward = profile
+          ? applyTaskCompletionReward({
+              gamification: withProfile,
+              task: updated,
+              allTasks: tasks,
+              profile,
+              completedAt,
+            }).gamification
+          : markTaskCompletionForRhythm(withProfile, taskId);
+        return { ...withGamification(current, reward), tasks };
+      });
+      setRewardTaskId("");
+      setNotice(
+        profile
+          ? "In Google Tasks erledigt · Reward nachvollziehbar im Ledger gespeichert"
+          : "In Google Tasks erledigt · bewusst ohne Belohnung",
+      );
     } catch (caught) {
       setNotice(
         caught instanceof Error
@@ -467,6 +551,19 @@ export function LifeOsApp({
     } finally {
       setTaskActionId("");
     }
+  };
+
+  const completeTask = async (taskId: string) => {
+    const task = state.tasks.find((candidate) => candidate.id === taskId);
+    if (!task || task.completed || taskActionId) return;
+    const profile = state.gamification?.profiles.find(
+      (candidate) => candidate.taskId === taskId,
+    );
+    if (!profile?.confirmedAt) {
+      setRewardTaskId(taskId);
+      return;
+    }
+    await finishTask(taskId, profile);
   };
 
   const reopenTask = async (taskId: string) => {
@@ -485,7 +582,7 @@ export function LifeOsApp({
           candidate.id === taskId ? updated : candidate,
         ),
       }));
-      setNotice("Aufgabe in Google Tasks wieder geöffnet");
+      setNotice("Aufgabe in Google Tasks wieder geöffnet · Fortschritt bleibt erhalten");
     } catch (caught) {
       rememberGoogleError(caught, "Die Aufgabe konnte nicht geöffnet werden.");
     } finally {
@@ -519,14 +616,27 @@ export function LifeOsApp({
   };
 
   const markCostPaid = (costId: string) => {
+    const cost = state.costs.find((candidate) => candidate.id === costId);
+    if (!cost || cost.status === "paid") return;
+    const gamification =
+      state.gamification ?? createDefaultGamification(state.points, state.updatedAt);
+    const reward = applyCostPaymentReward(
+      gamification,
+      costId,
+      cost.title,
+      new Date().toISOString(),
+    );
     updateState((current) => ({
-      ...current,
-      points: current.points + 8,
-      costs: current.costs.map((cost) =>
-        cost.id === costId ? { ...cost, status: "paid" } : cost,
+      ...withGamification(current, reward.gamification),
+      costs: current.costs.map((candidate) =>
+        candidate.id === costId ? { ...candidate, status: "paid" } : candidate,
       ),
     }));
-    setNotice("Zahlung als erledigt markiert");
+    setNotice(
+      reward.entry
+        ? `Zahlung als erledigt markiert · ${reward.entry.xpDelta} XP`
+        : "Zahlung als erledigt markiert",
+    );
   };
 
   const saveTask = async (task: Task): Promise<boolean> => {
@@ -744,12 +854,17 @@ export function LifeOsApp({
         now,
         () => journalId,
       );
-      return {
+      const base = {
         ...current,
-        points: current.points + (result.created ? 10 : 0),
         rhythmDays: diaryRhythmDays(result.entries, today),
         journal: result.entries,
       };
+      if (!input.closeDay) return base;
+      const gamification =
+        current.gamification ??
+        createDefaultGamification(current.points, current.updatedAt);
+      const reward = applyDayCloseReward(gamification, today, now);
+      return withGamification(base, reward.gamification);
     });
     setNotice(
       input.closeDay
@@ -959,6 +1074,150 @@ export function LifeOsApp({
     }
   };
 
+  const changeRewardMode = (mode: RewardMode) => {
+    updateState((current) => {
+      const gamification =
+        current.gamification ??
+        createDefaultGamification(current.points, current.updatedAt);
+      return withGamification(current, { ...gamification, rewardMode: mode });
+    });
+    setNotice("Belohnungswelt gewechselt · Fortschritt vollständig erhalten");
+  };
+
+  const changeDailyAnchor = (taskId: string, role: AnchorRole | null) => {
+    updateState((current) => {
+      const task = current.tasks.find((candidate) => candidate.id === taskId);
+      if (!task) return current;
+      const gamification =
+        current.gamification ??
+        createDefaultGamification(current.points, current.updatedAt);
+      return withGamification(
+        current,
+        setDailyAnchor(
+          gamification,
+          task,
+          isoDateInput(),
+          role,
+          new Date().toISOString(),
+        ),
+      );
+    });
+  };
+
+  const changeAnchorDayStatus = (status: AnchorDayStatus) => {
+    updateState((current) => {
+      const gamification =
+        current.gamification ??
+        createDefaultGamification(current.points, current.updatedAt);
+      return withGamification(
+        current,
+        setAnchorDayStatus(gamification, isoDateInput(), status),
+      );
+    });
+    setNotice(
+      status === "PLANNED"
+        ? "Heute zählt als geplanter Ankertag"
+        : "Heute bleibt bewusst außerhalb des Rhythmus",
+    );
+  };
+
+  const buildRealm = (
+    district: WorldDistrictKey,
+    kind: WorldUpgradeKind,
+  ) => {
+    const gamification =
+      state.gamification ?? createDefaultGamification(state.points, state.updatedAt);
+    const result = buildWorldUpgrade(
+      gamification,
+      district,
+      kind,
+      new Date().toISOString(),
+    );
+    if (result.error) {
+      setNotice(result.error);
+      return;
+    }
+    updateState((current) => withGamification(current, result.gamification));
+    setNotice(result.entry?.description ?? "Welt ausgebaut");
+  };
+
+  const redeemReward = (rewardId: string) => {
+    const gamification =
+      state.gamification ?? createDefaultGamification(state.points, state.updatedAt);
+    const result = redeemPersonalReward(
+      gamification,
+      rewardId,
+      new Date().toISOString(),
+    );
+    if (result.error) {
+      setNotice(result.error);
+      return;
+    }
+    updateState((current) => withGamification(current, result.gamification));
+    setNotice("Persönliche Belohnung als eingelöst markiert · kein Kauf ausgelöst");
+  };
+
+  const saveRewardFeedback = (
+    ledgerEntryId: string,
+    presentation: RewardPresentation,
+    rating: RewardFeedbackRating,
+  ) => {
+    updateState((current) => {
+      const gamification =
+        current.gamification ??
+        createDefaultGamification(current.points, current.updatedAt);
+      return withGamification(
+        current,
+        recordRewardFeedback(
+          gamification,
+          ledgerEntryId,
+          presentation,
+          rating,
+          new Date().toISOString(),
+        ),
+      );
+    });
+    setNotice("Wirkung gespeichert · Anpassungen bleiben langsam und begrenzt");
+  };
+
+  const changeSurprises = (enabled: boolean) => {
+    updateState((current) => {
+      const gamification =
+        current.gamification ??
+        createDefaultGamification(current.points, current.updatedAt);
+      return withGamification(current, { ...gamification, surprisesEnabled: enabled });
+    });
+  };
+
+  const changeDrRoss = (enabled: boolean) => {
+    updateState((current) => {
+      const gamification =
+        current.gamification ??
+        createDefaultGamification(current.points, current.updatedAt);
+      const hasApprovedContent = gamification.approvedMessages.some(
+        (message) =>
+          message.active &&
+          message.contentType !== "GENERIC_AI" &&
+          Boolean(message.approvedAt) &&
+          Boolean(message.permissionReference.trim()),
+      );
+      return withGamification(current, {
+        ...gamification,
+        drRossEnabled: enabled && hasApprovedContent,
+      });
+    });
+  };
+
+  const saveGoal = (goal: Goal) => {
+    updateState((current) => {
+      const gamification =
+        current.gamification ??
+        createDefaultGamification(current.points, current.updatedAt);
+      return withGamification(current, addGoal(gamification, goal));
+    });
+    setNotice("Kampagne mit Meilensteinen gespeichert");
+  };
+
   const openDocument = (document: DocumentRef) => {
     setSelectedDocument(document);
   };
@@ -973,6 +1232,10 @@ export function LifeOsApp({
           : syncStatus === "konflikt"
             ? "Änderungskonflikt – neu laden"
           : "Auf diesem Gerät gespeichert";
+  const currentGamification =
+    state.gamification ?? createDefaultGamification(state.points, state.updatedAt);
+  const progressTotals = ledgerTotals(currentGamification.ledger);
+  const rewardTask = state.tasks.find((task) => task.id === rewardTaskId) ?? null;
 
   return (
     <div
@@ -1089,11 +1352,11 @@ export function LifeOsApp({
         <div className="sidebar-footer">
           <div className="level-block">
             <span>
-              Level {Math.floor(state.points / 250) + 1}
-              <strong>{state.points.toLocaleString("de-DE")} Punkte</strong>
+              Level {levelForXp(progressTotals.earnedXp)}
+              <strong>{progressTotals.earnedXp.toLocaleString("de-DE")} XP</strong>
             </span>
             <div className="level-track">
-              <span style={{ width: `${(state.points % 250) / 2.5}%` }} />
+              <span style={{ width: `${(progressTotals.earnedXp % 250) / 2.5}%` }} />
             </div>
           </div>
           <button
@@ -1179,6 +1442,21 @@ export function LifeOsApp({
               state={state}
               status={taskStatus}
               syncing={taskSyncing}
+            />
+          ) : null}
+          {view === "progress" ? (
+            <MomentumRealmView
+              onAddGoal={saveGoal}
+              onAnchorChange={changeDailyAnchor}
+              onAnchorDayStatusChange={changeAnchorDayStatus}
+              onBuild={buildRealm}
+              onDrRossChange={changeDrRoss}
+              onFeedback={saveRewardFeedback}
+              onModeChange={changeRewardMode}
+              onOpenTasks={() => navigate("tasks")}
+              onRedeem={redeemReward}
+              onSurprisesChange={changeSurprises}
+              state={state}
             />
           ) : null}
           {view === "calendar" ? (
@@ -1357,6 +1635,23 @@ export function LifeOsApp({
         />
       ) : null}
 
+      {rewardTask ? (
+        <RewardAssessmentDialog
+          busy={taskActionId === rewardTask.id}
+          existingProfile={
+            currentGamification.profiles.find(
+              (profile) => profile.taskId === rewardTask.id,
+            ) ?? null
+          }
+          onClose={() => {
+            if (!taskActionId) setRewardTaskId("");
+          }}
+          onCompleteWithoutReward={() => void finishTask(rewardTask.id, null)}
+          onConfirm={(profile) => void finishTask(rewardTask.id, profile)}
+          task={rewardTask}
+        />
+      ) : null}
+
       {notice ? (
         <div className="toast" role="status">
           <span>{notice}</span>
@@ -1486,6 +1781,10 @@ function TodayView({
   const moodShare =
     averageMood === null ? 0 : Math.round((averageMood / 5) * 100);
   const todayPlanning = planningReport?.days[0] || null;
+  const momentumRhythm = anchorRhythm(
+    state.gamification?.anchorDays ?? [],
+    isoDateInput(new Date(now).toISOString()),
+  );
   const planningNeedsAttention =
     !planningReport ||
     planningReport.state === "unknown" ||
@@ -1748,7 +2047,7 @@ function TodayView({
         </CoreKpiGroup>
 
         <CoreKpiGroup
-          copy="Tagesabschlüsse, Stimmung und persönlicher Rhythmus."
+          copy="Tagesabschlüsse, Stimmung und dein robuster 14-Tage-Rhythmus."
           eyebrow="Dein Tagesabschluss"
           id="journal-kpis-title"
           onOpen={() => onNavigate("journal")}
@@ -1773,20 +2072,13 @@ function TodayView({
             </div>
             <div className="kpi-rhythm-summary">
               <div>
-                <span>Tagesrhythmus</span>
-                <strong>{state.rhythmDays}/7 Tage</strong>
-                <div
-                  aria-label={`${state.rhythmDays} von 7 Tagen im Rhythmus`}
-                  className="kpi-rhythm-dots"
-                  role="img"
-                >
-                  {Array.from({ length: 7 }, (_, index) => (
-                    <i
-                      className={index < state.rhythmDays ? "done" : ""}
-                      key={index}
-                    />
-                  ))}
-                </div>
+                <span>14-Tage-Rhythmus</span>
+                <strong>
+                  {momentumRhythm.plannedDays ? `${momentumRhythm.percent} %` : "Noch offen"}
+                </strong>
+                <small>
+                  {momentumRhythm.fulfilledDays} von {momentumRhythm.plannedDays} geplanten Ankertagen
+                </small>
               </div>
               <div className="kpi-journal-count">
                 <strong>{state.journal.length}</strong>
@@ -2309,8 +2601,8 @@ function TasksView({
           title={`${state.tasks.filter((task) => task.completed).length} erledigte Aufgaben`}
         />
         <p>
-          Erledigte Aufgaben bleiben im Verlauf erhalten und fließen in deinen
-          Rhythmus ein.
+          Erledigte Aufgaben bleiben im Verlauf erhalten. Als Tagesanker geplante
+          Aufgaben fließen zusätzlich in deinen 14-Tage-Rhythmus ein.
         </p>
         {completed.length ? (
           <div className="completed-task-list">

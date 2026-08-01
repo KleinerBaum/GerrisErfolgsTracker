@@ -1,5 +1,6 @@
 import type { AppState, IntegrationConfig } from "./types";
 import { APPLICATION_RESEARCH } from "./application-research";
+import { createDefaultGamification } from "./gamification";
 
 const dayAt = (offset: number, hour = 9, minute = 0): string => {
   const date = new Date();
@@ -19,14 +20,16 @@ export const DEFAULT_INTEGRATIONS: IntegrationConfig = {
 };
 
 export function createDemoState(ownerName = "Gerri"): AppState {
+  const createdAt = new Date().toISOString();
   return {
     schemaVersion: 1,
     revision: 1,
-    updatedAt: new Date().toISOString(),
+    updatedAt: createdAt,
     ownerName,
     monthlyBudget: 1700,
     points: 1240,
     rhythmDays: 5,
+    gamification: createDefaultGamification(1240, createdAt),
     tasks: [
       {
         id: "task-focus",

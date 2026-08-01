@@ -68,6 +68,7 @@ import {
   type PlanningSourceType,
   type SyncRun,
 } from "./types";
+import { createDefaultGamification } from "./gamification";
 
 const NO_CALENDAR_ERROR = "Kalenderdaten konnten nicht geladen werden.";
 const MAX_CALENDARS_FOR_PLANNING = 12;
@@ -109,6 +110,7 @@ function emptyState(): AppState {
     monthlyBudget: 0,
     points: 0,
     rhythmDays: 0,
+    gamification: createDefaultGamification(0, new Date(0).toISOString()),
     tasks: [],
     pendingTaskImports: [],
     costs: [],

@@ -51,7 +51,7 @@ test("enthält den vollständigen privaten Organisationsbereich", async () => {
   assert.match(finance, /Revolut/);
   assert.equal((catalog.match(/\{ id: \d+, title:/g) ?? []).length, 48);
   assert.match(app, /DIN-A4-Ansicht/);
-  assert.match(layout, /og\.png/);
+  assert.match(layout, /og-momentum\.png/);
   assert.match(layout, /manifest\.webmanifest/);
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /aspect-ratio:\s*210\s*\/\s*297/);
@@ -99,12 +99,35 @@ test("stellt die Kernkennzahlen als sechs semantisch unterschiedliche Bereiche d
   assert.match(app, /className="kpi-folder-shape"/);
   assert.match(app, /className="kpi-application-pipeline"/);
   assert.match(app, /className="kpi-mood-ring"/);
-  assert.match(app, /className="kpi-rhythm-dots"/);
+  assert.match(app, /14-Tage-Rhythmus/);
   assert.match(css, /\.core-kpi-grid/);
   assert.match(css, /\.core-kpi-group/);
   assert.match(css, /grid-template-columns: repeat\(auto-fit/);
-  assert.match(layout, /og\.png/);
-  await access(new URL("public/og.png", root));
+  assert.match(layout, /og-momentum\.png/);
+  await access(new URL("public/og-momentum.png", root));
+});
+
+test("liefert Momentum Realm als wechselbares, transparentes Fortschrittssystem", async () => {
+  const [app, realm, engine, types, css] = await Promise.all([
+    readFile(new URL("components/life-os-app.tsx", root), "utf8"),
+    readFile(new URL("components/momentum-realm-view.tsx", root), "utf8"),
+    readFile(new URL("lib/gamification.ts", root), "utf8"),
+    readFile(new URL("lib/types.ts", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  assert.match(app, /label: "Momentum Realm"/);
+  assert.match(realm, /Ein Fortschrittssystem · drei Erlebnisweisen/);
+  assert.match(realm, /Klarpunkte-Katalog/);
+  assert.match(realm, /Lebende Chronik/);
+  assert.match(realm, /Urlaub, Ruhe und bewusst ausgesetzte Tage/);
+  assert.match(realm, /Bleibt aus, bis schriftlich freigegebene Inhalte/);
+  assert.match(engine, /idempotencyKey = `task:\$\{task\.id\}:completion`/);
+  assert.match(engine, /Math\.min\(\s*25,/);
+  assert.match(types, /RewardMode = \(typeof REWARD_MODES\)\[number\]/);
+  assert.match(types, /VerificationType = \(typeof VERIFICATION_TYPES\)\[number\]/);
+  assert.match(css, /\.momentum-hero/);
+  assert.match(css, /\.reward-assessment-dialog/);
 });
 
 test("macht das Tagebuch zum abwärtskompatiblen täglichen Abschluss", async () => {

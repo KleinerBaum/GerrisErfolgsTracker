@@ -1,6 +1,7 @@
 export type ViewKey =
   | "today"
   | "tasks"
+  | "progress"
   | "calendar"
   | "finance"
   | "documents"
@@ -36,6 +37,193 @@ export type Task = {
   assigned?: boolean;
   parentId?: string | null;
   confidential: boolean;
+};
+
+export const DIFFICULTY_BANDS = ["D1", "D2", "D3", "D4", "D5", "BOSS"] as const;
+export type DifficultyBand = (typeof DIFFICULTY_BANDS)[number];
+
+export const REWARD_MODES = ["POINTS", "FANTASY", "ADAPTIVE"] as const;
+export type RewardMode = (typeof REWARD_MODES)[number];
+
+export const MESSAGE_CATEGORIES = [
+  "DIRECT",
+  "SUPPORT",
+  "RECOVER",
+  "CELEBRATE",
+] as const;
+export type MessageCategory = (typeof MESSAGE_CATEGORIES)[number];
+
+export const VERIFICATION_TYPES = [
+  "USER_CONFIRM",
+  "CHECKLIST",
+  "ARTIFACT",
+  "GOOGLE_TASK",
+] as const;
+export type VerificationType = (typeof VERIFICATION_TYPES)[number];
+
+export type AnchorRole = "KEY" | "QUICK_WIN" | "SUPPLY";
+export type AnchorDayStatus = "PLANNED" | "REST" | "VACATION" | "PAUSED";
+export type RewardFeedbackRating = "MOTIVATING" | "NEUTRAL" | "DISTURBING";
+export type RewardPresentation = "POINTS" | "FANTASY" | "MESSAGE";
+export type ApprovedMessageType =
+  | "VERIFIED_QUOTE"
+  | "APPROVED_PARAPHRASE"
+  | "GENERIC_AI";
+export type WorldDistrictKey =
+  | "ARCHIVE"
+  | "TREASURY"
+  | "WORKSHOP"
+  | "LIBRARY"
+  | "HEARTH"
+  | "GARDEN";
+
+export type ComplexityAssessment = {
+  effort: number;
+  cognitiveLoad: number;
+  activationBarrier: number;
+  coordination: number;
+  weightedScore: number;
+  suggestedBand: DifficultyBand;
+  explanation: string;
+  source: "AI" | "FALLBACK";
+  suggestedAt: string;
+};
+
+export type TaskGamificationProfile = {
+  taskId: string;
+  difficultyBand: DifficultyBand;
+  assessment: ComplexityAssessment;
+  confirmedAt: string | null;
+  verificationType: VerificationType;
+  weeklyAnchor: boolean;
+  scheduledBlock: boolean;
+  verifiedMilestone: boolean;
+  anchorRole: AnchorRole | null;
+  anchorDate: string | null;
+};
+
+export type RewardLedgerEntryKind =
+  | "OPENING_BALANCE"
+  | "TASK_REWARD"
+  | "COST_REWARD"
+  | "DAY_CLOSE_REWARD"
+  | "BOSS_REWARD"
+  | "REWARD_REDEMPTION"
+  | "WORLD_BUILD";
+
+export type RewardLedgerEntry = {
+  id: string;
+  sequence: number;
+  engineVersion: 1;
+  idempotencyKey: string;
+  createdAt: string;
+  kind: RewardLedgerEntryKind;
+  sourceId: string;
+  budgetKey: string;
+  description: string;
+  difficultyBand: DifficultyBand | null;
+  verificationType: VerificationType | null;
+  district: WorldDistrictKey | null;
+  bonusPercent: number;
+  xpDelta: number;
+  energyDelta: number;
+  runeDelta: number;
+  blueprintDelta: number;
+  bossKeyDelta: number;
+  courageEmberDelta: number;
+};
+
+export type WorldUpgradeKind =
+  | "DECORATION"
+  | "ROOM"
+  | "BUILDING"
+  | "LANDMARK"
+  | "REGION";
+
+export type WorldUpgrade = {
+  id: string;
+  district: WorldDistrictKey;
+  kind: WorldUpgradeKind;
+  title: string;
+  unlockedAt: string;
+  surprise: boolean;
+};
+
+export type WorldState = {
+  upgrades: WorldUpgrade[];
+  eligibleCompletionsSinceSurprise: number;
+  surpriseHistory: string[];
+};
+
+export type ApprovedMessage = {
+  id: string;
+  category: MessageCategory;
+  contentType: ApprovedMessageType;
+  text: string;
+  approvedAt: string | null;
+  permissionReference: string;
+  active: boolean;
+};
+
+export type RewardFeedback = {
+  id: string;
+  ledgerEntryId: string;
+  presentation: RewardPresentation;
+  rating: RewardFeedbackRating;
+  createdAt: string;
+};
+
+export type PersonalReward = {
+  id: string;
+  title: string;
+  cost: number;
+  active: boolean;
+};
+
+export type GoalMilestone = {
+  id: string;
+  title: string;
+  completedAt: string | null;
+};
+
+export type Goal = {
+  id: string;
+  title: string;
+  definitionOfDone: string;
+  nextStep: string;
+  ifThenPlan: string;
+  milestones: GoalMilestone[];
+  completedAt: string | null;
+};
+
+export type AnchorDay = {
+  date: string;
+  status: AnchorDayStatus;
+  taskIds: string[];
+  completedTaskIds: string[];
+};
+
+export type AdaptiveRewardWeights = {
+  points: number;
+  fantasy: number;
+  lastAdjustedAt: string | null;
+};
+
+export type GamificationState = {
+  schemaVersion: 1;
+  rewardMode: RewardMode;
+  drRossEnabled: boolean;
+  surprisesEnabled: boolean;
+  quietHours: { start: string; end: string };
+  profiles: TaskGamificationProfile[];
+  ledger: RewardLedgerEntry[];
+  world: WorldState;
+  approvedMessages: ApprovedMessage[];
+  feedback: RewardFeedback[];
+  rewardCatalog: PersonalReward[];
+  goals: Goal[];
+  anchorDays: AnchorDay[];
+  adaptiveWeights: AdaptiveRewardWeights;
 };
 
 export const COST_CATEGORIES = [
@@ -546,6 +734,7 @@ export type AppState = {
   monthlyBudget: number;
   points: number;
   rhythmDays: number;
+  gamification?: GamificationState;
   tasks: Task[];
   pendingTaskImports?: Task[];
   costs: Cost[];

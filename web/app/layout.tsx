@@ -4,9 +4,9 @@ import type { ReactNode } from "react";
 
 import "./globals.css";
 
-const title = "Gerris Kompass · Heute im Blick";
+const title = "Gerris Kompass · Momentum Realm";
 const description =
-  "Privater Überblick über Ziele, Termine, Finanzen, Unterlagen, Bewerbungen und den täglichen Tagesabschluss.";
+  "Aufgaben, Termine, Finanzen, Bewerbungen und Tagebuch im Blick – mit transparenten Klarpunkten, lebender Chronik und adaptivem Fortschritt.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -33,10 +33,10 @@ export async function generateMetadata(): Promise<Metadata> {
       url: baseUrl,
       images: [
         {
-          url: `${baseUrl}/og.png`,
-          width: 1731,
-          height: 908,
-          alt: "Gerris Kompass – Kalender, Tages-Guides, Ziele, Finanzen, Unterlagen, Bewerbungen und Tagebuch im Blick",
+          url: `${baseUrl}/og-momentum.png`,
+          width: 1659,
+          height: 948,
+          alt: "Gerris Kompass – Momentum Realm mit Klarpunkten, lebender Chronik und adaptiver Belohnungswelt",
         },
       ],
     },
@@ -44,7 +44,7 @@ export async function generateMetadata(): Promise<Metadata> {
       card: "summary_large_image",
       title,
       description,
-      images: [`${baseUrl}/og.png`],
+      images: [`${baseUrl}/og-momentum.png`],
     },
   };
 }

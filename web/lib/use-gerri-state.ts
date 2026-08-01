@@ -6,6 +6,7 @@ import { COST_CATEGORIES } from "./finance-data";
 import { mergeApplicationResearch } from "./application-research";
 import { diaryRhythmDays, normalizeDiaryEntries } from "./diary";
 import { isoDateInput } from "./format";
+import { ledgerTotals, normalizeGamificationState } from "./gamification";
 import type { AppState, CostCategory, SyncStatus } from "./types";
 
 const STORAGE_KEY = "gerris-kompass-state-v1";
@@ -33,6 +34,11 @@ function normalizeState(value: AppState): AppState {
     pendingTaskImports?: AppState["pendingTaskImports"];
   };
   const journal = normalizeDiaryEntries(candidate.journal);
+  const gamification = normalizeGamificationState(
+    candidate.gamification,
+    finiteOrZero(candidate.points),
+    candidate.updatedAt,
+  );
   return {
     ...candidate,
     pendingTaskImports: Array.isArray(candidate.pendingTaskImports)
@@ -65,6 +71,8 @@ function normalizeState(value: AppState): AppState {
         ? candidate.masterCvDocumentId
         : null,
     journal,
+    gamification,
+    points: ledgerTotals(gamification.ledger).balanceXp,
     rhythmDays: diaryRhythmDays(journal, isoDateInput()),
   };
 }
