@@ -1,5 +1,6 @@
 import type { AppState, IntegrationConfig } from "./types";
 import { APPLICATION_RESEARCH } from "./application-research";
+import { createDefaultDashboardSettings } from "./dashboard";
 import { createDefaultGamification } from "./gamification";
 
 const dayAt = (offset: number, hour = 9, minute = 0): string => {
@@ -220,6 +221,8 @@ export function createDemoState(ownerName = "Gerri"): AppState {
       artifacts: [],
     })),
     masterCvDocumentId: null,
+    contacts: [],
+    dashboardSettings: createDefaultDashboardSettings(1700),
     journal: [
       {
         id: "journal-1",

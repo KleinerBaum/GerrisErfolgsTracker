@@ -127,9 +127,10 @@ test("Tagebuchanalyse speichert nicht, sucht nicht im Web und mutiert nur Vorsch
 });
 
 test("ersetzt kalenderbezogene Frei-Leertexte appweit durch belastbare Lücken", async () => {
-  const [calendar, app, banner] = await Promise.all([
+  const [calendar, app, today, banner] = await Promise.all([
     readFile(new URL("components/calendar-view.tsx", root), "utf8"),
     readFile(new URL("components/life-os-app.tsx", root), "utf8"),
+    readFile(new URL("components/today-view.tsx", root), "utf8"),
     readFile(new URL("components/planning-health-banner.tsx", root), "utf8"),
   ]);
   assert.doesNotMatch(calendar, /Die nächsten 31 Tage sind frei/);
@@ -137,6 +138,6 @@ test("ersetzt kalenderbezogene Frei-Leertexte appweit durch belastbare Lücken",
   assert.doesNotMatch(calendar, />Frei</);
   assert.doesNotMatch(app, /"Frei"\s*\)/);
   assert.match(calendar, /Das ist eine dringende Planungslücke, keine Freizeit/);
-  assert.match(app, /Planungslücke mit Top-Priorität/);
+  assert.match(app + today, /Planungslücke mit Top-Priorität/);
   assert.match(banner, /Dringend & wichtig/);
 });

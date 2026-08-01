@@ -5,7 +5,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type CSSProperties,
   type FormEvent,
 } from "react";
 
@@ -23,15 +22,19 @@ import {
 } from "./drive-explorer";
 import { FinanceView } from "./finance-view";
 import { ApplicationsView } from "./applications-view";
+import { ContactsView } from "./contacts-view";
 import { DiaryView } from "./diary-view";
 import { CalendarView as CalendarWorkspace } from "./calendar-view";
+import { TodayView } from "./today-view";
 import { PlanningHealthBanner } from "./planning-health-banner";
 import { RewardAssessmentDialog } from "./reward-assessment-dialog";
 import { createDemoState } from "../lib/demo-data";
+import {
+  DASHBOARD_KPI_DEFINITIONS,
+} from "../lib/dashboard";
 import { COST_TEMPLATES } from "../lib/finance-catalog";
 import { diaryRhythmDays, upsertDiaryEntry } from "../lib/diary";
 import {
-  anchorRhythm,
   applyCostPaymentReward,
   applyDayCloseReward,
   applyTaskCompletionReward,
@@ -46,13 +49,11 @@ import {
 } from "../lib/gamification";
 import {
   calendarDayDifference,
-  formatCurrency,
   formatDate,
   formatDateLong,
   formatRelativeDate,
   formatTime,
   isoDateInput,
-  isSameCalendarMonth,
 } from "../lib/format";
 import {
   driveDownloadUrl,
@@ -110,6 +111,8 @@ import {
   type TaskGamificationProfile,
   type TaskQuadrant,
   type DayIntentKind,
+  type DashboardKpiKey,
+  type DashboardSettings,
   type OpenTopic,
   type PlanningHealthReport,
   type ViewKey,
@@ -133,6 +136,7 @@ const NAV_ITEMS: Array<{
     short: "Bewerbung",
     mark: "B",
   },
+  { key: "contacts", label: "Kontakte", short: "Kontakte", mark: "P" },
   { key: "journal", label: "Tagebuch", short: "Tagebuch", mark: "T" },
 ];
 
@@ -143,6 +147,7 @@ const VIEW_TITLES: Record<ViewKey, string> = {
   finance: "Kosten im Überblick",
   documents: "Wichtige Unterlagen",
   applications: "Bewerbungen & nächste Schritte",
+  contacts: "Kontakte & Verbindungen",
   journal: "Tagebuch & Tagesabschluss",
 };
 
@@ -213,6 +218,7 @@ export function LifeOsApp({
   const [applicationDraft, setApplicationDraft] =
     useState<ApplicationProcess | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [contactCreateRequest, setContactCreateRequest] = useState(0);
   const [milestoneCelebration, setMilestoneCelebration] = useState<{
     title: string;
     detail: string;
@@ -794,6 +800,10 @@ export function LifeOsApp({
     }));
   };
 
+  const updateContacts = (contacts: AppState["contacts"]) => {
+    updateState((current) => ({ ...current, contacts }));
+  };
+
   const saveMasterCv = (document: DocumentRef) => {
     updateState((current) => ({
       ...current,
@@ -1173,6 +1183,20 @@ export function LifeOsApp({
     });
   };
 
+  const changeDashboardKpi = (
+    key: DashboardKpiKey,
+    changes: Partial<Pick<DashboardSettings["kpis"][number], "enabled" | "target">>,
+  ) => {
+    updateState((current) => ({
+      ...current,
+      dashboardSettings: {
+        kpis: current.dashboardSettings.kpis.map((kpi) =>
+          kpi.key === key ? { ...kpi, ...changes } : kpi,
+        ),
+      },
+    }));
+  };
+
   const openDocument = (document: DocumentRef) => {
     setSelectedDocument(document);
   };
@@ -1395,25 +1419,26 @@ export function LifeOsApp({
           </div>
         </header>
 
-        <PlanningHealthBanner
-          error={planningError}
-          loading={planningLoading}
-          onNavigate={navigate}
-          onRefresh={() => void refreshPlanning("manual")}
-          report={planningReport}
-        />
+        {view !== "today" ? (
+          <PlanningHealthBanner
+            error={planningError}
+            loading={planningLoading}
+            onNavigate={navigate}
+            onRefresh={() => void refreshPlanning("manual")}
+            report={planningReport}
+          />
+        ) : null}
 
         <main id="main-content">
           {view === "today" ? (
             <TodayView
               externalEvents={externalEvents}
-              integrations={integrations}
               onCompleteTask={completeTask}
               onNavigate={navigate}
+              onOpenSettings={() => setSettingsOpen(true)}
               planningReport={planningReport}
               state={state}
               taskStatus={taskStatus}
-              workspaceStatus={workspaceStatus}
             />
           ) : null}
           {view === "tasks" ? (
@@ -1488,6 +1513,14 @@ export function LifeOsApp({
               toast={setNotice}
             />
           ) : null}
+          {view === "contacts" ? (
+            <ContactsView
+              contacts={state.contacts}
+              createRequest={contactCreateRequest}
+              onChange={updateContacts}
+              toast={setNotice}
+            />
+          ) : null}
           {view === "journal" ? (
             <DiaryView
               externalEvents={externalEvents}
@@ -1515,6 +1548,8 @@ export function LifeOsApp({
         onClick={() =>
           view === "applications"
             ? openQuickAction("application")
+            : view === "contacts"
+              ? setContactCreateRequest((current) => current + 1)
             : view === "documents"
               ? openQuickAction("upload")
               : openCapture(
@@ -1532,6 +1567,8 @@ export function LifeOsApp({
         <span>+</span>
         {view === "applications"
           ? "Bewerbung erstellen"
+          : view === "contacts"
+            ? "Kontakt anlegen"
           : view === "documents"
             ? "Datei hochladen"
           : view === "journal"
@@ -1595,12 +1632,14 @@ export function LifeOsApp({
 
       {settingsOpen ? (
         <SettingsDialog
+          dashboardSettings={state.dashboardSettings}
           gamification={currentGamification}
           integrations={integrations}
           onAdaptiveFocusChange={changeAdaptiveFocus}
           onCelebrationsChange={changeCelebrations}
           onClose={() => setSettingsOpen(false)}
           onDrRossChange={changeDrRoss}
+          onDashboardKpiChange={changeDashboardKpi}
           onExport={exportBackup}
           onImport={(raw) => {
             try {
@@ -1781,647 +1820,6 @@ function SidebarRewardProgress({
   );
 }
 
-type TodayViewProps = {
-  state: AppState;
-  externalEvents: CalendarEvent[];
-  integrations: IntegrationConfig;
-  taskStatus: GoogleTasksStatus | null;
-  workspaceStatus: GoogleWorkspaceStatus | null;
-  planningReport: PlanningHealthReport | null;
-  onCompleteTask: (taskId: string) => Promise<void>;
-  onNavigate: (view: ViewKey) => void;
-};
-
-function TodayView({
-  state,
-  externalEvents,
-  integrations,
-  taskStatus,
-  workspaceStatus,
-  planningReport,
-  onCompleteTask,
-  onNavigate,
-}: TodayViewProps) {
-  const [now] = useState(() => Date.now());
-  const openTasks = state.tasks.filter((task) => !task.completed);
-  const focusTasks = openTasks
-    .filter((task) => task.quadrant === "do" || task.quadrant === "plan")
-    .sort((left, right) =>
-      (left.dueAt ?? "9999").localeCompare(right.dueAt ?? "9999"),
-    )
-    .slice(0, 3);
-  const upcomingCosts = state.costs
-    .filter(
-      (cost) =>
-        cost.status !== "paid" &&
-        daysFromNow(cost.dueAt) >= 0 &&
-        daysFromNow(cost.dueAt) <= 14,
-    )
-    .sort((left, right) => left.dueAt.localeCompare(right.dueAt));
-  const paidThisMonth = state.costs
-    .filter(
-      (cost) =>
-        cost.status === "paid" &&
-        isSameCalendarMonth(cost.dueAt, now),
-    )
-    .reduce((sum, cost) => sum + cost.amount, 0);
-  const events = [...externalEvents, ...state.calendarEvents]
-    .filter((event) => new Date(event.endAt).getTime() >= now)
-    .sort((left, right) => left.startAt.localeCompare(right.startAt));
-  const nextEvents = events.slice(0, 3);
-  const focusMinutes = focusTasks.reduce(
-    (sum, task) => sum + task.estimateMinutes,
-    0,
-  );
-  const todayEvents = events.filter(
-    (event) => calendarDayDifference(event.startAt, now) === 0,
-  );
-  const weekEvents = events.filter((event) => {
-    const difference = calendarDayDifference(event.startAt, now);
-    return difference >= 0 && difference < 7;
-  });
-  const openCosts = state.costs.filter((cost) => cost.status !== "paid");
-  const documentFiles = state.documents.filter(
-    (document) => document.kind !== "folder",
-  );
-  const documentFolders = state.documents.filter(
-    (document) => document.kind === "folder",
-  );
-  const documentsToReview = state.documents.filter((document) => {
-    const markedForReview = document.tags.some(
-      (tag) => tag.trim().toLocaleLowerCase("de-DE") === "prüfen",
-    );
-    const reviewIsNear =
-      Boolean(document.reviewAt) &&
-      daysFromNow(document.reviewAt ?? "") >= 0 &&
-      daysFromNow(document.reviewAt ?? "") <= 14;
-    return markedForReview || reviewIsNear;
-  });
-  const latestDocument = [...state.documents].sort((left, right) =>
-    right.modifiedAt.localeCompare(left.modifiedAt),
-  )[0];
-  const shortlistedApplications = state.applications.filter(
-    (application) =>
-      application.shortlisted &&
-      !["closed", "rejected", "withdrawn"].includes(application.status),
-  );
-  const activeApplications = state.applications.filter((application) =>
-    ["draft", "submitted", "interview", "offer"].includes(application.status),
-  );
-  const interviewApplications = state.applications.filter(
-    (application) => application.status === "interview",
-  );
-  const journalThisWeek = state.journal.filter((entry) => {
-    const entryDate = new Date(`${entry.date}T12:00:00`);
-    const difference = now - entryDate.getTime();
-    return difference >= 0 && difference < 7 * 86_400_000;
-  });
-  const averageMood = state.journal.length
-    ? state.journal.reduce((sum, entry) => sum + entry.mood, 0) /
-      state.journal.length
-    : null;
-  const focusShare = openTasks.length
-    ? Math.round((focusTasks.length / openTasks.length) * 100)
-    : 0;
-  const upcomingCostTotal = upcomingCosts.reduce(
-    (sum, cost) => sum + cost.amount,
-    0,
-  );
-  const averageMoodLabel =
-    averageMood === null
-      ? "—"
-      : averageMood.toFixed(1).replace(".", ",");
-  const moodShare =
-    averageMood === null ? 0 : Math.round((averageMood / 5) * 100);
-  const todayPlanning = planningReport?.days[0] || null;
-  const momentumRhythm = anchorRhythm(
-    state.gamification?.anchorDays ?? [],
-    isoDateInput(new Date(now).toISOString()),
-  );
-  const planningNeedsAttention =
-    !planningReport ||
-    planningReport.state === "unknown" ||
-    planningReport.state === "stale" ||
-    planningReport.criticalCount > 0;
-
-  return (
-    <div className="view-stack">
-      <section className="welcome-copy">
-        <div className="welcome-message">
-          <span className="eyebrow">Guten Tag, {state.ownerName}</span>
-          <h1 tabIndex={-1}>Ein klarer Tag beginnt mit dem nächsten Schritt.</h1>
-          <p>
-            {focusTasks.length
-              ? `${focusTasks.length} sinnvolle Aufgaben, etwa ${focusMinutes} Minuten Fokus und ${upcomingCosts.length} anstehende Zahlungen sind für dich vorbereitet.`
-              : todayPlanning?.state === "intentionally_free"
-                ? "Heute wurde bei frischen Kalenderdaten ausdrücklich als bewusst frei, Urlaub oder Krankheit bestätigt."
-                : "Für heute fehlt noch ein bestätigter Plan. Kläre zuerst Kalenderstand, Verpflichtungen und mindestens einen echten Planungsblock."}
-          </p>
-        </div>
-        <div className="welcome-actions">
-          <button
-            className="button button-primary"
-            onClick={() => onNavigate("tasks")}
-            type="button"
-          >
-            Fokus öffnen
-          </button>
-          <button
-            className="button button-soft"
-            onClick={() => onNavigate("calendar")}
-            type="button"
-          >
-            Tag ansehen
-          </button>
-        </div>
-      </section>
-
-      <section
-        className={`today-planning-status ${planningNeedsAttention ? "is-urgent" : ""}`}
-        aria-label="Verlässlichkeit des heutigen Plans"
-      >
-        <div>
-          <span className="eyebrow">Administrative Grundlage</span>
-          <strong>
-            {planningReport?.title || "Planungsstatus unbekannt – sofort klären"}
-          </strong>
-          <p>
-            {planningReport?.message ||
-              "Kein leerer Kalender wird als Freizeit interpretiert, solange Vollständigkeit und Aktualität nicht bestätigt sind."}
-          </p>
-        </div>
-        <button
-          className="button button-primary"
-          onClick={() => onNavigate("calendar")}
-          type="button"
-        >
-          {planningNeedsAttention ? "Lücken jetzt klären" : "Planung ansehen"}
-        </button>
-      </section>
-
-      <section className="core-kpi-grid" aria-label="Kernkennzahlen nach Bereichen">
-        <CoreKpiGroup
-          copy={`Beginne mit „${focusTasks[0]?.title ?? "einem kleinen Schritt"}“.`}
-          eyebrow="Gerri Coach"
-          id="tasks-kpis-title"
-          onOpen={() => onNavigate("tasks")}
-          title="Ziele & Fokus"
-          tone="goals"
-        >
-          <div className="kpi-goals-layout">
-            <div
-              aria-label={`${focusShare} Prozent der offenen Aufgaben sind im Fokus`}
-              className="kpi-target-ring"
-              role="img"
-              style={{ "--target-progress": `${focusShare}%` } as CSSProperties}
-            >
-              <div>
-                <span>Im Fokus</span>
-                <strong>{focusTasks.length}</strong>
-                <small>von {openTasks.length} offen</small>
-              </div>
-            </div>
-            <dl className="kpi-support-stats">
-              <div>
-                <dt>Offene Aufgaben</dt>
-                <dd>{openTasks.length}</dd>
-                <small>In Google Tasks</small>
-              </div>
-              <div>
-                <dt>Fokuszeit</dt>
-                <dd>{focusMinutes} Min.</dd>
-                <small>Für die nächsten Schritte</small>
-              </div>
-            </dl>
-          </div>
-        </CoreKpiGroup>
-
-        <CoreKpiGroup
-          copy={
-            planningNeedsAttention
-              ? "Leere oder unzuverlässige Zeiträume sind Planungslücken, keine Freizeit."
-              : "Termine und Fokuszeiten sind frisch und vollständig geprüft."
-          }
-          eyebrow="Deine Zeit"
-          id="calendar-kpis-title"
-          onOpen={() => onNavigate("calendar")}
-          title="Kalender"
-          tone="calendar"
-        >
-          <div className="kpi-calendar-layout">
-            <div className="kpi-deadline">
-              <span>Nächster Termin</span>
-              <strong>
-                {events[0] ? (
-                  <time dateTime={events[0].startAt}>
-                    {formatTime(events[0].startAt)}
-                  </time>
-                ) : todayPlanning?.state === "intentionally_free" ? (
-                  "Bewusst frei"
-                ) : (
-                  "Ungeplant"
-                )}
-              </strong>
-              <small>
-                {events[0]
-                  ? `${formatRelativeDate(events[0].startAt)} · ${events[0].title}`
-                  : todayPlanning?.state === "intentionally_free"
-                    ? "Ausdrücklich bestätigt"
-                    : "Planungslücke mit Top-Priorität"}
-              </small>
-            </div>
-            <dl className="kpi-calendar-counts">
-              <div>
-                <dt>Heute</dt>
-                <dd>{todayEvents.length}</dd>
-                <small>Termine und Fokus</small>
-              </div>
-              <div>
-                <dt>7 Tage</dt>
-                <dd>{weekEvents.length}</dd>
-                <small>Geplante Termine</small>
-              </div>
-            </dl>
-          </div>
-        </CoreKpiGroup>
-
-        <CoreKpiGroup
-          copy="Anstehende Zahlungen auf einen Blick."
-          eyebrow="Privat"
-          id="finance-kpis-title"
-          onOpen={() => onNavigate("finance")}
-          title="Finanzen"
-          tone="finance"
-        >
-          <div className="kpi-finance-layout">
-            <div className="kpi-money-primary">
-              <span>Nächste 14 Tage</span>
-              <strong>{formatCurrency(upcomingCostTotal)}</strong>
-              <small>{upcomingCosts.length} anstehende Zahlungen</small>
-              <div
-                aria-hidden="true"
-                className={`kpi-money-segments${upcomingCosts.length ? "" : " empty"}`}
-              >
-                {upcomingCosts.slice(0, 5).map((cost) => (
-                  <i
-                    key={cost.id}
-                    style={{ flexGrow: Math.max(cost.amount, 1) }}
-                  />
-                ))}
-              </div>
-            </div>
-            <dl className="kpi-ledger">
-              <div>
-                <dt>Offen</dt>
-                <dd>{openCosts.length}</dd>
-                <small>Geplant oder fällig</small>
-              </div>
-              <div>
-                <dt>Bezahlt im Monat</dt>
-                <dd>{formatCurrency(paidThisMonth)}</dd>
-                <small>Bereits dokumentiert</small>
-              </div>
-            </dl>
-          </div>
-        </CoreKpiGroup>
-
-        <CoreKpiGroup
-          copy="Ablage, Prüfpunkte und Aktualität."
-          eyebrow="Deine Ablage"
-          id="documents-kpis-title"
-          onOpen={() => onNavigate("documents")}
-          title="Unterlagen"
-          tone="documents"
-        >
-          <div className="kpi-documents-layout">
-            <div className="kpi-folder-summary">
-              <div aria-hidden="true" className="kpi-folder-shape">
-                <i />
-                <i />
-                <i />
-              </div>
-              <div>
-                <strong>{documentFiles.length}</strong>
-                <span>Unterlagen</span>
-                <small>{documentFolders.length} Ordner verknüpft</small>
-              </div>
-            </div>
-            <dl className="kpi-document-facts">
-              <div>
-                <dt>Zu prüfen</dt>
-                <dd>{documentsToReview.length}</dd>
-                <small>Markiert oder terminiert</small>
-              </div>
-              <div>
-                <dt>Zuletzt aktualisiert</dt>
-                <dd>
-                  {latestDocument ? formatDate(latestDocument.modifiedAt) : "—"}
-                </dd>
-                <small>{latestDocument?.name ?? "Noch keine Unterlage"}</small>
-              </div>
-            </dl>
-          </div>
-        </CoreKpiGroup>
-
-        <CoreKpiGroup
-          copy="Shortlist, aktive Prozesse und Gespräche."
-          eyebrow="Deine Chancen"
-          id="applications-kpis-title"
-          onOpen={() => onNavigate("applications")}
-          title="Bewerbungen"
-          tone="applications"
-        >
-          <ol
-            aria-label="Bewerbungsprozess von der Shortlist bis zum Gespräch"
-            className="kpi-application-pipeline"
-          >
-            <li>
-              <div>
-                <span>Vorgemerkt</span>
-                <small>Auf deiner Shortlist</small>
-              </div>
-              <strong>{shortlistedApplications.length}</strong>
-            </li>
-            <li>
-              <div>
-                <span>In Bearbeitung</span>
-                <small>Entwurf bis Angebot</small>
-              </div>
-              <strong>{activeApplications.length}</strong>
-            </li>
-            <li>
-              <div>
-                <span>Gespräche</span>
-                <small>Aktuelle Interviews</small>
-              </div>
-              <strong>{interviewApplications.length}</strong>
-            </li>
-          </ol>
-        </CoreKpiGroup>
-
-        <CoreKpiGroup
-          copy="Tagesabschlüsse, Stimmung und dein robuster 14-Tage-Rhythmus."
-          eyebrow="Dein Tagesabschluss"
-          id="journal-kpis-title"
-          onOpen={() => onNavigate("journal")}
-          title="Tagebuch"
-          tone="journal"
-        >
-          <div className="kpi-journal-layout">
-            <div
-              aria-label={
-                averageMood === null
-                  ? "Noch keine Stimmung erfasst"
-                  : `Durchschnittliche Stimmung ${averageMoodLabel} von 5`
-              }
-              className="kpi-mood-ring"
-              role="img"
-              style={{ "--mood-progress": `${moodShare}%` } as CSSProperties}
-            >
-              <div>
-                <strong>{averageMoodLabel}</strong>
-                <span>von 5</span>
-              </div>
-            </div>
-            <div className="kpi-rhythm-summary">
-              <div>
-                <span>14-Tage-Rhythmus</span>
-                <strong>
-                  {momentumRhythm.plannedDays ? `${momentumRhythm.percent} %` : "Noch offen"}
-                </strong>
-                <small>
-                  {momentumRhythm.fulfilledDays} von {momentumRhythm.plannedDays} geplanten Ankertagen
-                </small>
-              </div>
-              <div className="kpi-journal-count">
-                <strong>{state.journal.length}</strong>
-                <span>Einträge</span>
-                <small>{journalThisWeek.length} in 7 Tagen</small>
-              </div>
-            </div>
-          </div>
-        </CoreKpiGroup>
-      </section>
-
-      <div className="content-grid two-one">
-        <section className="panel" aria-labelledby="focus-title">
-          <PanelHeading
-            eyebrow="Jetzt wichtig"
-            title="Deine Fokusliste"
-            action={
-              <button onClick={() => onNavigate("tasks")} type="button">
-                Alle Aufgaben
-              </button>
-            }
-          />
-          <div className="focus-list">
-            {focusTasks.map((task, index) => (
-              <article className="focus-row" key={task.id}>
-                <button
-                  aria-label={`${task.title} erledigen`}
-                  className="complete-control"
-                  disabled={!taskStatus?.authorized}
-                  onClick={() => void onCompleteTask(task.id)}
-                  title={
-                    taskStatus?.authorized
-                      ? "In Google Tasks erledigen"
-                      : "Zuerst Google Tasks verbinden"
-                  }
-                  type="button"
-                >
-                  {index + 1}
-                </button>
-                <div>
-                  <strong>{task.title}</strong>
-                  <span>
-                    {task.taskListTitle || LIFE_AREA_LABELS[task.area]} ·{" "}
-                    {task.dueAt ? formatRelativeDate(task.dueAt) : "Ohne Frist"} ·{" "}
-                    {task.estimateMinutes} Min.
-                  </span>
-                </div>
-                <div
-                  aria-label={`${task.progress} Prozent Fortschritt`}
-                  className="task-progress"
-                >
-                  <span style={{ width: `${task.progress}%` }} />
-                </div>
-              </article>
-            ))}
-            {!focusTasks.length ? (
-              <EmptyState
-                copy="Deine Fokusliste ist frei. Plane einen kleinen nächsten Schritt."
-                title="Heute ist Platz."
-              />
-            ) : null}
-          </div>
-        </section>
-
-        <section className="panel" aria-labelledby="payments-title">
-          <PanelHeading
-            eyebrow="Privat"
-            title="Zahlungen im Blick"
-            action={
-              <button onClick={() => onNavigate("finance")} type="button">
-                Finanzen
-              </button>
-            }
-          />
-          <div className="payment-mini-list">
-            {upcomingCosts.slice(0, 4).map((cost) => (
-              <article key={cost.id}>
-                <span
-                  className={
-                    cost.status === "due" ? "status-dot urgent" : "status-dot"
-                  }
-                />
-                <div>
-                  <strong>{cost.title}</strong>
-                  <small>{formatRelativeDate(cost.dueAt)}</small>
-                </div>
-                <b>{formatCurrency(cost.amount)}</b>
-              </article>
-            ))}
-            {!upcomingCosts.length ? (
-              <p className="quiet-copy">Keine Zahlungen in den nächsten 14 Tagen.</p>
-            ) : null}
-          </div>
-        </section>
-      </div>
-
-      <div className="content-grid equal">
-        <section className="panel" aria-labelledby="agenda-title">
-          <PanelHeading
-            eyebrow="Zeit"
-            title="Deine nächste Agenda"
-            action={
-              <button onClick={() => onNavigate("calendar")} type="button">
-                Kalender
-              </button>
-            }
-          />
-          <div className="timeline-list">
-            {nextEvents.map((event) => (
-              <article key={event.id}>
-                <time dateTime={event.startAt}>
-                  {formatTime(event.startAt)}
-                </time>
-                <span />
-                <div>
-                  <strong>{event.title}</strong>
-                  <small>
-                    {formatRelativeDate(event.startAt)} ·{" "}
-                    {event.source === "google" ? "Google Kalender" : "Kompass"}
-                  </small>
-                </div>
-              </article>
-            ))}
-            {!nextEvents.length ? (
-              <p className="quiet-copy">Dein nächster Termin erscheint hier.</p>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="panel integration-overview" aria-labelledby="sources-title">
-          <PanelHeading eyebrow="Verbunden" title="Deine Quellen" />
-          <IntegrationRow
-            action={
-              taskStatus?.authorized
-                ? "Öffnen"
-                : taskStatus?.configured
-                  ? "Verbinden"
-                  : "Ansehen"
-            }
-            detail="Führende Quelle für alle Aufgaben"
-            href={
-              taskStatus?.authorized
-                ? "https://tasks.google.com/"
-                : taskStatus?.configured && taskStatus.connectUrl
-                  ? taskStatus.connectUrl
-                  : "https://tasks.google.com/"
-            }
-            label="Google Tasks"
-            status={taskStatus?.authorized ? "aktuell" : "bereit"}
-          />
-          <IntegrationRow
-            action="Öffnen"
-            detail="Persönlich · Dateien bleiben in Drive"
-            href={integrations.driveFolderUrl}
-            label="Google Drive"
-            status={
-              workspaceStatus?.capabilities.drive.granted
-                ? "verknüpft"
-                : "bereit"
-            }
-          />
-          <IntegrationRow
-            action="Ansehen"
-            detail={integrations.calendarId}
-            href={integrations.calendarEmbedUrl}
-            label="Google Kalender"
-            status={
-              workspaceStatus?.capabilities.calendar.granted
-                ? "aktuell"
-                : "bereit"
-            }
-          />
-          <IntegrationRow
-            action="Postfach"
-            detail={integrations.gmailAccount}
-            href={`https://mail.google.com/mail/u/${encodeURIComponent(integrations.gmailAccount)}/#inbox`}
-            label="Gmail"
-            status={
-              workspaceStatus?.capabilities.gmail.granted
-                ? "Entwürfe"
-                : "bereit"
-            }
-          />
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function CoreKpiGroup({
-  id,
-  eyebrow,
-  title,
-  copy,
-  tone,
-  onOpen,
-  children,
-}: {
-  id: string;
-  eyebrow: string;
-  title: string;
-  copy: string;
-  tone: string;
-  onOpen: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <section
-      aria-labelledby={id}
-      className={`core-kpi-group core-kpi-${tone}`}
-    >
-      <header className="core-kpi-header">
-        <div>
-          <span className="eyebrow">{eyebrow}</span>
-          <h2 id={id}>{title}</h2>
-          <p>{copy}</p>
-        </div>
-        <button
-          aria-label={`${title} öffnen`}
-          onClick={onOpen}
-          type="button"
-        >
-          Öffnen <span aria-hidden="true">→</span>
-        </button>
-      </header>
-      <div className="core-kpi-visual">{children}</div>
-    </section>
-  );
-}
-
 function PanelHeading({
   eyebrow,
   title,
@@ -2448,34 +1846,6 @@ function EmptyState({ title, copy }: { title: string; copy: string }) {
       <strong>{title}</strong>
       <p>{copy}</p>
     </div>
-  );
-}
-
-function IntegrationRow({
-  label,
-  detail,
-  status,
-  action,
-  href,
-}: {
-  label: string;
-  detail: string;
-  status: string;
-  action: string;
-  href: string;
-}) {
-  return (
-    <article className="integration-row">
-      <span className="integration-initial">{label.slice(0, 1)}</span>
-      <div>
-        <strong>{label}</strong>
-        <small>{detail}</small>
-      </div>
-      <span className="status-chip">{status}</span>
-      <a href={href} rel="noreferrer" target="_blank">
-        {action}
-      </a>
-    </article>
   );
 }
 
@@ -3786,6 +3156,7 @@ function DocumentViewer({
 }
 
 function SettingsDialog({
+  dashboardSettings,
   gamification,
   integrations,
   syncCopy,
@@ -3793,6 +3164,7 @@ function SettingsDialog({
   onAdaptiveFocusChange,
   onCelebrationsChange,
   onClose,
+  onDashboardKpiChange,
   onDrRossChange,
   onExport,
   onImport,
@@ -3803,6 +3175,7 @@ function SettingsDialog({
   onRewardModeChange,
   onSurprisesChange,
 }: {
+  dashboardSettings: DashboardSettings;
   gamification: GamificationState;
   integrations: IntegrationConfig;
   syncCopy: string;
@@ -3810,6 +3183,10 @@ function SettingsDialog({
   onAdaptiveFocusChange: (points: number) => void;
   onCelebrationsChange: (enabled: boolean) => void;
   onClose: () => void;
+  onDashboardKpiChange: (
+    key: DashboardKpiKey,
+    changes: Partial<Pick<DashboardSettings["kpis"][number], "enabled" | "target">>,
+  ) => void;
   onDrRossChange: (enabled: boolean) => void;
   onExport: () => void;
   onImport: (raw: string) => void;
@@ -3914,6 +3291,68 @@ function SettingsDialog({
               Noch nicht übernommene Altaufgaben bleiben bis zur Migration lokal.
               Drive-Dateien verbleiben bei Google.
             </p>
+          </div>
+        </div>
+        <div className="settings-section dashboard-settings-section">
+          <span className="eyebrow">Master-Dashboard</span>
+          <h3>Lege fest, woran du Fortschritt erkennst</h3>
+          <p>
+            Wähle die Kennzahlen für deine Zentrale und setze eigene Zielwerte.
+            Änderungen werden direkt im privaten Kompass gespeichert.
+          </p>
+          <div className="dashboard-kpi-settings" aria-label="KPI-Ziele konfigurieren">
+            {DASHBOARD_KPI_DEFINITIONS.map((definition) => {
+              const setting = dashboardSettings.kpis.find(
+                (candidate) => candidate.key === definition.key,
+              ) ?? {
+                key: definition.key,
+                enabled: true,
+                target: definition.defaultTarget,
+              };
+              return (
+                <article className={setting.enabled ? "is-enabled" : ""} key={definition.key}>
+                  <label className="dashboard-kpi-toggle">
+                    <input
+                      checked={setting.enabled}
+                      onChange={(event) =>
+                        onDashboardKpiChange(definition.key, {
+                          enabled: event.target.checked,
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>{definition.label}</strong>
+                      <small>{definition.description}</small>
+                    </span>
+                  </label>
+                  <label className="dashboard-kpi-target">
+                    <span>
+                      {definition.direction === "maximum" ? "Maximal" : "Mindestens"}
+                    </span>
+                    <span>
+                      <input
+                        aria-label={`Zielwert für ${definition.label}`}
+                        max={definition.max}
+                        min={definition.min}
+                        onChange={(event) =>
+                          onDashboardKpiChange(definition.key, {
+                            target: Math.min(
+                              definition.max,
+                              Math.max(definition.min, Number(event.target.value)),
+                            ),
+                          })
+                        }
+                        step={definition.step}
+                        type="number"
+                        value={setting.target}
+                      />
+                      <small>{definition.unit}</small>
+                    </span>
+                  </label>
+                </article>
+              );
+            })}
           </div>
         </div>
         <div className="settings-section reward-settings-section">
@@ -4107,7 +3546,12 @@ function SettingsDialog({
           </div>
         </div>
         <div className="settings-section">
-          <span className="eyebrow">Integrationen</span>
+          <span className="eyebrow">Deine Quellen & Integrationen</span>
+          <h3>Verbindungen und führende Datenquellen</h3>
+          <p>
+            Hier steuerst du, welche privaten Google-Dienste der Kompass lesen oder
+            für ausdrücklich gewählte Aktionen verwenden darf.
+          </p>
           <div className="google-account-summary">
             <div>
               <strong>
@@ -4156,6 +3600,9 @@ function SettingsDialog({
             );
           })}
           <div className="settings-integration-links">
+            <a href="https://tasks.google.com/" rel="noreferrer" target="_blank">
+              Google Tasks öffnen
+            </a>
             <a href={integrations.driveFolderUrl} rel="noreferrer" target="_blank">
               Drive-Ordner öffnen
             </a>

@@ -51,7 +51,7 @@ test("enthält den vollständigen privaten Organisationsbereich", async () => {
   assert.match(finance, /Revolut/);
   assert.equal((catalog.match(/\{ id: \d+, title:/g) ?? []).length, 48);
   assert.match(app, /DIN-A4-Ansicht/);
-  assert.match(layout, /og-kompass\.png/);
+  assert.match(layout, /og-zentrale\.png/);
   assert.match(layout, /manifest\.webmanifest/);
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /aspect-ratio:\s*210\s*\/\s*297/);
@@ -73,6 +73,36 @@ test("liefert die Kompass-Marke auch über die Browser-Standardroute", async () 
   assert.match(favicon, /x-content-type-options": "nosniff"/);
 });
 
+test("pflegt Kontakte zentral und importiert gängige CSV-Formate", async () => {
+  const [app, view, types, state, contactsModule] = await Promise.all([
+    readFile(new URL("components/life-os-app.tsx", root), "utf8"),
+    readFile(new URL("components/contacts-view.tsx", root), "utf8"),
+    readFile(new URL("lib/types.ts", root), "utf8"),
+    readFile(new URL("lib/use-gerri-state.ts", root), "utf8"),
+    importTypeScriptModule(new URL("lib/contacts.ts", root)),
+  ]);
+
+  assert.match(app, /key: "contacts", label: "Kontakte"/);
+  assert.match(app, /<ContactsView/);
+  assert.match(view, /CSV-Datei importieren/);
+  assert.match(view, /Vorhandene Kontakte aktualisieren/);
+  assert.match(view, /Kontakt anlegen/);
+  assert.match(types, /contacts: Contact\[\]/);
+  assert.match(state, /Array\.isArray\(candidate\.contacts\)/);
+
+  const result = contactsModule.parseContactCsv(
+    '\ufeffVorname;Nachname;E-Mail;Telefon;Firma;Geburtstag;Tags;Notizen\r\n"Ada";"Lovelace";ada@example.org;+49 30 123;Analytical Engines;10.12.1815;Arbeit|VIP;"Notiz; mit Semikolon"\r\nMax;Mustermann;max@example.org;;;;Freunde;',
+  );
+  assert.equal(result.contacts.length, 2);
+  assert.deepEqual(result.contacts[0].tags, ["Arbeit", "VIP"]);
+  assert.equal(result.contacts[0].birthday, "1815-12-10");
+  assert.equal(result.contacts[0].notes, "Notiz; mit Semikolon");
+  assert.equal(
+    contactsModule.contactIdentity(result.contacts[0]),
+    "email:ada@example.org",
+  );
+});
+
 test("formatiert Termine in der festen deutschen App-Zeitzone", async () => {
   const format = await importTypeScriptModule(new URL("lib/format.ts", root));
 
@@ -88,38 +118,59 @@ test("formatiert Termine in der festen deutschen App-Zeitzone", async () => {
   );
 });
 
-test("stellt die Kernkennzahlen als sechs semantisch unterschiedliche Bereiche dar", async () => {
-  const [app, css, layout] = await Promise.all([
+test("macht Heute zur konfigurierbaren bereichsübergreifenden Zentrale", async () => {
+  const [app, today, css, types, state, dashboard, layout] = await Promise.all([
     readFile(new URL("components/life-os-app.tsx", root), "utf8"),
+    readFile(new URL("components/today-view.tsx", root), "utf8"),
     readFile(new URL("app/globals.css", root), "utf8"),
+    readFile(new URL("lib/types.ts", root), "utf8"),
+    readFile(new URL("lib/use-gerri-state.ts", root), "utf8"),
+    importTypeScriptModule(new URL("lib/dashboard.ts", root)),
     readFile(new URL("app/layout.tsx", root), "utf8"),
   ]);
 
-  const groups = [
-    ...app.matchAll(/<CoreKpiGroup[\s\S]*?<\/CoreKpiGroup>/g),
-  ].map((match) => match[0]);
+  assert.match(today, /Master-Dashboard/);
+  assert.match(today, /Bereichsübergreifende Prioritäten/);
+  assert.match(today, /Deine Zentrale: Was jetzt zählt/);
+  assert.match(today, /Dashboard anpassen/);
+  assert.match(today, /Langfristig in Bewegung/);
+  assert.match(today, /Jeder Lebensbereich mit genügend Substanz/);
+  assert.match(today, /title="Fokus & große Vorhaben"/);
+  assert.match(today, /title="Zeit & Verbindlichkeit"/);
+  assert.match(today, /title="Geld & Verpflichtungen"/);
+  assert.match(today, /title="Chancen & nächste Schritte"/);
+  assert.match(today, /title="Tagesabschluss & Muster"/);
+  assert.doesNotMatch(today, /Deine Quellen|CoreKpiGroup/);
+  assert.match(app, /Deine Quellen & Integrationen/);
+  assert.match(app, /KPI-Ziele konfigurieren/);
+  assert.match(types, /dashboardSettings: DashboardSettings/);
+  assert.match(state, /normalizeDashboardSettings/);
+  assert.match(css, /\.central-command/);
+  assert.match(css, /\.priority-command-list/);
+  assert.match(css, /\.dashboard-kpi-settings/);
 
-  assert.equal(groups.length, 6);
-  assert.match(app, /aria-label="Kernkennzahlen nach Bereichen"/);
-  assert.match(app, /eyebrow="Gerri Coach"/);
-  assert.match(app, /title="Ziele & Fokus"/);
-  assert.match(app, /title="Kalender"/);
-  assert.match(app, /title="Finanzen"/);
-  assert.match(app, /title="Unterlagen"/);
-  assert.match(app, /title="Bewerbungen"/);
-  assert.match(app, /title="Tagebuch"/);
-  assert.match(app, /className="kpi-target-ring"/);
-  assert.match(app, /className="kpi-deadline"/);
-  assert.match(app, /kpi-money-segments/);
-  assert.match(app, /className="kpi-folder-shape"/);
-  assert.match(app, /className="kpi-application-pipeline"/);
-  assert.match(app, /className="kpi-mood-ring"/);
-  assert.match(app, /14-Tage-Rhythmus/);
-  assert.match(css, /\.core-kpi-grid/);
-  assert.match(css, /\.core-kpi-group/);
-  assert.match(css, /grid-template-columns: repeat\(auto-fit/);
-  assert.match(layout, /og-kompass\.png/);
-  await access(new URL("public/og-kompass.png", root));
+  const defaults = dashboard.normalizeDashboardSettings(undefined, 2200);
+  assert.equal(defaults.kpis.length, 6);
+  assert.equal(
+    defaults.kpis.find((kpi) => kpi.key === "monthly_spending_limit").target,
+    2200,
+  );
+  const normalized = dashboard.normalizeDashboardSettings({
+    kpis: [
+      { key: "weekly_task_completions", enabled: false, target: 999 },
+      { key: "unknown", enabled: true, target: 1 },
+    ],
+  });
+  assert.equal(
+    normalized.kpis.find((kpi) => kpi.key === "weekly_task_completions").enabled,
+    false,
+  );
+  assert.equal(
+    normalized.kpis.find((kpi) => kpi.key === "weekly_task_completions").target,
+    50,
+  );
+  assert.match(layout, /og-zentrale\.png/);
+  await access(new URL("public/og-zentrale.png", root));
 });
 
 test("integriert das Belohnungssystem in Einstellungen, Kopfzeile und Sidebar", async () => {

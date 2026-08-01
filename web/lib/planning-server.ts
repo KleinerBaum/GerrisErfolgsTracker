@@ -69,6 +69,10 @@ import {
   type SyncRun,
 } from "./types";
 import { createDefaultGamification } from "./gamification";
+import {
+  createDefaultDashboardSettings,
+  normalizeDashboardSettings,
+} from "./dashboard";
 
 const NO_CALENDAR_ERROR = "Kalenderdaten konnten nicht geladen werden.";
 const MAX_CALENDARS_FOR_PLANNING = 12;
@@ -120,7 +124,9 @@ function emptyState(): AppState {
     calendarEvents: [],
     applications: [],
     masterCvDocumentId: null,
+    contacts: [],
     journal: [],
+    dashboardSettings: createDefaultDashboardSettings(0),
   };
 }
 
@@ -139,7 +145,14 @@ function parsedStoredState(value: string | null | undefined): AppState {
     ) {
       return emptyState();
     }
-    return state as AppState;
+    return {
+      ...(state as AppState),
+      contacts: Array.isArray(state.contacts) ? state.contacts : [],
+      dashboardSettings: normalizeDashboardSettings(
+        state.dashboardSettings,
+        state.monthlyBudget,
+      ),
+    };
   } catch {
     return emptyState();
   }

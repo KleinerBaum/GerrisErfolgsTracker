@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { COST_CATEGORIES } from "./finance-data";
 import { mergeApplicationResearch } from "./application-research";
 import { diaryRhythmDays, normalizeDiaryEntries } from "./diary";
+import { normalizeDashboardSettings } from "./dashboard";
 import { isoDateInput } from "./format";
 import { ledgerTotals, normalizeGamificationState } from "./gamification";
 import type { AppState, CostCategory, SyncStatus } from "./types";
@@ -32,6 +33,7 @@ function normalizeState(value: AppState): AppState {
     incomes?: AppState["incomes"];
     accountBalances?: Partial<AppState["accountBalances"]>;
     pendingTaskImports?: AppState["pendingTaskImports"];
+    dashboardSettings?: AppState["dashboardSettings"];
   };
   const journal = normalizeDiaryEntries(candidate.journal);
   const gamification = normalizeGamificationState(
@@ -66,6 +68,11 @@ function normalizeState(value: AppState): AppState {
           : candidate.updatedAt,
     },
     applications: mergeApplicationResearch(candidate.applications),
+    contacts: Array.isArray(candidate.contacts) ? candidate.contacts : [],
+    dashboardSettings: normalizeDashboardSettings(
+      candidate.dashboardSettings,
+      candidate.monthlyBudget,
+    ),
     masterCvDocumentId:
       typeof candidate.masterCvDocumentId === "string"
         ? candidate.masterCvDocumentId

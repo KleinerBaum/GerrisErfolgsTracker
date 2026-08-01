@@ -5,7 +5,26 @@ export type ViewKey =
   | "finance"
   | "documents"
   | "applications"
+  | "contacts"
   | "journal";
+
+export type DashboardKpiKey =
+  | "weekly_task_completions"
+  | "daily_focus_minutes"
+  | "planned_days"
+  | "monthly_spending_limit"
+  | "active_applications"
+  | "weekly_journal_entries";
+
+export type DashboardKpiTarget = {
+  key: DashboardKpiKey;
+  enabled: boolean;
+  target: number;
+};
+
+export type DashboardSettings = {
+  kpis: DashboardKpiTarget[];
+};
 
 export type LifeArea =
   | "alltag"
@@ -857,6 +876,28 @@ export type ApplicationProcess = {
   vacancyResearch: VacancyResearch | null;
 };
 
+export type Contact = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  organization: string;
+  role: string;
+  email: string;
+  phone: string;
+  mobile: string;
+  street: string;
+  postalCode: string;
+  city: string;
+  country: string;
+  birthday: string | null;
+  website: string;
+  notes: string;
+  tags: string[];
+  favorite: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AppState = {
   schemaVersion: 1;
   revision: number;
@@ -875,7 +916,9 @@ export type AppState = {
   calendarEvents: CalendarEvent[];
   applications: ApplicationProcess[];
   masterCvDocumentId: string | null;
+  contacts: Contact[];
   journal: JournalEntry[];
+  dashboardSettings: DashboardSettings;
 };
 
 export type IntegrationConfig = {
