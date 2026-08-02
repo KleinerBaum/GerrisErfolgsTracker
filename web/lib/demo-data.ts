@@ -2,6 +2,7 @@ import type { AppState, IntegrationConfig } from "./types";
 import { APPLICATION_RESEARCH } from "./application-research";
 import { createDefaultDashboardSettings } from "./dashboard";
 import { createDefaultGamification } from "./gamification";
+import { normalizeApplicationKpiSettings } from "./application-workflow";
 
 const dayAt = (offset: number, hour = 9, minute = 0): string => {
   const date = new Date();
@@ -225,6 +226,7 @@ export function createDemoState(ownerName = "Gerri"): AppState {
     masterCvContent: null,
     contacts: [],
     dashboardSettings: createDefaultDashboardSettings(1700),
+    applicationKpiSettings: normalizeApplicationKpiSettings(null),
     journal: [
       {
         id: "journal-1",

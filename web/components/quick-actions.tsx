@@ -9,9 +9,21 @@ import {
 
 import { JobResearchPanel } from "./job-research-panel";
 import { gmailDraftUrl } from "../lib/google-links";
+import { downloadEditableDocx } from "../lib/docx-export";
 import { applyConfirmedResearchClaim } from "../lib/job-research";
 import { masterCvToPlainText } from "../lib/master-cv";
 import {
+  addApplicationActivity,
+  assessSalaryPreference,
+  APPLICATION_FOCUS_THEMES,
+  APPLICATION_OUTPUT_DEFINITIONS,
+  APPLICATION_RESEARCH_SCOPE_DEFINITIONS,
+  normalizeApplicationGenerationPreferences,
+} from "../lib/application-workflow";
+import {
+  SALARY_OUTLOOK_LABELS,
+  type ApplicationGenerationPreferences,
+  type ApplicationOutputKind,
   type ApplicationProcess,
   type DocumentKind,
   type DocumentRef,
@@ -1022,6 +1034,14 @@ const APPLICATION_TABS: Array<{ key: ApplicationTab; label: string }> = [
   { key: "applicationEmailBody", label: "Bewerbungs-Mail" },
 ];
 
+const OUTPUT_TAB_MAP: Record<ApplicationOutputKind, ApplicationTab> = {
+  "cover-letter": "coverLetter",
+  "tailored-cv": "tailoredCv",
+  "company-brief": "companyBrief",
+  "interview-prep": "interviewPrep",
+  "application-email": "applicationEmailBody",
+};
+
 function downloadText(name: string, content: string) {
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -1096,12 +1116,52 @@ function ApplicationStudio({
           .join(" · ")
       : "",
   );
-  const [style, setStyle] = useState("modern, präzise und professionell");
-  const [language, setLanguage] = useState("Deutsch");
+  const [preferences, setPreferences] =
+    useState<ApplicationGenerationPreferences>(() =>
+      normalizeApplicationGenerationPreferences(
+        initialApplication?.generationPreferences,
+      ),
+    );
   const [result, setResult] = useState<ApplicationPackage | null>(null);
   const [activeTab, setActiveTab] = useState<ApplicationTab>("coverLetter");
   const [busy, setBusy] = useState(false);
   const [usedFallback, setUsedFallback] = useState(false);
+  const confirmedClaims = useMemo(
+    () =>
+      research
+        ? [...research.adFacts, ...research.enrichment].filter((claim) =>
+            ["confirmed", "edited"].includes(claim.decision.status),
+          )
+        : [],
+    [research],
+  );
+  const visibleTabs = APPLICATION_TABS.filter((tab) =>
+    preferences.outputKinds.some((kind) => OUTPUT_TAB_MAP[kind] === tab.key),
+  );
+  const salaryAssessment = assessSalaryPreference({
+    publishedCompensation: initialApplication?.compensation ?? "",
+    salaryOutlook: initialApplication?.salaryOutlook ?? "open",
+    desiredSalaryAnnual: preferences.desiredSalaryAnnual,
+    minimumSalaryAnnual: preferences.minimumSalaryAnnual,
+  });
+
+  const toggleFocusTheme = (theme: string, enabled: boolean) => {
+    setPreferences((current) => ({
+      ...current,
+      focusThemes: enabled
+        ? [...new Set([...current.focusThemes, theme])]
+        : current.focusThemes.filter((candidate) => candidate !== theme),
+    }));
+  };
+
+  const toggleOutput = (kind: ApplicationOutputKind, enabled: boolean) => {
+    setPreferences((current) => {
+      const outputKinds = enabled
+        ? [...new Set([...current.outputKinds, kind])]
+        : current.outputKinds.filter((candidate) => candidate !== kind);
+      return { ...current, outputKinds };
+    });
+  };
 
   const updateResearch = (nextResearch: VacancyResearch) => {
     setResearch(nextResearch);
@@ -1127,6 +1187,10 @@ function ApplicationStudio({
 
   const generate = async (event: FormEvent) => {
     event.preventDefault();
+    if (!preferences.outputKinds.length) {
+      toast("Bitte mindestens ein gewünschtes Ergebnis auswählen");
+      return;
+    }
     if (
       (!cv && !(useMasterCv && masterCv)) ||
       !jobUrl.trim() ||
@@ -1135,6 +1199,28 @@ function ApplicationStudio({
       busy
     ) {
       return;
+    }
+    const normalizedPreferences = normalizeApplicationGenerationPreferences(
+      preferences,
+    );
+    setPreferences(normalizedPreferences);
+    const firstTab = APPLICATION_TABS.find((tab) =>
+      normalizedPreferences.outputKinds.some(
+        (kind) => OUTPUT_TAB_MAP[kind] === tab.key,
+      ),
+    );
+    if (firstTab) setActiveTab(firstTab.key);
+    if (initialApplication) {
+      onUpdateApplication({
+        ...initialApplication,
+        sourceUrl: jobUrl.trim(),
+        company: companyName.trim(),
+        jobTitle: roleTitle.trim(),
+        contactPerson: contactPerson.trim(),
+        contactEmail: recipientEmail.trim(),
+        generationPreferences: normalizedPreferences,
+        vacancyResearch: research,
+      });
     }
     setBusy(true);
     setUsedFallback(false);
@@ -1148,8 +1234,32 @@ function ApplicationStudio({
       strengths,
       constraints,
       availability,
-      style,
-      language,
+      style:
+        normalizedPreferences.formality === "formal"
+          ? "klassisch und formell"
+          : normalizedPreferences.formality === "modern"
+            ? "modern, direkt und präzise"
+            : "professionell, ausgewogen und glaubwürdig",
+      formality: normalizedPreferences.formality,
+      addressStyle: normalizedPreferences.addressStyle,
+      language: normalizedPreferences.language,
+      cvLength: normalizedPreferences.cvLength,
+      focusThemes: JSON.stringify(normalizedPreferences.focusThemes),
+      customFocus: normalizedPreferences.customFocus,
+      outputKinds: JSON.stringify(normalizedPreferences.outputKinds),
+      researchScopes: JSON.stringify(normalizedPreferences.researchScopes),
+      researchSelectionMode: normalizedPreferences.researchSelectionMode,
+      selectedResearchClaimIds: JSON.stringify(
+        normalizedPreferences.selectedResearchClaimIds,
+      ),
+      desiredSalaryAnnual:
+        normalizedPreferences.desiredSalaryAnnual?.toString() ?? "",
+      minimumSalaryAnnual:
+        normalizedPreferences.minimumSalaryAnnual?.toString() ?? "",
+      publishedCompensation: initialApplication?.compensation ?? "",
+      salaryOutlook: initialApplication?.salaryOutlook ?? "open",
+      salaryFlexibility: normalizedPreferences.salaryFlexibility,
+      mentionSalary: normalizedPreferences.mentionSalary,
       researchContext: JSON.stringify(research),
     };
     try {
@@ -1201,10 +1311,10 @@ function ApplicationStudio({
   if (result) {
     const activeContent = result[activeTab];
     const fileNames: Record<ApplicationTab, string> = {
-      coverLetter: `Anschreiben-${result.companyName}.txt`,
-      tailoredCv: `CV-${result.roleTitle}.md`,
-      companyBrief: `Briefing-${result.companyName}.md`,
-      interviewPrep: `Interview-${result.companyName}.md`,
+      coverLetter: `Anschreiben-${result.companyName}.docx`,
+      tailoredCv: `CV-${result.roleTitle}.docx`,
+      companyBrief: `Briefing-${result.companyName}.docx`,
+      interviewPrep: `Interview-${result.companyName}.docx`,
       applicationEmailBody: `Bewerbungs-Mail-${result.companyName}.txt`,
     };
     return (
@@ -1228,7 +1338,7 @@ function ApplicationStudio({
           ))}
         </div>
         <div className="result-tabs" role="tablist">
-          {APPLICATION_TABS.map((tab) => (
+          {visibleTabs.map((tab) => (
             <button
               aria-selected={activeTab === tab.key}
               className={activeTab === tab.key ? "active" : ""}
@@ -1282,10 +1392,16 @@ function ApplicationStudio({
           </button>
           <button
             className="button button-ghost"
-            onClick={() => downloadText(fileNames[activeTab], activeContent)}
+            onClick={() =>
+              activeTab === "applicationEmailBody"
+                ? downloadText(fileNames[activeTab], activeContent)
+                : downloadEditableDocx(fileNames[activeTab], activeContent)
+            }
             type="button"
           >
-            Herunterladen
+            {activeTab === "applicationEmailBody"
+              ? "Text herunterladen"
+              : "Als Word-Datei herunterladen"}
           </button>
           {activeTab === "applicationEmailBody" ? (
             <>
@@ -1310,6 +1426,26 @@ function ApplicationStudio({
                 Nur im Gmail-Fenster öffnen
               </a>
             </>
+          ) : null}
+          {initialApplication ? (
+            <button
+              className="button button-primary"
+              onClick={() => {
+                const next = addApplicationActivity(
+                  {
+                    ...initialApplication,
+                    generationPreferences: preferences,
+                    vacancyResearch: research,
+                  },
+                  "application_pack_completed",
+                );
+                onUpdateApplication(next);
+                toast("Bewerbungspaket als vollständig erfasst");
+              }}
+              type="button"
+            >
+              Paket als vollständig markieren
+            </button>
           ) : null}
         </div>
         <details className="quality-check-panel" open={result.openQuestions.length > 0}>
@@ -1384,8 +1520,10 @@ function ApplicationStudio({
       <JobResearchPanel
         compact
         companyName={companyName}
+        initialJobPostingText={initialApplication?.jobDescriptionText ?? ""}
         onChange={updateResearch}
         research={research}
+        researchScopes={preferences.researchScopes}
         roleTitle={roleTitle}
         sourceUrl={jobUrl}
       />
@@ -1461,7 +1599,7 @@ function ApplicationStudio({
             <strong>Master-CV verwenden</strong>
             <small>
               {masterCvContent
-                ? `Bearbeitete Fassung · Version ${masterCvContent.editRevision + 1} · mit Evidenzregister`
+                ? `Bearbeitete Fassung · Version ${masterCvContent.editRevision + 1} · mit belegten Textbausteinen`
                 : `${masterCv.name} · privat hinterlegt und nur für dieses Paket geladen`}
             </small>
           </div>
@@ -1527,35 +1665,287 @@ function ApplicationStudio({
       <div className="studio-step">
         <span>3</span>
         <div>
-          <strong>Stil des Pakets</strong>
-          <small>Anschreiben, CV, Briefing und Mail aus einem Guss</small>
+          <strong>Auswahl für dein Paket</strong>
+          <small>Inhalte, Ton, Recherche und Gehaltsrahmen bewusst steuern</small>
         </div>
       </div>
-      <div className="form-grid">
+      <div className="form-grid studio-style-grid">
         <label>
-          Stil
-          <select onChange={(event) => setStyle(event.target.value)} value={style}>
-            <option>modern, präzise und professionell</option>
-            <option>selbstbewusst und direkt</option>
-            <option>warm, persönlich und glaubwürdig</option>
-            <option>klassisch und formell</option>
+          Grad der Förmlichkeit
+          <select
+            onChange={(event) =>
+              setPreferences((current) => ({
+                ...current,
+                formality: event.target.value as ApplicationGenerationPreferences["formality"],
+              }))
+            }
+            value={preferences.formality}
+          >
+            <option value="modern">Modern und direkt</option>
+            <option value="balanced">Ausgewogen professionell</option>
+            <option value="formal">Klassisch formell</option>
+          </select>
+        </label>
+        <label>
+          Anrede
+          <select
+            onChange={(event) =>
+              setPreferences((current) => ({
+                ...current,
+                addressStyle: event.target.value as ApplicationGenerationPreferences["addressStyle"],
+              }))
+            }
+            value={preferences.addressStyle}
+          >
+            <option value="auto">Aus Anzeige und Unternehmen ableiten</option>
+            <option value="sie">Sie</option>
+            <option value="du">Du</option>
           </select>
         </label>
         <label>
           Sprache
           <select
-            onChange={(event) => setLanguage(event.target.value)}
-            value={language}
+            onChange={(event) =>
+              setPreferences((current) => ({
+                ...current,
+                language: event.target.value as ApplicationGenerationPreferences["language"],
+              }))
+            }
+            value={preferences.language}
           >
             <option>Deutsch</option>
             <option>Englisch</option>
           </select>
         </label>
+        <label>
+          Länge des angepassten CV
+          <select
+            onChange={(event) =>
+              setPreferences((current) => ({
+                ...current,
+                cvLength: event.target.value as ApplicationGenerationPreferences["cvLength"],
+              }))
+            }
+            value={preferences.cvLength}
+          >
+            <option value="two_pages">Bis zu zwei Seiten</option>
+            <option value="compact">Kompakt und stark verdichtet</option>
+          </select>
+        </label>
       </div>
+
+      <fieldset className="studio-choice-panel">
+        <legend>Welche Ergebnisse sollen entstehen?</legend>
+        <div className="studio-choice-grid">
+          {APPLICATION_OUTPUT_DEFINITIONS.map((definition) => (
+            <label key={definition.key}>
+              <input
+                checked={preferences.outputKinds.includes(definition.key)}
+                onChange={(event) => toggleOutput(definition.key, event.target.checked)}
+                type="checkbox"
+              />
+              <span>
+                <strong>{definition.label}</strong>
+                <small>{definition.description}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset className="studio-choice-panel">
+        <legend>Welche Schwerpunkte sollen sichtbar werden?</legend>
+        <div className="studio-chip-grid">
+          {APPLICATION_FOCUS_THEMES.map((theme) => (
+            <label key={theme}>
+              <input
+                checked={preferences.focusThemes.includes(theme)}
+                onChange={(event) => toggleFocusTheme(theme, event.target.checked)}
+                type="checkbox"
+              />
+              <span>{theme}</span>
+            </label>
+          ))}
+        </div>
+        <label>
+          Weitere Akzente oder bewusste Grenzen
+          <textarea
+            onChange={(event) =>
+              setPreferences((current) => ({
+                ...current,
+                customFocus: event.target.value,
+              }))
+            }
+            placeholder="z. B. Führung nur zurückhaltend darstellen; Digitalisierungserfolge priorisieren"
+            rows={3}
+            value={preferences.customFocus}
+          />
+        </label>
+      </fieldset>
+
+      <fieldset className="studio-choice-panel">
+        <legend>Was soll die Webrecherche abdecken?</legend>
+        <div className="studio-choice-grid">
+          {APPLICATION_RESEARCH_SCOPE_DEFINITIONS.map((definition) => (
+            <label key={definition.key}>
+              <input
+                checked={preferences.researchScopes.includes(definition.key)}
+                onChange={(event) =>
+                  setPreferences((current) => ({
+                    ...current,
+                    researchScopes: event.target.checked
+                      ? [...new Set([...current.researchScopes, definition.key])]
+                      : current.researchScopes.filter(
+                          (candidate) => candidate !== definition.key,
+                        ),
+                  }))
+                }
+                type="checkbox"
+              />
+              <span>
+                <strong>{definition.label}</strong>
+                <small>{definition.description}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+        <label>
+          Bestätigte Web-Ergebnisse für die Texte
+          <select
+            onChange={(event) =>
+              setPreferences((current) => ({
+                ...current,
+                researchSelectionMode:
+                  event.target.value as ApplicationGenerationPreferences["researchSelectionMode"],
+              }))
+            }
+            value={preferences.researchSelectionMode}
+          >
+            <option value="all_confirmed">Alle von mir bestätigten Ergebnisse</option>
+            <option value="selected_only">Nur einzeln ausgewählte Ergebnisse</option>
+            <option value="none">Keine Web-Ergebnisse in den Texten</option>
+          </select>
+        </label>
+        {preferences.researchSelectionMode === "selected_only" ? (
+          <div className="studio-research-claims">
+            {confirmedClaims.length ? confirmedClaims.map((claim) => (
+              <label key={claim.id}>
+                <input
+                  checked={preferences.selectedResearchClaimIds.includes(claim.id)}
+                  onChange={(event) =>
+                    setPreferences((current) => ({
+                      ...current,
+                      selectedResearchClaimIds: event.target.checked
+                        ? [...new Set([...current.selectedResearchClaimIds, claim.id])]
+                        : current.selectedResearchClaimIds.filter(
+                            (candidate) => candidate !== claim.id,
+                          ),
+                    }))
+                  }
+                  type="checkbox"
+                />
+                <span>{claim.decision.value || claim.value}</span>
+              </label>
+            )) : (
+              <p>Bestätige zuerst Rechercheergebnisse, die du gezielt nutzen möchtest.</p>
+            )}
+          </div>
+        ) : null}
+      </fieldset>
+
+      <fieldset className="studio-choice-panel salary-choice-panel">
+        <legend>Gehaltswunsch und Verhandlungsspielraum</legend>
+        <div className={`salary-assessment tone-${salaryAssessment.tone}`}>
+          <strong>{salaryAssessment.title}</strong>
+          <p>{salaryAssessment.detail}</p>
+        </div>
+        {initialApplication ? (
+          <p className="salary-context-note">
+            Recherchehinweis: {initialApplication.compensation || "keine Vergütung veröffentlicht"}
+            {" · "}{SALARY_OUTLOOK_LABELS[initialApplication.salaryOutlook]}
+          </p>
+        ) : null}
+        <div className="form-grid">
+          <label>
+            Wunschgehalt brutto pro Jahr
+            <input
+              min={1}
+              onChange={(event) =>
+                setPreferences((current) => ({
+                  ...current,
+                  desiredSalaryAnnual: event.target.value
+                    ? Number(event.target.value)
+                    : null,
+                }))
+              }
+              placeholder="z. B. 58000"
+              step={500}
+              type="number"
+              value={preferences.desiredSalaryAnnual ?? ""}
+            />
+          </label>
+          <label>
+            Persönliche Untergrenze
+            <input
+              min={1}
+              onChange={(event) =>
+                setPreferences((current) => ({
+                  ...current,
+                  minimumSalaryAnnual: event.target.value
+                    ? Number(event.target.value)
+                    : null,
+                }))
+              }
+              placeholder="nur für die Strategie"
+              step={500}
+              type="number"
+              value={preferences.minimumSalaryAnnual ?? ""}
+            />
+          </label>
+          <label>
+            Spielraum
+            <select
+              onChange={(event) =>
+                setPreferences((current) => ({
+                  ...current,
+                  salaryFlexibility:
+                    event.target.value as ApplicationGenerationPreferences["salaryFlexibility"],
+                }))
+              }
+              value={preferences.salaryFlexibility}
+            >
+              <option value="fixed">Fest</option>
+              <option value="negotiable">Verhandelbar</option>
+              <option value="open">Zunächst offen</option>
+            </select>
+          </label>
+          <label>
+            Im Anschreiben erwähnen
+            <select
+              onChange={(event) =>
+                setPreferences((current) => ({
+                  ...current,
+                  mentionSalary:
+                    event.target.value as ApplicationGenerationPreferences["mentionSalary"],
+                }))
+              }
+              value={preferences.mentionSalary}
+            >
+              <option value="never">Nie</option>
+              <option value="if_requested">Nur wenn verlangt</option>
+              <option value="always">Immer</option>
+            </select>
+          </label>
+        </div>
+        <small>
+          Die Untergrenze dient nur der persönlichen Entscheidung und wird niemals
+          automatisch in Anschreiben oder Mail übernommen.
+        </small>
+      </fieldset>
       <p className="form-trust">
         Der ausgewählte Lebenslauf und deine Antworten werden nur für dieses
         Paket verarbeitet. Beim Master-CV wird die zuletzt gespeicherte,
-        bearbeitbare Arbeitsfassung mit ihrem sicheren Evidenzregister genutzt;
+        bearbeitbare Arbeitsfassung mit ihren belegten Textbausteinen genutzt;
         das DOCX-Original bleibt unverändert. Generierte Texte werden nicht
         automatisch gespeichert. Das System erfindet keine Stationen oder Erfolge.
       </p>

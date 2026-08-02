@@ -157,7 +157,22 @@ type ApplicationInput = {
   constraints: string;
   availability: string;
   style: string;
+  formality: string;
+  addressStyle: string;
   language: string;
+  cvLength: string;
+  focusThemes: string;
+  customFocus: string;
+  outputKinds: string;
+  researchScopes: string;
+  researchSelectionMode: string;
+  selectedResearchClaimIds: string;
+  desiredSalaryAnnual: string;
+  minimumSalaryAnnual: string;
+  publishedCompensation: string;
+  salaryOutlook: string;
+  salaryFlexibility: string;
+  mentionSalary: string;
   researchContext: string;
 };
 
@@ -185,6 +200,20 @@ type GamificationAssessmentInput = {
 
 const text = (value: FormDataEntryValue | null, max: number): string =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
+
+function jsonStringList(value: string, maximumItems: number): string[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => (typeof item === "string" ? item.trim().slice(0, 300) : ""))
+      .filter(Boolean)
+      .slice(0, maximumItems);
+  } catch {
+    return [];
+  }
+}
 
 function isEmailInput(value: unknown): value is EmailInput {
   if (!value || typeof value !== "object") return false;
@@ -296,6 +325,8 @@ function applicationInstructions(): string {
     "Erfinde niemals Arbeitgeber, Stationen, Abschlüsse, Zahlen, Fähigkeiten oder persönliche Motive.",
     "Ordne den CV neu nach Relevanz, formuliere vorhandene Inhalte präziser und markiere echte Informationslücken als offene Fragen.",
     "Das Anschreiben soll individuell, konkret, glaubwürdig und frei von Floskeln sein.",
+    "Halte Grad der Förmlichkeit, Anrede, CV-Umfang, Schwerpunkt-Themen und die ausgewählten Ergebnisarten exakt ein. Nicht ausgewählte Ergebnisfelder bleiben leer.",
+    "Eine persönliche Gehaltsuntergrenze ist nur Entscheidungswissen und darf nie in Anschreiben, CV oder Bewerbungs-Mail erscheinen. Den Wunschbetrag erwähnst du nur nach der gewählten Regel.",
     "Der angepasste CV soll als sauber gegliedertes Markdown ausgegeben werden.",
     "Die Firmen- und Rollenübersicht trennt bestätigte Anzeigenfakten, Arbeitgeberaussagen, Marktevidenz und offene Punkte.",
     "Die Interviewvorbereitung enthält eine 60- bis 90-sekündige Kernbotschaft, wahrscheinliche Fragen, belegbare Antwortbausteine aus dem CV, Rückfragen aus den Recherchelücken sowie Punkte für Angebot, Einstieg und Rahmenbedingungen.",
@@ -624,7 +655,22 @@ async function handleApplication(request: Request, form: FormData) {
     constraints: text(form.get("constraints"), 4_000),
     availability: text(form.get("availability"), 2_000),
     style: text(form.get("style"), 100),
+    formality: text(form.get("formality"), 40),
+    addressStyle: text(form.get("addressStyle"), 40),
     language: text(form.get("language"), 100),
+    cvLength: text(form.get("cvLength"), 40),
+    focusThemes: text(form.get("focusThemes"), 4_000),
+    customFocus: text(form.get("customFocus"), 2_000),
+    outputKinds: text(form.get("outputKinds"), 1_000),
+    researchScopes: text(form.get("researchScopes"), 1_000),
+    researchSelectionMode: text(form.get("researchSelectionMode"), 40),
+    selectedResearchClaimIds: text(form.get("selectedResearchClaimIds"), 20_000),
+    desiredSalaryAnnual: text(form.get("desiredSalaryAnnual"), 20),
+    minimumSalaryAnnual: text(form.get("minimumSalaryAnnual"), 20),
+    publishedCompensation: text(form.get("publishedCompensation"), 1_000),
+    salaryOutlook: text(form.get("salaryOutlook"), 20),
+    salaryFlexibility: text(form.get("salaryFlexibility"), 40),
+    mentionSalary: text(form.get("mentionSalary"), 40),
     researchContext: text(form.get("researchContext"), 100_000),
   };
   const cv = form.get("cv");
@@ -667,8 +713,31 @@ async function handleApplication(request: Request, form: FormData) {
       throw new Error("Der Recherchekontext muss ein gültiger gespeicherter Forschungsstand sein.");
     }
   }
-  const verifiedResearch = confirmedResearchContext(research);
-  const verifiedSources = research ? confirmedResearchSources(research) : [];
+  const focusThemes = jsonStringList(input.focusThemes, 12);
+  const outputKinds = jsonStringList(input.outputKinds, 5).filter((kind) =>
+    [
+      "tailored-cv",
+      "cover-letter",
+      "application-email",
+      "company-brief",
+      "interview-prep",
+    ].includes(kind),
+  );
+  const researchScopes = jsonStringList(input.researchScopes, 6);
+  const selectedResearchClaimIds = jsonStringList(
+    input.selectedResearchClaimIds,
+    80,
+  );
+  const claimSelection =
+    input.researchSelectionMode === "none"
+      ? []
+      : input.researchSelectionMode === "selected_only"
+        ? selectedResearchClaimIds
+        : undefined;
+  const verifiedResearch = confirmedResearchContext(research, claimSelection);
+  const verifiedSources = research
+    ? confirmedResearchSources(research, claimSelection)
+    : [];
 
   const prompt = [
     `Vom Nutzer eingetragene Stellen-URL: ${redactObviousCredentials(input.jobUrl)}`,
@@ -681,7 +750,21 @@ async function handleApplication(request: Request, form: FormData) {
     `Was betont, vermieden oder erklärt werden soll: ${redactObviousCredentials(input.constraints) || "keine Zusatzangabe"}`,
     `Verfügbarkeit, Arbeitsmodell und sonstige Rahmenbedingungen: ${redactObviousCredentials(input.availability) || "nicht im Anschreiben erwähnen"}`,
     `Stil: ${redactObviousCredentials(input.style) || "modern, präzise und professionell"}`,
+    `Grad der Förmlichkeit: ${redactObviousCredentials(input.formality) || "ausgewogen"}`,
+    `Anrede: ${redactObviousCredentials(input.addressStyle) || "aus Anzeige ableiten"}`,
     `Ausgabesprache: ${redactObviousCredentials(input.language) || "Deutsch"}`,
+    `Zielumfang des angepassten CV: ${input.cvLength === "compact" ? "kompakt und stark verdichtet" : "höchstens zwei Seiten"}`,
+    `Gewählte Schwerpunkt-Themen: ${focusThemes.map(redactObviousCredentials).join("; ") || "aus Rollenpassung ableiten"}`,
+    `Zusätzliche Akzente und Grenzen: ${redactObviousCredentials(input.customFocus) || "keine"}`,
+    `Vom Nutzer ausgewählte Ergebnisse: ${outputKinds.join(", ") || "tailored-cv, cover-letter"}. Für nicht ausgewählte Ergebnisfelder gib eine leere Zeichenkette aus.`,
+    `Ausgewählter Rechercheumfang: ${researchScopes.join(", ") || "nicht angegeben"}`,
+    `Verwendung bestätigter Web-Ergebnisse: ${input.researchSelectionMode || "all_confirmed"}`,
+    `Gewünschtes Jahresbruttogehalt: ${input.desiredSalaryAnnual || "nicht angegeben"}`,
+    `Veröffentlichte Vergütung oder Tarifangabe: ${redactObviousCredentials(input.publishedCompensation) || "nicht veröffentlicht"}`,
+    `Gespeicherte 50k-Einschätzung: ${input.salaryOutlook || "offen"}`,
+    `Persönliche Untergrenze, ausschließlich zur Strategie und niemals im Anschreiben oder in der Mail nennen: ${input.minimumSalaryAnnual || "nicht angegeben"}`,
+    `Gehalts-Spielraum: ${input.salaryFlexibility || "verhandelbar"}`,
+    `Gehaltswunsch in Anschreiben oder Mail: ${input.mentionSalary || "nur wenn ausdrücklich verlangt"}`,
     `Bestätigte öffentliche Recherche (nur confirmedFacts sind Fakten; openQuestions, conflicts und warnings bleiben offene Prüfpunkte):\n${
       verifiedResearch
         ? redactObviousCredentials(JSON.stringify(verifiedResearch))

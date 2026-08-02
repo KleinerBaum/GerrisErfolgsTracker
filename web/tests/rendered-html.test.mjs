@@ -184,25 +184,37 @@ test("integriert das Belohnungssystem in Einstellungen, Kopfzeile und Sidebar", 
   assert.doesNotMatch(app, /label: "Momentum Realm"/);
   assert.doesNotMatch(app, /<MomentumRealmView/);
   assert.match(app, /className="topbar-progress"/);
+  assert.match(app, /XP-Fortschritt insgesamt, heute, diese Woche/);
+  assert.match(app, /className="topbar-xp-goal"/);
   assert.match(app, /className={`sidebar-reward-progress/);
   assert.match(app, /Belohnungssystem/);
+  assert.match(app, /XP-Ziele konfigurieren/);
+  assert.match(app, /Tagesziel/);
+  assert.match(app, /Wochenziel/);
+  assert.match(app, /Monatsziel/);
   assert.match(app, /Erreichte Etappen als Pop-up feiern/);
   assert.match(app, /className={`milestone-celebration/);
   assert.match(app, /Bleibt aus, bis schriftlich freigegebene Inhalte/);
   assert.match(engine, /idempotencyKey = `task:\$\{task\.id\}:completion`/);
   assert.match(engine, /Math\.min\(\s*25,/);
+  assert.match(engine, /function xpProgressByPeriod/);
+  assert.match(engine, /entry\.kind === "OPENING_BALANCE"/);
   assert.match(types, /RewardMode = \(typeof REWARD_MODES\)\[number\]/);
   assert.match(types, /VerificationType = \(typeof VERIFICATION_TYPES\)\[number\]/);
+  assert.match(types, /xpGoals: XpGoals/);
   assert.match(css, /\.reward-mode-settings/);
+  assert.match(css, /\.topbar-xp-goal/);
+  assert.match(css, /\.xp-goal-settings-grid/);
   assert.match(css, /\.milestone-celebration/);
   assert.match(css, /\.reward-assessment-dialog/);
 });
 
-test("macht das Tagebuch zum abwärtskompatiblen täglichen Abschluss", async () => {
-  const [app, diaryView, diaryModel, types, state, css, layout] =
+test("trennt freies Tagebuchspeichern von der inspirativen Tagesplanung", async () => {
+  const [app, diaryView, diaryPlanning, diaryModel, types, state, css, layout] =
     await Promise.all([
       readFile(new URL("components/life-os-app.tsx", root), "utf8"),
       readFile(new URL("components/diary-view.tsx", root), "utf8"),
+      readFile(new URL("lib/diary-planning.ts", root), "utf8"),
       readFile(new URL("lib/diary.ts", root), "utf8"),
       readFile(new URL("lib/types.ts", root), "utf8"),
       readFile(new URL("lib/use-gerri-state.ts", root), "utf8"),
@@ -213,18 +225,26 @@ test("macht das Tagebuch zum abwärtskompatiblen täglichen Abschluss", async ()
   assert.match(app, /label: "Tagebuch", short: "Tagebuch", mark: "T"/);
   assert.match(app, /journal: "Tagebuch & Tagesabschluss"/);
   assert.doesNotMatch(app, /label: "Journal"|title="Journal"/);
-  assert.match(diaryView, /3–5 Minuten am Abend/);
-  assert.match(diaryView, /Was war heute\?/);
-  assert.match(diaryView, /Ist alles Neue im Kompass\?/);
-  assert.match(diaryView, /Was zählt morgen und diese Woche\?/);
-  assert.match(diaryView, /Alle aktuell offenen Themen/);
-  assert.match(diaryView, /Kritische Planungspunkte zuerst bearbeiten/);
-  assert.match(diaryView, /Privat oder Fachkalender wählen/);
-  assert.match(diaryView, /Bewerbungsakte aktualisieren/);
-  assert.match(diaryView, /createEmptyApplication/);
-  assert.match(diaryView, /onCreateApplication\(application\)/);
-  assert.match(diaryView, /direkt in Google Tasks auf morgen datiert/);
-  assert.match(diaryView, /Nur\s+ausdrücklich gewählte Aufgaben und Termine/);
+  assert.match(diaryView, /Ein ruhiger Abschluss ohne Pflichtfelder/);
+  assert.match(diaryView, /Jederzeit speicherbar/);
+  assert.match(diaryView, /Tagebuch speichern & morgen planen/);
+  assert.match(diaryView, /Morgen prüfen und bei Bedarf ergänzen/);
+  assert.match(diaryView, /Nur als Inspiration/);
+  assert.match(diaryView, /Dringend oder wichtig/);
+  assert.match(diaryView, /Zurückgestellt/);
+  assert.match(diaryView, /Noch offen/);
+  assert.match(diaryView, /application\/x-gerris-plan/);
+  assert.match(diaryView, /Hier in den Plan für morgen ziehen/);
+  assert.match(diaryView, /Als ToDo in einen Folgetag verschieben/);
+  assert.match(diaryView, /Sonntagabend/);
+  assert.match(diaryView, /Die kommende Woche grob erkunden/);
+  assert.match(diaryView, /Planung geprüft – Tag abschließen/);
+  assert.doesNotMatch(diaryView, /if \(!reviewComplete\)|criticalGaps\.length/);
+  assert.match(diaryPlanning, /buildDiaryPlanningSuggestions/);
+  assert.match(diaryPlanning, /isSundayDate/);
+  assert.match(app, /scheduleDiarySuggestion/);
+  assert.match(app, /updateGoogleTask\(existingTask, \{ dueAt \}\)/);
+  assert.match(app, /createGoogleTask\(\{/);
   assert.match(
     diaryModel,
     /"tasks",\s*"calendar",\s*"applications",\s*"finance",\s*"documents"/,
@@ -235,8 +255,9 @@ test("macht das Tagebuch zum abwärtskompatiblen täglichen Abschluss", async ()
   assert.match(types, /reviewedAreas\?: DiaryReviewArea\[\]/);
   assert.match(types, /linkedApplicationIds\?: string\[\]/);
   assert.match(state, /normalizeDiaryEntries\(candidate\.journal\)/);
-  assert.match(css, /\.diary-close-layout/);
-  assert.match(css, /\.diary-review-checklist/);
+  assert.match(css, /\.diary-planning-workspace/);
+  assert.match(css, /\.diary-plan-dropzone/);
+  assert.match(css, /\.diary-follow-days/);
   assert.match(layout, /Tagebuch im Blick/);
 });
 
@@ -583,6 +604,7 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
     assistantRoute,
     masterCvWorkspace,
     masterCvRoute,
+    applicationWorkflow,
   ] =
     await Promise.all([
       readFile(new URL("components/life-os-app.tsx", root), "utf8"),
@@ -597,6 +619,7 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
       readFile(new URL("app/api/assistant/route.ts", root), "utf8"),
       readFile(new URL("components/master-cv-workspace.tsx", root), "utf8"),
       readFile(new URL("app/api/master-cv/route.ts", root), "utf8"),
+      readFile(new URL("lib/application-workflow.ts", root), "utf8"),
     ]);
 
   assert.match(app, /label: "Bewerbungen"/);
@@ -605,6 +628,11 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(applications, /Konditionen meiner Bewerbung/);
   assert.match(applications, /Erwarteter nächster Schritt/);
   assert.match(applications, /Screenshot der Ausschreibung/);
+  assert.match(applications, /Digitale Stellenbeschreibung/);
+  assert.match(applications, /application-record/);
+  assert.match(applications, /Unterlagen generieren/);
+  assert.match(applications, /Telefoninterview/);
+  assert.match(applications, /Vor-Ort-Gespräch/);
   assert.match(masterCvWorkspace, /Master-CV/);
   assert.match(applications, /<JobResearchPanel/);
   assert.match(types, /applications: ApplicationProcess\[\]/);
@@ -618,6 +646,12 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(actions, /masterCvToPlainText\(masterCvContent\)/);
   assert.match(actions, /fetch\(masterCv\.downloadUrl/);
   assert.match(actions, /interviewPrep/);
+  assert.match(actions, /Grad der Förmlichkeit/);
+  assert.match(actions, /Welche Schwerpunkte sollen sichtbar werden/);
+  assert.match(actions, /Was soll die Webrecherche abdecken/);
+  assert.match(actions, /Persönliche Untergrenze/);
+  assert.match(actions, /assessSalaryPreference/);
+  assert.match(actions, /Als Word-Datei herunterladen/);
   assert.match(actions, /<JobResearchPanel/);
   assert.match(jobResearchPanel, /Vakanz recherchieren/);
   assert.match(jobResearchPanel, /Bestätigen/);
@@ -637,11 +671,15 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(jobResearchRoute, /sameOrigin\(request\)/);
   assert.doesNotMatch(assistantRoute, /type: "web_search"/);
   assert.match(assistantRoute, /confirmedResearchContext/);
+  assert.match(assistantRoute, /selectedResearchClaimIds/);
+  assert.match(assistantRoute, /Persönliche Untergrenze, ausschließlich zur Strategie/);
   assert.match(assistantRoute, /absichtlich keinen Webzugriff/);
   assert.match(masterCvWorkspace, /Inhalte bearbeiten/);
-  assert.match(masterCvWorkspace, /Quellen & Evidenz ansehen/);
-  assert.match(masterCvWorkspace, /Gemeinsam importieren/);
-  assert.match(masterCvRoute, /parseMasterCvBundle/);
+  assert.match(masterCvWorkspace, /Belegte Textbausteine ansehen/);
+  assert.match(masterCvWorkspace, /Master-CV importieren/);
+  assert.doesNotMatch(masterCvWorkspace, /Career Passport/);
+  assert.match(masterCvRoute, /parseMasterCvDocument/);
+  assert.doesNotMatch(masterCvRoute, /form\.get\("passport"\)/);
   assert.match(masterCvRoute, /env\.FILES\.put/);
   assert.match(masterCvRoute, /sameOrigin\(request\)/);
   assert.match(research, /JOB_RADAR_RECORDS/);
@@ -651,6 +689,11 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(researchData, /Sachbearbeiter\*in Kommunales Krisenmanagement/);
   assert.match(researchData, /Business Project Manager Conversational AI/);
   assert.match(researchData, /Product\/Service-orientierte Initiativbewerbung/);
+  assert.match(applicationWorkflow, /complete_application_packs/);
+  assert.match(applicationWorkflow, /APPLICATION_KPI_DEFINITIONS/);
+  assert.match(applicationWorkflow, /APPLICATION_RESEARCH_SCOPE_DEFINITIONS/);
+  assert.match(app, /applicationKpiSettings/);
+  assert.match(app, /Bewerbungsziele/);
 });
 
 test("normalisiert einen alten Zustand ohne Bewerbungsfelder abwärtskompatibel", async () => {

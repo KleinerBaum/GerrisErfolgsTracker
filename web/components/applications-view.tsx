@@ -15,6 +15,13 @@ import {
   APPLICATION_RESEARCH,
   createEmptyApplication,
 } from "../lib/application-research";
+import {
+  addApplicationActivity,
+  applicationKpiProgress,
+  APPLICATION_KPI_DEFINITIONS,
+  APPLICATION_OUTPUT_DEFINITIONS,
+  APPLICATION_RESEARCH_SCOPE_DEFINITIONS,
+} from "../lib/application-workflow";
 import { formatDate, formatRelativeDate } from "../lib/format";
 import { applyConfirmedResearchClaim } from "../lib/job-research";
 import {
@@ -23,6 +30,7 @@ import {
   type AppState,
   type ApplicationArtifact,
   type ApplicationArtifactKind,
+  type ApplicationActivityType,
   type ApplicationProcess,
   type ApplicationStatus,
   type DocumentKind,
@@ -52,16 +60,18 @@ const SALARY_OPTIONS = Object.entries(SALARY_OUTLOOK_LABELS) as Array<
   [SalaryOutlook, string]
 >;
 
+const ACTIVITY_LABELS: Record<ApplicationActivityType, string> = {
+  vacancy_added: "Vakanz hinzugefügt",
+  application_pack_completed: "Bewerbungsunterlagen vollständig",
+  application_sent: "Bewerbung versendet",
+  phone_interview: "Telefoninterview",
+  onsite_interview: "Vor-Ort-Gespräch",
+};
+
 const CLOSED_STATUSES = new Set<ApplicationStatus>([
   "rejected",
   "withdrawn",
   "closed",
-]);
-
-const ACTIVE_STATUSES = new Set<ApplicationStatus>([
-  "submitted",
-  "interview",
-  "offer",
 ]);
 
 const APPLICATION_FILE_TYPES =
@@ -209,7 +219,7 @@ export function ApplicationsView({
   const researchPoolCount = APPLICATION_RESEARCH.length;
   const researchVerifiedAt =
     APPLICATION_RESEARCH[0]?.sourceVerifiedAt ?? new Date().toISOString();
-  const [selectedId, setSelectedId] = useState(
+  const [selectedId, setSelectedId] = useState<string | null>(
     applications.find((application) => application.shortlisted)?.id ??
       applications[0]?.id ??
       null,
@@ -246,26 +256,10 @@ export function ApplicationsView({
 
   const selected =
     applications.find((application) => application.id === selectedId) ?? null;
-  const submitted = applications.filter(
-    (application) =>
-      Boolean(application.appliedAt) || ACTIVE_STATUSES.has(application.status),
-  ).length;
-  const active = applications.filter((application) =>
-    ACTIVE_STATUSES.has(application.status),
-  ).length;
-  const conversations = applications.filter(
-    (application) => application.status === "interview",
-  ).length;
-  const upcomingAction = applications
-    .filter(
-      (application) =>
-        application.nextStepAt &&
-        dayDistance(application.nextStepAt) >= 0 &&
-        !CLOSED_STATUSES.has(application.status),
-    )
-    .sort((left, right) =>
-      (left.nextStepAt ?? "9999").localeCompare(right.nextStepAt ?? "9999"),
-    )[0];
+  const kpiProgress = useMemo(
+    () => applicationKpiProgress(applications, state.applicationKpiSettings),
+    [applications, state.applicationKpiSettings],
+  );
 
   const createApplication = () => {
     const application = createEmptyApplication(
@@ -320,38 +314,55 @@ export function ApplicationsView({
       </section>
 
       <section className="application-kpi-grid" aria-label="Bewerbungskennzahlen">
-        <article className="application-kpi-card">
-          <span>Recherchepool</span>
-          <strong>{applications.length}</strong>
-          <small>{applications.filter((item) => item.shortlisted).length} in der engsten Auswahl</small>
-        </article>
-        <article className="application-kpi-card">
-          <span>Versendet</span>
-          <strong>{submitted}</strong>
-          <small>mit Bewerbungsdatum oder aktivem Prozess</small>
-        </article>
-        <article className="application-kpi-card">
-          <span>Aktive Prozesse</span>
-          <strong>{active}</strong>
-          <small>Bewerbung, Gespräch oder Angebot</small>
-        </article>
-        <article className="application-kpi-card application-kpi-next">
-          <span>Nächster Schritt</span>
-          <strong>
-            {upcomingAction?.nextStepAt
-              ? formatDate(upcomingAction.nextStepAt)
-              : "Noch offen"}
-          </strong>
-          <small>
-            {upcomingAction
-              ? `${upcomingAction.company} · ${upcomingAction.nextStep}`
-              : `${conversations} Gespräche aktuell`}
-          </small>
-        </article>
+        {kpiProgress
+          .filter((progress) => progress.enabled)
+          .map((progress) => {
+            const definition = APPLICATION_KPI_DEFINITIONS.find(
+              (candidate) => candidate.key === progress.key,
+            );
+            if (!definition) return null;
+            return (
+              <article className="application-kpi-card" key={progress.key}>
+                <span>{definition.label}</span>
+                <strong>
+                  {progress.values.week}
+                  <small> / {progress.targets.week}</small>
+                </strong>
+                <div className="application-kpi-periods">
+                  {(
+                    [
+                      ["day", "Tag"],
+                      ["week", "Woche"],
+                      ["month", "Monat"],
+                    ] as const
+                  ).map(([period, label]) => (
+                    <div key={period}>
+                      <span>
+                        {label} · {progress.values[period]} / {progress.targets[period]}
+                      </span>
+                      <i aria-hidden="true">
+                        <b
+                          style={{
+                            width: `${Math.min(100, progress.percentages[period])}%`,
+                          }}
+                        />
+                      </i>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            );
+          })}
+        {!kpiProgress.some((progress) => progress.enabled) ? (
+          <article className="application-kpi-card application-kpi-empty">
+            <span>Bewerbungskennzahlen</span>
+            <strong>Ausgeblendet</strong>
+            <small>In den Einstellungen kannst du deine Ziele auswählen.</small>
+          </article>
+        ) : null}
       </section>
 
       <MasterCvWorkspace
-        careerPassportDocumentId={state.careerPassportDocumentId}
         documents={state.documents}
         key={
           state.masterCvContent
@@ -372,7 +383,9 @@ export function ApplicationsView({
               <span className="eyebrow">Pipeline und Recherche</span>
               <h2>{visible.length} von {applications.length} Vakanzen</h2>
             </div>
-            <span className="research-stamp">Stand 29.07.2026</span>
+            <span className="research-stamp">
+              Stand {formatDate(researchVerifiedAt)}
+            </span>
           </div>
 
           <div className="applications-toolbar">
@@ -438,50 +451,73 @@ export function ApplicationsView({
             <span>Nächster Schritt</span>
           </div>
           <div className="application-table" role="list">
-            {visible.map((application) => (
-              <button
-                aria-current={selectedId === application.id ? "true" : undefined}
-                className={`application-row ${
-                  selectedId === application.id ? "selected" : ""
-                }`}
-                key={application.id}
-                onClick={() => setSelectedId(application.id)}
-                role="listitem"
-                type="button"
-              >
-                <div className="application-role">
-                  <span>
-                    {application.researchRank
-                      ? `#${application.researchRank}`
-                      : "EIGEN"}
-                  </span>
-                  <p>
-                    <strong>{application.jobTitle}</strong>
-                    <small>
-                      {application.company} · {application.location}
-                    </small>
-                  </p>
-                </div>
-                <span className={`application-status ${statusClass(application.status)}`}>
-                  {APPLICATION_STATUS_LABELS[application.status]}
-                </span>
-                <span className={`application-deadline ${
-                  application.deadline && dayDistance(application.deadline) <= 7
-                    ? "urgent"
-                    : ""
-                }`}>
-                  {deadlineCopy(application.deadline)}
-                </span>
-                <span className="application-next">
-                  <strong>{application.nextStep}</strong>
-                  <small>
-                    {application.nextStepAt
-                      ? formatDate(application.nextStepAt)
-                      : "Termin noch festlegen"}
-                  </small>
-                </span>
-              </button>
-            ))}
+            {visible.map((application) => {
+              const expanded = selectedId === application.id;
+              return (
+                <details
+                  className="application-record"
+                  key={application.id}
+                  open={expanded}
+                  role="listitem"
+                >
+                  <summary
+                    aria-current={expanded ? "true" : undefined}
+                    className={`application-row ${expanded ? "selected" : ""}`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setSelectedId(expanded ? null : application.id);
+                    }}
+                  >
+                    <div className="application-role">
+                      <span>
+                        {application.researchRank
+                          ? `#${application.researchRank}`
+                          : "EIGEN"}
+                      </span>
+                      <p>
+                        <strong>{application.jobTitle}</strong>
+                        <small>
+                          {application.company} · {application.location}
+                        </small>
+                      </p>
+                    </div>
+                    <span className={`application-status ${statusClass(application.status)}`}>
+                      {APPLICATION_STATUS_LABELS[application.status]}
+                    </span>
+                    <span className={`application-deadline ${
+                      application.deadline && dayDistance(application.deadline) <= 7
+                        ? "urgent"
+                        : ""
+                    }`}>
+                      {deadlineCopy(application.deadline)}
+                    </span>
+                    <span className="application-next">
+                      <strong>{application.nextStep}</strong>
+                      <small>
+                        {application.nextStepAt
+                          ? formatDate(application.nextStepAt)
+                          : "Termin noch festlegen"}
+                      </small>
+                    </span>
+                    <span className="application-expand-indicator" aria-hidden="true">
+                      {expanded ? "−" : "+"}
+                    </span>
+                  </summary>
+                  {expanded ? (
+                    <ApplicationDetail
+                      application={application}
+                      documents={state.documents}
+                      masterCvDocumentId={state.masterCvDocumentId}
+                      onAttachArtifact={onAttachArtifact}
+                      onOpenStudio={onOpenStudio}
+                      onRemoveArtifact={onRemoveArtifact}
+                      onUpdate={onUpdateApplication}
+                      toast={toast}
+                    />
+                  ) : null}
+                </details>
+              );
+            })}
           </div>
           {!visible.length ? (
             <div className="applications-empty">
@@ -491,28 +527,6 @@ export function ApplicationsView({
           ) : null}
         </div>
 
-        {selected ? (
-          <ApplicationDetail
-            application={selected}
-            documents={state.documents}
-            key={selected.id}
-            masterCvDocumentId={state.masterCvDocumentId}
-            onAttachArtifact={onAttachArtifact}
-            onOpenStudio={onOpenStudio}
-            onRemoveArtifact={onRemoveArtifact}
-            onUpdate={onUpdateApplication}
-            toast={toast}
-          />
-        ) : (
-          <section className="panel application-detail-empty">
-            <span>AKTE</span>
-            <h2>Wähle eine Vakanz aus.</h2>
-            <p>
-              Hier erscheinen Konditionen, Recherche, nächster Schritt und alle
-              zugeordneten Unterlagen.
-            </p>
-          </section>
-        )}
       </section>
     </div>
   );
@@ -547,6 +561,12 @@ function ApplicationDetail({
     useState<ApplicationArtifactKind>("job-posting");
   const [uploading, setUploading] = useState(false);
   const masterCv = documents.find((document) => document.id === masterCvDocumentId);
+  const primaryArtifacts = draft.artifacts.filter(
+    (artifact) => artifact.kind !== "job-screenshot",
+  );
+  const screenshotArtifacts = draft.artifacts.filter(
+    (artifact) => artifact.kind === "job-screenshot",
+  );
 
   const save = (event: FormEvent) => {
     event.preventDefault();
@@ -639,6 +659,26 @@ function ApplicationDetail({
     );
   };
 
+  const recordActivity = (type: ApplicationActivityType, label: string) => {
+    const today = new Date().toISOString();
+    let next = addApplicationActivity(draft, type, today);
+    if (type === "application_sent") {
+      next = {
+        ...next,
+        appliedAt: next.appliedAt ?? today.slice(0, 10),
+        status: ["research", "planned", "draft"].includes(next.status)
+          ? "submitted"
+          : next.status,
+      };
+    }
+    if (type === "phone_interview" || type === "onsite_interview") {
+      next = { ...next, status: "interview" };
+    }
+    setDraft(next);
+    onUpdate(next);
+    toast(`${label} für heute erfasst`);
+  };
+
   return (
     <form className="panel application-detail" onSubmit={save}>
       <header className="application-detail-heading">
@@ -655,6 +695,43 @@ function ApplicationDetail({
           Passung {application.fitRating || "offen"}
         </span>
       </header>
+
+      <div className="application-action-bar" aria-label="Schnellaktionen zur Vakanz">
+        {safeHttpUrl(draft.sourceUrl) ? (
+          <a href={draft.sourceUrl} rel="noreferrer" target="_blank">
+            Ausschreibung öffnen
+          </a>
+        ) : null}
+        <button onClick={() => onOpenStudio(draft)} type="button">
+          Unterlagen generieren
+        </button>
+        <button
+          onClick={() =>
+            recordActivity("application_pack_completed", "Vollständiges Paket")
+          }
+          type="button"
+        >
+          Paket vollständig
+        </button>
+        <button
+          onClick={() => recordActivity("application_sent", "Bewerbung versendet")}
+          type="button"
+        >
+          Versand erfassen
+        </button>
+        <button
+          onClick={() => recordActivity("phone_interview", "Telefoninterview")}
+          type="button"
+        >
+          Telefoninterview
+        </button>
+        <button
+          onClick={() => recordActivity("onsite_interview", "Vor-Ort-Gespräch")}
+          type="button"
+        >
+          Vor-Ort-Gespräch
+        </button>
+      </div>
 
       <div className="application-detail-section application-status-section">
         <label>
@@ -842,12 +919,44 @@ function ApplicationDetail({
             </a>
           ) : null}
         </div>
+        {draft.tags.length ? (
+          <div className="application-tags" aria-label="Stichworte zur Vakanz">
+            {draft.tags.map((tag) => <span key={tag}>{tag}</span>)}
+          </div>
+        ) : null}
       </div>
+
+      <details className="application-digital-job" open={Boolean(draft.jobDescriptionText)}>
+        <summary>
+          <span>
+            <strong>Digitale Stellenbeschreibung</strong>
+            <small>Durchsuchbare Arbeitsgrundlage für Recherche und Generierung</small>
+          </span>
+          <b>{draft.jobDescriptionText ? "Vorhanden" : "Noch ergänzen"}</b>
+        </summary>
+        <label>
+          Veröffentlichter Text und strukturierte Angaben
+          <textarea
+            maxLength={30_000}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                jobDescriptionText: event.target.value,
+              }))
+            }
+            placeholder="Aufgaben, Muss- und Kann-Anforderungen, Rahmenbedingungen sowie Auswahlprozess"
+            rows={10}
+            value={draft.jobDescriptionText}
+          />
+        </label>
+      </details>
 
       <JobResearchPanel
         companyName={draft.company}
+        initialJobPostingText={draft.jobDescriptionText}
         onChange={updateResearch}
         research={draft.vacancyResearch}
+        researchScopes={draft.generationPreferences.researchScopes}
         roleTitle={draft.jobTitle}
         sourceUrl={draft.sourceUrl}
       />
@@ -924,7 +1033,39 @@ function ApplicationDetail({
               value={draft.contactEmail}
             />
           </label>
+          <label>
+            Kontakt-Telefon
+            <input
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  contactPhone: event.target.value,
+                }))
+              }
+              type="tel"
+              value={draft.contactPhone}
+            />
+          </label>
         </div>
+        {draft.contacts.length ? (
+          <div className="application-contact-cards" aria-label="Erkannte Kontakte">
+            {draft.contacts.map((contact) => (
+              <article key={contact.id}>
+                <span>
+                  {contact.kind === "functional"
+                    ? "Fachbereich"
+                    : contact.kind === "recruiting"
+                      ? "Recruiting"
+                      : "Kontakt"}
+                </span>
+                <strong>{contact.name || "Name nicht veröffentlicht"}</strong>
+                {contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : null}
+                {contact.phone ? <a href={`tel:${contact.phone}`}>{contact.phone}</a> : null}
+                {contact.note ? <small>{contact.note}</small> : null}
+              </article>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div className="application-detail-section research-detail">
@@ -938,6 +1079,30 @@ function ApplicationDetail({
           </span>
         </div>
         <p>{draft.researchSummary || "Noch keine Rechercheeinschätzung hinterlegt."}</p>
+        <details className="application-generation-summary">
+          <summary>Auswahl für die nächste Generierung</summary>
+          <div>
+            <p>
+              <strong>Ergebnisse:</strong>{" "}
+              {APPLICATION_OUTPUT_DEFINITIONS.filter((definition) =>
+                draft.generationPreferences.outputKinds.includes(definition.key),
+              ).map((definition) => definition.label).join(" · ") || "Noch keine"}
+            </p>
+            <p>
+              <strong>Recherche:</strong>{" "}
+              {APPLICATION_RESEARCH_SCOPE_DEFINITIONS.filter((definition) =>
+                draft.generationPreferences.researchScopes.includes(definition.key),
+              ).map((definition) => definition.label).join(" · ") || "Keine Webfakten"}
+            </p>
+            <p>
+              <strong>Schwerpunkte:</strong>{" "}
+              {[...draft.generationPreferences.focusThemes,
+                draft.generationPreferences.customFocus]
+                .filter(Boolean)
+                .join(" · ") || "Im Studio festlegen"}
+            </p>
+          </div>
+        </details>
         <label>
           Eigene Notizen
           <textarea
@@ -977,7 +1142,7 @@ function ApplicationDetail({
           </div>
         ) : null}
         <div className="artifact-list">
-          {draft.artifacts.map((artifact) => {
+          {primaryArtifacts.map((artifact) => {
             const document = documents.find(
               (candidate) => candidate.id === artifact.documentId,
             );
@@ -1009,12 +1174,46 @@ function ApplicationDetail({
             );
           })}
         </div>
-        {!draft.artifacts.length ? (
+        {!primaryArtifacts.length ? (
           <p className="artifact-empty">
-            Noch keine vakanzbezogenen Dateien verknüpft. Füge die
-            Stellenausschreibung, einen Screenshot oder deine finalen Unterlagen
-            gezielt hinzu.
+            Noch keine primären vakanzbezogenen Dateien verknüpft. Füge die
+            Stellenausschreibung oder deine finalen Unterlagen gezielt hinzu.
           </p>
+        ) : null}
+        {screenshotArtifacts.length ? (
+          <details className="application-screenshot-backup">
+            <summary>
+              Screenshot-Backup · {screenshotArtifacts.length} Datei
+              {screenshotArtifacts.length === 1 ? "" : "en"}
+            </summary>
+            <div className="artifact-list">
+              {screenshotArtifacts.map((artifact) => {
+                const document = documents.find(
+                  (candidate) => candidate.id === artifact.documentId,
+                );
+                const openUrl = document?.downloadUrl || document?.driveUrl;
+                return (
+                  <article key={artifact.id}>
+                    <span>Backup</span>
+                    <p>
+                      <strong>{artifact.label}</strong>
+                      <small>{formatRelativeDate(artifact.createdAt)}</small>
+                    </p>
+                    <div>
+                      {openUrl ? (
+                        <a href={openUrl} rel="noreferrer" target="_blank">
+                          Öffnen
+                        </a>
+                      ) : null}
+                      <button onClick={() => removeArtifact(artifact.id)} type="button">
+                        Lösen
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </details>
         ) : null}
         <div className="artifact-upload-row">
           <select
@@ -1049,6 +1248,20 @@ function ApplicationDetail({
       </div>
 
       <div className="application-detail-actions">
+        {draft.activities.length ? (
+          <details className="application-activity-log">
+            <summary>Aktivitätsverlauf · {draft.activities.length}</summary>
+            <ul>
+              {[...draft.activities].reverse().map((activity) => (
+                <li key={activity.id}>
+                  <strong>{ACTIVITY_LABELS[activity.type]}</strong>
+                  <span>{formatDate(activity.occurredAt)}</span>
+                  {activity.note ? <small>{activity.note}</small> : null}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
         <button
           className="button button-soft"
           onClick={() => onOpenStudio(draft)}

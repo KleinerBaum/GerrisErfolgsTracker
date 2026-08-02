@@ -20,6 +20,7 @@ import type {
   VerificationType,
   WorldDistrictKey,
   WorldUpgradeKind,
+  XpGoals,
 } from "./types";
 
 export const GAMIFICATION_ENGINE_VERSION = 1 as const;
@@ -68,6 +69,21 @@ export const BASE_XP: Record<DifficultyBand, number> = {
   D4: 50,
   D5: 100,
   BOSS: 0,
+};
+
+export const DEFAULT_XP_GOALS: XpGoals = {
+  daily: 25,
+  weekly: 125,
+  monthly: 500,
+};
+
+export const XP_GOAL_LIMITS: Record<
+  keyof XpGoals,
+  { min: number; max: number; step: number }
+> = {
+  daily: { min: 5, max: 5_000, step: 5 },
+  weekly: { min: 5, max: 25_000, step: 5 },
+  monthly: { min: 5, max: 100_000, step: 5 },
 };
 
 export const WORLD_UPGRADE_COSTS: Record<
@@ -135,6 +151,24 @@ const clamp = (value: number, minimum: number, maximum: number): number =>
 
 const rating = (value: unknown, fallback = 1): number =>
   clamp(Math.round(finite(value, fallback)), 1, 5);
+
+export function normalizeXpGoals(
+  value: Partial<XpGoals> | null | undefined,
+): XpGoals {
+  const normalizeGoal = (period: keyof XpGoals): number => {
+    const limits = XP_GOAL_LIMITS[period];
+    return clamp(
+      Math.round(finite(value?.[period], DEFAULT_XP_GOALS[period])),
+      limits.min,
+      limits.max,
+    );
+  };
+  return {
+    daily: normalizeGoal("daily"),
+    weekly: normalizeGoal("weekly"),
+    monthly: normalizeGoal("monthly"),
+  };
+}
 
 const stableNumber = (value: string): number => {
   let hash = 2166136261;
@@ -276,6 +310,7 @@ export function createDefaultGamification(
     surprisesEnabled: true,
     celebrationsEnabled: true,
     milestoneStepXp: 250,
+    xpGoals: { ...DEFAULT_XP_GOALS },
     quietHours: { start: "21:00", end: "08:00" },
     profiles: [],
     ledger: legacyPoints > 0 ? [openingEntry(legacyPoints, createdAt)] : [],
@@ -399,6 +434,7 @@ export function normalizeGamificationState(
     milestoneStepXp: [100, 250, 500, 1000].includes(value.milestoneStepXp)
       ? value.milestoneStepXp
       : 250,
+    xpGoals: normalizeXpGoals(value.xpGoals),
     quietHours: {
       start: typeof value.quietHours?.start === "string" ? value.quietHours.start : "21:00",
       end: typeof value.quietHours?.end === "string" ? value.quietHours.end : "08:00",
@@ -461,6 +497,112 @@ export function ledgerTotals(ledger: RewardLedgerEntry[]) {
 
 export const levelForXp = (earnedXp: number): number =>
   Math.floor(Math.max(0, earnedXp) / 250) + 1;
+
+export type XpGoalProgress = {
+  earnedXp: number;
+  goalXp: number;
+  percentage: number;
+  goalReached: boolean;
+};
+
+export type XpProgressByPeriod = {
+  day: XpGoalProgress;
+  week: XpGoalProgress;
+  month: XpGoalProgress;
+};
+
+const XP_PROGRESS_TIME_ZONE = "Europe/Berlin";
+const MILLISECONDS_PER_DAY = 86_400_000;
+
+function zonedCalendarCoordinate(
+  value: string | number | Date,
+  formatter: Intl.DateTimeFormat,
+): { year: number; month: number; dayNumber: number; weekStart: number } | null {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = formatter.formatToParts(date);
+  const valueOf = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const year = valueOf("year");
+  const month = valueOf("month");
+  const day = valueOf("day");
+  if (!year || !month || !day) return null;
+  const utcDate = Date.UTC(year, month - 1, day);
+  const dayNumber = Math.floor(utcDate / MILLISECONDS_PER_DAY);
+  const mondayOffset = (new Date(utcDate).getUTCDay() + 6) % 7;
+  return {
+    year,
+    month,
+    dayNumber,
+    weekStart: dayNumber - mondayOffset,
+  };
+}
+
+function goalProgress(earnedXp: number, goalXp: number): XpGoalProgress {
+  const earned = Math.max(0, Math.round(earnedXp));
+  const goal = Math.max(1, Math.round(goalXp));
+  return {
+    earnedXp: earned,
+    goalXp: goal,
+    percentage: Math.round((earned / goal) * 100),
+    goalReached: earned >= goal,
+  };
+}
+
+export function xpProgressByPeriod(
+  ledger: RewardLedgerEntry[],
+  goals: XpGoals,
+  now: string | number | Date = new Date(),
+  timeZone = XP_PROGRESS_TIME_ZONE,
+): XpProgressByPeriod {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const referenceDate = new Date(now);
+  const reference = zonedCalendarCoordinate(referenceDate, formatter);
+  const normalizedGoals = normalizeXpGoals(goals);
+  if (!reference || !Number.isFinite(referenceDate.getTime())) {
+    return {
+      day: goalProgress(0, normalizedGoals.daily),
+      week: goalProgress(0, normalizedGoals.weekly),
+      month: goalProgress(0, normalizedGoals.monthly),
+    };
+  }
+
+  let dayXp = 0;
+  let weekXp = 0;
+  let monthXp = 0;
+  for (const entry of ledger) {
+    if (entry.kind === "OPENING_BALANCE" || entry.xpDelta <= 0) continue;
+    const createdAt = new Date(entry.createdAt);
+    if (
+      !Number.isFinite(createdAt.getTime()) ||
+      createdAt.getTime() > referenceDate.getTime()
+    ) {
+      continue;
+    }
+    const coordinate = zonedCalendarCoordinate(createdAt, formatter);
+    if (!coordinate) continue;
+    const xp = Math.max(0, Math.round(entry.xpDelta));
+    if (coordinate.dayNumber === reference.dayNumber) dayXp += xp;
+    if (coordinate.weekStart === reference.weekStart) weekXp += xp;
+    if (
+      coordinate.year === reference.year &&
+      coordinate.month === reference.month
+    ) {
+      monthXp += xp;
+    }
+  }
+
+  return {
+    day: goalProgress(dayXp, normalizedGoals.daily),
+    week: goalProgress(weekXp, normalizedGoals.weekly),
+    month: goalProgress(monthXp, normalizedGoals.monthly),
+  };
+}
 
 export function districtForArea(area: LifeArea): WorldDistrictKey {
   const districts: Record<LifeArea, WorldDistrictKey> = {

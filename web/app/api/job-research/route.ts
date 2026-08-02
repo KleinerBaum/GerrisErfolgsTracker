@@ -7,7 +7,10 @@ import {
   publicJobUrl,
 } from "../../../lib/job-research";
 import { ownerEmail, ownerHash, sameOrigin } from "../../../lib/server-auth";
-import type { JobResearchSource } from "../../../lib/types";
+import type {
+  ApplicationResearchScope,
+  JobResearchSource,
+} from "../../../lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +26,22 @@ const RATE_LIMIT_WINDOW_MS = 10 * 60_000;
 const RATE_LIMIT_REQUESTS = 6;
 const requestTimes = new Map<string, number[]>();
 const RETRYABLE_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504]);
+const RESEARCH_SCOPES = new Set<ApplicationResearchScope>([
+  "job_posting",
+  "company",
+  "department",
+  "projects",
+  "publications",
+  "salary",
+]);
+const RESEARCH_SCOPE_LABELS: Record<ApplicationResearchScope, string> = {
+  job_posting: "Stellenanzeige mit Aufgaben, Anforderungen und Auswahlprozess",
+  company: "Unternehmen und aktuelle offizielle Entwicklungen",
+  department: "Abteilung und organisatorisches Umfeld",
+  projects: "rollenrelevante aktuelle Projekte und Initiativen",
+  publications: "relevante offizielle Publikationen und Fachbeiträge",
+  salary: "veröffentlichte Vergütung, Tarif oder belegter Gehaltskorridor",
+};
 
 type OpenAIResearchPayload = {
   id?: unknown;
@@ -538,6 +557,15 @@ export async function POST(request: Request) {
     const jobPostingText = redactObviousCredentials(
       clipped(candidate.jobPostingText, 30_000),
     );
+    const researchScopes = Array.isArray(candidate.researchScopes)
+      ? candidate.researchScopes
+          .filter(
+            (scope): scope is ApplicationResearchScope =>
+              typeof scope === "string" &&
+              RESEARCH_SCOPES.has(scope as ApplicationResearchScope),
+          )
+          .slice(0, RESEARCH_SCOPES.size)
+      : ["job_posting", "company", "salary"] satisfies ApplicationResearchScope[];
     const researchedAt = new Date().toISOString();
     const model =
       process.env.OPENAI_RESEARCH_MODEL?.trim() || "gpt-5.6";
@@ -548,6 +576,10 @@ export async function POST(request: Request) {
       `Vom Nutzer eingegebener Rollenhinweis, noch nicht verifiziert: ${roleTitle || "nicht angegeben"}`,
       "Zielmarkt: Deutschland",
       "Ausgabesprache: Deutsch",
+      `Vom Nutzer gewählter Rechercheumfang: ${researchScopes
+        .map((scope) => RESEARCH_SCOPE_LABELS[scope])
+        .join("; ") || "keine externe Anreicherung; nur Zugänglichkeit der Anzeige prüfen"}`,
+      "Recherchiere nur innerhalb dieses gewählten Umfangs. Nicht ausgewählte Themen bleiben als offene, nicht recherchierte Punkte sichtbar.",
       jobPostingText
         ? `Vom Nutzer als öffentlich gekennzeichneter Ausschreibungstext:\n<job_posting_text>\n${jobPostingText}\n</job_posting_text>`
         : "Kein zusätzlicher Ausschreibungstext bereitgestellt.",

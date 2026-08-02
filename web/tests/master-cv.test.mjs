@@ -7,7 +7,7 @@ import {
   masterCvToPlainText,
   normalizeMasterCvContent,
 } from "../lib/master-cv.ts";
-import { parseMasterCvBundle } from "../lib/server/master-cv-import.ts";
+import { parseMasterCvDocument } from "../lib/server/master-cv-import.ts";
 
 function paragraph(style, value) {
   return `<w:p><w:pPr><w:pStyle w:val="${style}"/></w:pPr><w:r><w:t xml:space="preserve">${value}</w:t></w:r></w:p>`;
@@ -18,101 +18,47 @@ function docxFixture() {
     <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
       <w:body>
         ${paragraph("CvName", "Gerrit Fabisch")}
-        ${paragraph("CvHeadline", "AI-Enabled Business Process &amp; Project Manager")}
-        ${paragraph("CvSubheadline", "HR Digitalization | Applied Automation")}
+        ${paragraph("CvHeadline", "KI-gestütztes Prozess- und Projektmanagement")}
+        ${paragraph("CvSubheadline", "HR-Digitalisierung | Angewandte Automatisierung")}
         ${paragraph("CvContact", "Düsseldorf | gerrit@example.test")}
-        ${paragraph("CvSection", "PROFESSIONAL SUMMARY")}
-        ${paragraph("CvBody", "Evidence-safe profile text.")}
-        ${paragraph("CvSection", "CAREER HIGHLIGHTS")}
-        ${paragraph("CvBullet", "• Built a controlled workflow.")}
+        ${paragraph("CvSection", "BERUFLICHES PROFIL")}
+        ${paragraph("CvBody", "Belegbares Profil für digitale Geschäftsprozesse.")}
+        ${paragraph("CvSection", "AUSGEWÄHLTE ERGEBNISSE")}
+        ${paragraph("CvBullet", "• Entwicklung eines kontrollierten Workflows.")}
       </w:body>
     </w:document>`;
   return zipSync({ "word/document.xml": strToU8(xml) });
 }
 
-function passportFixture(overrides = {}) {
-  return JSON.stringify({
-    schema_version: "4.0",
-    profile: {
-      name: "Gerrit Fabisch",
-      headline: "Fallback headline",
-      location: "Düsseldorf",
-      contact: [],
-    },
-    preferences: {
-      target_directions: ["HR Digitalization / Applied AI"],
-      document_preferences: { language: "en" },
-    },
-    source_documents: [
-      {
-        source_id: "SRC-CV-1",
-        name: "Master-CV.docx",
-        source_type: "current_cv",
-        is_primary: true,
-        notes: ["Primary source"],
-      },
-    ],
-    document_versions: [{ status: "partial" }],
-    evidence: [
-      {
-        evidence_id: "EV-1",
-        claim: "Controlled workflow",
-        safe_wording: "Built a controlled workflow.",
-        source_type: "current_cv",
-        source_name: "Master-CV.docx",
-        confidence: "source_only",
-        restrictions: ["Do not add unsupported metrics."],
-        role_relevance: ["HR Digitalization / Applied AI"],
-        captured_at: "2026-08-01T10:00:00.000Z",
-      },
-    ],
-    ...overrides,
-  });
-}
-
-test("liest DOCX und Career Passport als bearbeitbaren Master-CV", () => {
-  const result = parseMasterCvBundle(
+test("liest einen DOCX-Master-CV ohne zusätzliches Passport-Dokument", () => {
+  const result = parseMasterCvDocument(
     docxFixture(),
-    passportFixture(),
     "2026-08-02T08:00:00.000Z",
   );
 
   assert.equal(result.name, "Gerrit Fabisch");
-  assert.equal(
-    result.headline,
-    "AI-Enabled Business Process & Project Manager",
-  );
+  assert.equal(result.headline, "KI-gestütztes Prozess- und Projektmanagement");
+  assert.equal(result.language, "de-DE");
   assert.equal(result.sections.length, 2);
-  assert.equal(result.sections[1].content, "• Built a controlled workflow.");
-  assert.equal(result.passport.sourceDocuments.length, 1);
-  assert.equal(result.passport.evidence[0].evidenceId, "EV-1");
-  assert.deepEqual(result.passport.targetDirections, [
-    "HR Digitalization / Applied AI",
-  ]);
-});
-test("verweigert eine nicht zusammengehörige DOCX-/Passport-Kombination", () => {
-  assert.throws(
-    () =>
-      parseMasterCvBundle(
-        docxFixture(),
-        passportFixture({
-          profile: { name: "Andere Person", headline: "" },
-        }),
-      ),
-    /nicht zur selben Person/,
+  assert.equal(
+    result.sections[1].content,
+    "• Entwicklung eines kontrollierten Workflows.",
   );
+  assert.equal(result.passport.sourceDocuments.length, 1);
+  assert.equal(result.passport.evidence[0].evidenceId, "CV-1-1");
+  assert.equal(result.passport.evidence[1].evidenceId, "CV-2-1");
+  assert.equal(result.passport.evidence[1].confidence, "source_only");
 });
 
-test("normalisiert gespeicherte Inhalte und gibt die bearbeitete Fassung mit Evidenz aus", () => {
-  const parsed = parseMasterCvBundle(
+test("normalisiert den DOCX-Import abwärtskompatibel ohne Passport-Dateiverweis", () => {
+  const parsed = parseMasterCvDocument(
     docxFixture(),
-    passportFixture(),
     "2026-08-02T08:00:00.000Z",
   );
   const content = normalizeMasterCvContent({
     schemaVersion: 1,
     sourceDocumentId: "upload-cv",
-    passportDocumentId: "upload-passport",
+    passportDocumentId: null,
     ...parsed,
     importedAt: "2026-08-02T08:00:00.000Z",
     updatedAt: "2026-08-02T08:10:00.000Z",
@@ -120,50 +66,26 @@ test("normalisiert gespeicherte Inhalte und gibt die bearbeitete Fassung mit Evi
   });
 
   assert.ok(content);
+  assert.equal(content.passportDocumentId, null);
   const plainText = masterCvToPlainText(content);
-  assert.match(plainText, /PROFESSIONAL SUMMARY/);
-  assert.match(plainText, /\[EV-1\] Built a controlled workflow\./);
-  assert.match(plainText, /Do not add unsupported metrics/);
+  assert.match(plainText, /BERUFLICHES PROFIL/);
+  assert.match(
+    plainText,
+    /\[CV-2-1\] Entwicklung eines kontrollierten Workflows\./,
+  );
+  assert.match(plainText, /BELEGREGISTER ZUM BERUFLICHEN PROFIL/);
+  assert.doesNotMatch(plainText, /CAREER PASSPORT/i);
 });
 
-test("lokalisiert das Evidenzregister für einen deutschen Master-CV", () => {
-  const parsed = parseMasterCvBundle(
-    docxFixture(),
-    passportFixture({
-      preferences: {
-        target_directions: ["HR-Digitalisierung / Angewandte KI"],
-        document_preferences: { language: "de" },
-      },
-      evidence: [
-        {
-          evidence_id: "EV-DE-1",
-          claim: "Kontrollierter Workflow",
-          safe_wording: "Entwicklung eines kontrollierten Workflows.",
-          source_type: "current_cv",
-          source_name: "Master-CV.docx",
-          confidence: "user_confirmed",
-          restrictions: ["Keine unbelegten Kennzahlen ergänzen."],
-          role_relevance: ["HR-Digitalisierung / Angewandte KI"],
-          captured_at: "2026-08-02T08:00:00.000Z",
-        },
-      ],
-    }),
-    "2026-08-02T08:00:00.000Z",
-  );
-  const content = normalizeMasterCvContent({
-    schemaVersion: 1,
-    sourceDocumentId: "upload-cv-de",
-    passportDocumentId: "upload-passport-de",
-    ...parsed,
-    importedAt: "2026-08-02T08:00:00.000Z",
-    updatedAt: "2026-08-02T08:10:00.000Z",
-    editRevision: 0,
-  });
+test("verwirft DOCX-Dateien ohne erkennbaren Lebenslaufabschnitt", () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>${paragraph("CvName", "Gerrit Fabisch")}</w:body>
+    </w:document>`;
+  const bytes = zipSync({ "word/document.xml": strToU8(xml) });
 
-  assert.ok(content);
-  const plainText = masterCvToPlainText(content);
-  assert.match(plainText, /EVIDENZREGISTER ZUM BERUFLICHEN PROFIL/);
-  assert.match(plainText, /Quelle: Master-CV\.docx · Evidenzstatus: vom Nutzer bestätigt/);
-  assert.match(plainText, /Einschränkungen: Keine unbelegten Kennzahlen ergänzen\./);
-  assert.doesNotMatch(plainText, /CAREER EVIDENCE REGISTER/);
+  assert.throws(
+    () => parseMasterCvDocument(bytes),
+    /Abschnitte des Master-CV konnten nicht erkannt werden/,
+  );
 });

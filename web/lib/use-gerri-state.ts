@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { COST_CATEGORIES } from "./finance-data";
 import { mergeApplicationResearch } from "./application-research";
+import { normalizeApplicationKpiSettings } from "./application-workflow";
 import { diaryRhythmDays, normalizeDiaryEntries } from "./diary";
 import { normalizeDashboardSettings } from "./dashboard";
 import { isoDateInput } from "./format";
@@ -35,6 +36,7 @@ function normalizeState(value: AppState): AppState {
     accountBalances?: Partial<AppState["accountBalances"]>;
     pendingTaskImports?: AppState["pendingTaskImports"];
     dashboardSettings?: AppState["dashboardSettings"];
+    applicationKpiSettings?: AppState["applicationKpiSettings"];
   };
   const journal = normalizeDiaryEntries(candidate.journal);
   const gamification = normalizeGamificationState(
@@ -73,6 +75,9 @@ function normalizeState(value: AppState): AppState {
     dashboardSettings: normalizeDashboardSettings(
       candidate.dashboardSettings,
       candidate.monthlyBudget,
+    ),
+    applicationKpiSettings: normalizeApplicationKpiSettings(
+      candidate.applicationKpiSettings,
     ),
     masterCvDocumentId:
       typeof candidate.masterCvDocumentId === "string"

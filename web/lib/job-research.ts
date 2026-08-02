@@ -10,7 +10,7 @@ import type {
   VacancyResearch,
 } from "./types";
 
-export const JOB_RESEARCH_PROMPT_VERSION = "job-research-v1";
+export const JOB_RESEARCH_PROMPT_VERSION = "job-research-v2";
 
 export const JOB_RESEARCH_FACT_KEYS = [
   "role.title",
@@ -36,6 +36,9 @@ export const JOB_RESEARCH_FACT_KEYS = [
   "process.onboarding",
   "company.context",
   "company.current_developments",
+  "company.department",
+  "company.projects",
+  "company.publications",
   "market.salary",
   "market.talent_supply",
   "market.skill_demand",
@@ -566,27 +569,41 @@ export function researchWithDecision(
   return { research: next, claim: decidedClaim };
 }
 
-function confirmedClaims(research: VacancyResearch): JobResearchClaim[] {
-  return [...research.adFacts, ...research.enrichment].filter((claim) =>
-    ["confirmed", "edited"].includes(claim.decision.status),
+function confirmedClaims(
+  research: VacancyResearch,
+  selectedClaimIds?: readonly string[],
+): JobResearchClaim[] {
+  const selected = selectedClaimIds ? new Set(selectedClaimIds) : null;
+  return [...research.adFacts, ...research.enrichment].filter(
+    (claim) =>
+      ["confirmed", "edited"].includes(claim.decision.status) &&
+      (!selected || selected.has(claim.id)),
   );
 }
 
-export function confirmedResearchSources(research: VacancyResearch): string[] {
+export function confirmedResearchSources(
+  research: VacancyResearch,
+  selectedClaimIds?: readonly string[],
+): string[] {
   const used = new Set(
-    confirmedClaims(research)
+    confirmedClaims(research, selectedClaimIds)
       .flatMap((claim) => claim.sourceUrls)
       .map(canonicalizeResearchUrl)
       .filter((source): source is string => Boolean(source)),
   );
-  const canonical = canonicalizeResearchUrl(research.canonicalUrl);
-  if (canonical) used.add(canonical);
+  if (!selectedClaimIds || selectedClaimIds.length > 0) {
+    const canonical = canonicalizeResearchUrl(research.canonicalUrl);
+    if (canonical) used.add(canonical);
+  }
   return [...used];
 }
 
-export function confirmedResearchContext(research: VacancyResearch | null) {
+export function confirmedResearchContext(
+  research: VacancyResearch | null,
+  selectedClaimIds?: readonly string[],
+) {
   if (!research) return null;
-  const claims = confirmedClaims(research).map((claim) => ({
+  const claims = confirmedClaims(research, selectedClaimIds).map((claim) => ({
     factKey: claim.factKey,
     value: claim.decision.value || claim.value,
     decision: claim.decision.status,
@@ -602,7 +619,7 @@ export function confirmedResearchContext(research: VacancyResearch | null) {
     openQuestions: research.gaps,
     conflicts: research.conflicts,
     warnings: research.warnings,
-    sources: confirmedResearchSources(research),
+    sources: confirmedResearchSources(research, selectedClaimIds),
   };
 }
 

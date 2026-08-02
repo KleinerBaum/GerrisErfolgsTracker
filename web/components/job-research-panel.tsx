@@ -7,7 +7,9 @@ import {
   isVacancyResearch,
   researchWithDecision,
 } from "../lib/job-research";
+import { APPLICATION_RESEARCH_SCOPE_DEFINITIONS } from "../lib/application-workflow";
 import type {
+  ApplicationResearchScope,
   JobResearchClaim,
   JobResearchEvidenceClass,
   JobResearchEvidenceStatus,
@@ -39,6 +41,9 @@ const FACT_LABELS: Record<JobResearchFactKey, string> = {
   "process.onboarding": "Einstieg und Onboarding",
   "company.context": "Unternehmenskontext",
   "company.current_developments": "Aktuelle Entwicklungen",
+  "company.department": "Abteilung und organisatorisches Umfeld",
+  "company.projects": "Relevante Projekte und Initiativen",
+  "company.publications": "Relevante Publikationen",
   "market.salary": "Marktvergütung",
   "market.talent_supply": "Verfügbarkeit am Arbeitsmarkt",
   "market.skill_demand": "Gefragte Kompetenzen",
@@ -100,6 +105,8 @@ type JobResearchPanelProps = {
   companyName: string;
   roleTitle: string;
   compact?: boolean;
+  initialJobPostingText?: string;
+  researchScopes?: ApplicationResearchScope[];
   onChange: (
     research: VacancyResearch,
     decidedClaim?: JobResearchClaim,
@@ -233,12 +240,14 @@ export function JobResearchPanel({
   companyName,
   roleTitle,
   compact = false,
+  initialJobPostingText = "",
+  researchScopes = ["job_posting", "company", "salary"],
   onChange,
 }: JobResearchPanelProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState("");
-  const [jobPostingText, setJobPostingText] = useState("");
+  const [jobPostingText, setJobPostingText] = useState(initialJobPostingText);
   const claims = useMemo(
     () => (research ? [...research.adFacts, ...research.enrichment] : []),
     [research],
@@ -272,6 +281,7 @@ export function JobResearchPanel({
           companyName,
           roleTitle,
           jobPostingText,
+          researchScopes,
         }),
       });
       const startedAt = Date.now();
@@ -384,6 +394,14 @@ export function JobResearchPanel({
           />
         </label>
       </details>
+      <div className="research-scope-summary" aria-label="Gewählter Rechercheumfang">
+        <span>Websuche nutzt:</span>
+        {APPLICATION_RESEARCH_SCOPE_DEFINITIONS.filter((definition) =>
+          researchScopes.includes(definition.key),
+        ).map((definition) => (
+          <b key={definition.key}>{definition.label}</b>
+        ))}
+      </div>
       {error ? <p className="research-error" role="alert">{error}</p> : null}
       {busy && progress ? (
         <p className="research-progress" role="status">{progress}</p>

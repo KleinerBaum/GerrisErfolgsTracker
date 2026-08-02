@@ -1,84 +1,29 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
-
-import { createEmptyApplication } from "../lib/application-research";
-import { DIARY_REVIEW_AREAS } from "../lib/diary";
-import { formatDate, formatRelativeDate, isoDateInput } from "../lib/format";
 import {
-  APPLICATION_STATUS_LABELS,
-  type AppState,
-  type ApplicationProcess,
-  type ApplicationStatus,
-  type CalendarEvent,
-  type DiaryReviewArea,
-  type DiarySaveInput,
-  type OpenTopic,
-  type OpenTopicGroup,
-  type PlanningHealthReport,
+  useMemo,
+  useState,
+  type DragEvent,
+  type FormEvent,
+} from "react";
+
+import {
+  addDiaryDays,
+  buildDiaryPlanningSuggestions,
+  isSundayDate,
+  type DiaryPlanningSuggestion,
+} from "../lib/diary-planning";
+import {
+  formatDate,
+  formatRelativeDate,
+  isoDateInput,
+} from "../lib/format";
+import type {
+  AppState,
+  CalendarEvent,
+  DiarySaveInput,
+  PlanningHealthReport,
 } from "../lib/types";
-
-const ACTIVE_APPLICATION_STATUSES = new Set<ApplicationStatus>([
-  "draft",
-  "submitted",
-  "interview",
-  "offer",
-]);
-
-const APPLIED_APPLICATION_STATUSES = new Set<ApplicationStatus>([
-  "submitted",
-  "interview",
-  "offer",
-  "rejected",
-  "closed",
-]);
-
-const REVIEW_LABELS: Record<
-  DiaryReviewArea,
-  { label: string; description: string }
-> = {
-  tasks: {
-    label: "Aufgaben & Zusagen",
-    description: "Erledigtes abhaken und offene Punkte einplanen",
-  },
-  calendar: {
-    label: "Termine",
-    description: "Neue Termine und Änderungen festhalten",
-  },
-  applications: {
-    label: "Bewerbungen",
-    description: "Status, Rückmeldungen und nächste Schritte aktualisieren",
-  },
-  finance: {
-    label: "Finanzen",
-    description: "Einnahmen, Kosten und Zahlungen nachtragen",
-  },
-  documents: {
-    label: "Unterlagen",
-    description: "Neue oder geänderte Dokumente richtig ablegen",
-  },
-};
-
-const TOPIC_GROUP_LABELS: Record<OpenTopicGroup, string> = {
-  decision: "Entscheidung nötig",
-  next_step: "Nächster Schritt",
-  waiting: "Warten",
-  scheduled: "Eingeplant",
-};
-
-const dayDistance = (value: string): number => {
-  const target = new Date(value);
-  const today = new Date();
-  target.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
-};
-
-const withinDays = (value: string | null | undefined, from: number, to: number) => {
-  if (!value) return false;
-  const distance = dayDistance(value);
-  return distance >= from && distance <= to;
-};
 
 type DiaryViewProps = {
   state: AppState;
@@ -86,36 +31,37 @@ type DiaryViewProps = {
   tasksConnected: boolean;
   taskActionId: string;
   planningReport: PlanningHealthReport | null;
-  onCompleteTask: (taskId: string) => Promise<void>;
-  onCreateApplication: (application: ApplicationProcess) => void;
-  onOpenCapture: (
-    kind: "task" | "event" | "cost" | "income" | "document" | "journal",
-  ) => void;
-  onPlanTask: (taskId: string) => Promise<boolean>;
   onSave: (input: DiarySaveInput) => string;
   onAnalyze: (journalId: string, input: DiarySaveInput) => Promise<string>;
-  onGapAction: (
-    gapId: string,
-    action: "reopen" | "snooze" | "resolve",
-    note?: string,
-  ) => Promise<void>;
-  onTopicUpdate: (
-    topicId: string,
-    input: Partial<
-      Pick<
-        OpenTopic,
-        | "status"
-        | "group"
-        | "nextStep"
-        | "dueAt"
-        | "calendarTarget"
-        | "snoozedUntil"
-      >
-    >,
-  ) => Promise<void>;
-  onDecision: (topic: OpenTopic, decision: string) => Promise<void>;
-  onUpdateApplication: (application: ApplicationProcess) => void;
+  onScheduleSuggestion: (
+    suggestion: DiaryPlanningSuggestion,
+    date: string,
+  ) => Promise<boolean>;
 };
+
+const PRIORITY_LABELS: Record<DiaryPlanningSuggestion["priority"], string> = {
+  critical: "Dringend & wichtig",
+  important: "Wichtig",
+  normal: "Offen",
+};
+
+const SOURCE_LABELS: Record<DiaryPlanningSuggestion["sourceKind"], string> = {
+  task: "Aufgabe",
+  gap: "Planungshinweis",
+  topic: "Offenes Thema",
+  custom: "Eigener Punkt",
+};
+
+const onDate = (value: string | null | undefined, date: string): boolean =>
+  Boolean(value && isoDateInput(value) === date);
+
+const planDateLabel = (date: string, long = false): string =>
+  new Intl.DateTimeFormat("de-DE", {
+    timeZone: "UTC",
+    weekday: long ? "long" : "short",
+    day: "2-digit",
+    month: "2-digit",
+  }).format(new Date(`${date}T12:00:00.000Z`));
 
 export function DiaryView({
   state,
@@ -123,41 +69,36 @@ export function DiaryView({
   tasksConnected,
   taskActionId,
   planningReport,
-  onCompleteTask,
-  onCreateApplication,
-  onOpenCapture,
-  onPlanTask,
   onSave,
   onAnalyze,
-  onGapAction,
-  onTopicUpdate,
-  onDecision,
-  onUpdateApplication,
+  onScheduleSuggestion,
 }: DiaryViewProps) {
   const today = isoDateInput();
+  const tomorrow = addDiaryDays(today, 1);
+  const planningDates = Array.from({ length: 7 }, (_, index) =>
+    addDiaryDays(today, index + 1),
+  );
   const todayEntry = state.journal.find((entry) => entry.date === today);
   const [text, setText] = useState(todayEntry?.text ?? "");
   const [win, setWin] = useState(todayEntry?.win ?? "");
   const [nextStep, setNextStep] = useState(todayEntry?.nextStep ?? "");
   const [weekPlan, setWeekPlan] = useState(todayEntry?.weekPlan ?? "");
   const [mood, setMood] = useState(todayEntry?.mood ?? 3);
-  const [reviewedAreas, setReviewedAreas] = useState<DiaryReviewArea[]>(
-    todayEntry?.reviewedAreas ?? [],
-  );
-  const [plannedTaskId, setPlannedTaskId] = useState(
-    todayEntry?.plannedTaskId ?? "",
-  );
-  const [linkedApplicationIds, setLinkedApplicationIds] = useState<string[]>(
-    todayEntry?.linkedApplicationIds ?? [],
-  );
-  const [selectedApplicationId, setSelectedApplicationId] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState("");
   const [textEdited, setTextEdited] = useState(false);
   const [winEdited, setWinEdited] = useState(false);
   const [nextStepEdited, setNextStepEdited] = useState(false);
   const [moodEdited, setMoodEdited] = useState(false);
-  const [gapReason, setGapReason] = useState("");
+  const [planningOpen, setPlanningOpen] = useState(Boolean(todayEntry));
+  const [savingJournal, setSavingJournal] = useState(false);
+  const [closingDay, setClosingDay] = useState(false);
+  const [schedulingId, setSchedulingId] = useState("");
+  const [draggedSuggestionId, setDraggedSuggestionId] = useState("");
+  const [activeDropDate, setActiveDropDate] = useState("");
+  const [scheduledSuggestionIds, setScheduledSuggestionIds] = useState<
+    string[]
+  >([]);
+  const [customTaskTitle, setCustomTaskTitle] = useState("");
+  const [submitStatus, setSubmitStatus] = useState("");
 
   const currentText = textEdited ? text : (todayEntry?.text ?? text);
   const currentWin = winEdited ? win : (todayEntry?.win ?? win);
@@ -165,169 +106,201 @@ export function DiaryView({
     ? nextStep
     : (todayEntry?.nextStep ?? nextStep);
   const currentMood = moodEdited ? mood : (todayEntry?.mood ?? mood);
-
   const openTasks = state.tasks.filter((task) => !task.completed);
-  const dueTasks = openTasks
-    .filter((task) => task.dueAt && dayDistance(task.dueAt) <= 0)
-    .sort((left, right) =>
-      (left.dueAt ?? "9999").localeCompare(right.dueAt ?? "9999"),
-    );
-  const tomorrowTasks = openTasks.filter((task) =>
-    withinDays(task.dueAt, 1, 1),
-  );
-  const weekTasks = openTasks.filter((task) => withinDays(task.dueAt, 1, 7));
   const events = [...externalEvents, ...state.calendarEvents];
-  const todayEvents = events.filter((event) => withinDays(event.startAt, 0, 0));
-  const tomorrowEvents = events.filter((event) =>
-    withinDays(event.startAt, 1, 1),
-  );
-  const weekEvents = events.filter((event) => withinDays(event.startAt, 1, 7));
-  const activeApplications = state.applications.filter((application) =>
-    ACTIVE_APPLICATION_STATUSES.has(application.status),
-  );
-  const upcomingApplicationSteps = state.applications.filter(
+  const tomorrowTasks = openTasks.filter((task) => onDate(task.dueAt, tomorrow));
+  const tomorrowEvents = events.filter((event) => onDate(event.startAt, tomorrow));
+  const tomorrowApplications = state.applications.filter(
     (application) =>
-      withinDays(application.nextStepAt, 0, 7) &&
+      onDate(application.nextStepAt, tomorrow) &&
       !["rejected", "withdrawn", "closed"].includes(application.status),
   );
-  const tomorrowApplicationSteps = upcomingApplicationSteps.filter(
-    (application) => withinDays(application.nextStepAt, 1, 1),
+  const tomorrowCosts = state.costs.filter(
+    (cost) => cost.status !== "paid" && onDate(cost.dueAt, tomorrow),
   );
-  const dueCosts = state.costs.filter(
-    (cost) => cost.status !== "paid" && dayDistance(cost.dueAt) <= 0,
+  const weekTasks = openTasks.filter((task) =>
+    planningDates.some((date) => onDate(task.dueAt, date)),
   );
-  const weekCosts = state.costs.filter(
-    (cost) => cost.status !== "paid" && withinDays(cost.dueAt, 1, 7),
+  const weekEvents = events.filter((event) =>
+    planningDates.some((date) => onDate(event.startAt, date)),
   );
-  const documentsToReview = state.documents.filter((document) => {
-    const tagged = document.tags.some(
-      (tag) => tag.trim().toLocaleLowerCase("de-DE") === "prüfen",
-    );
-    return tagged || withinDays(document.reviewAt, 0, 7);
+  const weekApplications = state.applications.filter(
+    (application) =>
+      planningDates.some((date) => onDate(application.nextStepAt, date)) &&
+      !["rejected", "withdrawn", "closed"].includes(application.status),
+  );
+
+  const suggestions = useMemo(
+    () =>
+      buildDiaryPlanningSuggestions({
+        tasks: state.tasks,
+        report: planningReport,
+      }),
+    [planningReport, state.tasks],
+  ).filter(
+    (suggestion) =>
+      !scheduledSuggestionIds.includes(suggestion.id) &&
+      !(
+        suggestion.sourceKind === "task" &&
+        tomorrowTasks.some((task) => task.id === suggestion.sourceId)
+      ),
+  );
+
+  const suggestionGroups = [
+    {
+      key: "priority",
+      label: "Dringend oder wichtig",
+      description: "Prioritäten aus Aufgaben und Planungshinweisen",
+      items: suggestions.filter((suggestion) => suggestion.priority !== "normal"),
+    },
+    {
+      key: "snoozed",
+      label: "Zurückgestellt",
+      description: "Bewusst vertagte Themen als Erinnerung",
+      items: suggestions.filter(
+        (suggestion) =>
+          suggestion.priority === "normal" && suggestion.status === "snoozed",
+      ),
+    },
+    {
+      key: "open",
+      label: "Noch offen",
+      description: "Weitere mögliche Anknüpfungspunkte",
+      items: suggestions.filter(
+        (suggestion) =>
+          suggestion.priority === "normal" && suggestion.status === "open",
+      ),
+    },
+  ];
+
+  const snapshot = () => ({
+    openTasks: openTasks.length,
+    overdueTasks: openTasks.filter(
+      (task) => task.dueAt && isoDateInput(task.dueAt) <= today,
+    ).length,
+    tomorrowTasks: tomorrowTasks.length,
+    tomorrowEvents: tomorrowEvents.length,
+    weekEvents: weekEvents.length,
+    activeApplications: state.applications.filter((application) =>
+      ["draft", "submitted", "interview", "offer"].includes(application.status),
+    ).length,
+    upcomingApplicationSteps: weekApplications.length,
+    dueCosts: state.costs.filter(
+      (cost) => cost.status !== "paid" && isoDateInput(cost.dueAt) <= today,
+    ).length,
+    documentsToReview: state.documents.filter(
+      (document) =>
+        document.tags.some(
+          (tag) => tag.trim().toLocaleLowerCase("de-DE") === "prüfen",
+        ) ||
+        planningDates.some((date) => onDate(document.reviewAt, date)),
+    ).length,
   });
 
-  const applicationOptions = useMemo(
-    () =>
-      [...state.applications].sort((left, right) => {
-        const priority = (application: ApplicationProcess) =>
-          ACTIVE_APPLICATION_STATUSES.has(application.status)
-            ? 0
-            : application.shortlisted
-              ? 1
-              : 2;
-        return (
-          priority(left) - priority(right) ||
-          (left.researchRank ?? 999).toString().localeCompare(
-            (right.researchRank ?? 999).toString(),
-            "de",
-            { numeric: true },
-          )
-        );
-      }),
-    [state.applications],
-  );
-  const selectedApplication = applicationOptions.find(
-    (application) => application.id === selectedApplicationId,
-  );
-  const reviewComplete = DIARY_REVIEW_AREAS.every((area) =>
-    reviewedAreas.includes(area),
-  );
-  const criticalGaps = (planningReport?.gaps || []).filter(
-    (gap) => gap.status === "open" && gap.severity === "critical",
-  );
-  const openTopics = planningReport?.openTopics.filter(
-    (topic) => topic.status !== "resolved",
-  ) || [];
-  const plannedTask = openTasks.find((task) => task.id === plannedTaskId);
+  const saveInput = (closeDay: boolean): DiarySaveInput => ({
+    text: currentText.trim(),
+    mood: currentMood,
+    win: currentWin.trim(),
+    nextStep: currentNextStep.trim(),
+    weekPlan: weekPlan.trim(),
+    reviewedAreas: todayEntry?.reviewedAreas ?? [],
+    closeDay,
+    plannedTaskId: todayEntry?.plannedTaskId ?? null,
+    linkedApplicationIds: todayEntry?.linkedApplicationIds ?? [],
+    snapshot: snapshot(),
+  });
 
-  const attentionByArea: Record<DiaryReviewArea, string> = {
-    tasks: dueTasks.length
-      ? `${dueTasks.length} bis heute offen`
-      : `${openTasks.length} insgesamt offen`,
-    calendar: todayEvents.length
-      ? `${todayEvents.length} Termin${todayEvents.length === 1 ? "" : "e"} heute`
-      : planningReport?.days[0]?.state === "intentionally_free"
-        ? "Heute ausdrücklich frei bestätigt"
-        : "Heute ungeplant – dringende Kalenderlücke",
-    applications: upcomingApplicationSteps.length
-      ? `${upcomingApplicationSteps.length} nächste Schritte in 7 Tagen`
-      : `${activeApplications.length} aktive Prozesse`,
-    finance: dueCosts.length
-      ? `${dueCosts.length} fällige Zahlung${dueCosts.length === 1 ? "" : "en"}`
-      : "Keine fällige Zahlung",
-    documents: documentsToReview.length
-      ? `${documentsToReview.length} Unterlagen zu prüfen`
-      : "Keine Unterlage zur Prüfung markiert",
+  const saveJournal = (event: FormEvent) => {
+    event.preventDefault();
+    setSavingJournal(true);
+    setSubmitStatus("");
+    const input = saveInput(false);
+    const journalId = onSave(input);
+    setPlanningOpen(true);
+    setSavingJournal(false);
+    setSubmitStatus(
+      "Tagebuch gespeichert. Du kannst jetzt in Ruhe den Plan für morgen prüfen.",
+    );
+
+    if ([input.text, input.win, input.nextStep, input.weekPlan].some(Boolean)) {
+      void onAnalyze(journalId, input).then((analysisStatus) => {
+        setSubmitStatus(`Tagebuch gespeichert. ${analysisStatus}`);
+      });
+    }
   };
 
-  const markReviewed = (area: DiaryReviewArea) => {
-    setReviewedAreas((current) =>
-      current.includes(area)
-        ? current.filter((candidate) => candidate !== area)
-        : [...current, area],
+  const scheduleSuggestion = async (
+    suggestion: DiaryPlanningSuggestion,
+    date: string,
+  ) => {
+    if (!tasksConnected) {
+      setSubmitStatus(
+        "Google Tasks ist nicht verbunden. Das Tagebuch und der Tagesabschluss bleiben trotzdem uneingeschränkt nutzbar.",
+      );
+      return;
+    }
+    if (schedulingId || taskActionId) return;
+    setSchedulingId(suggestion.id);
+    setSubmitStatus("");
+    const scheduled = await onScheduleSuggestion(suggestion, date);
+    setSchedulingId("");
+    if (!scheduled) {
+      setSubmitStatus(
+        `„${suggestion.title}“ konnte nicht eingeplant werden. Der Tagesabschluss bleibt weiterhin möglich.`,
+      );
+      return;
+    }
+    setScheduledSuggestionIds((current) => [...current, suggestion.id]);
+    if (date === tomorrow && !currentNextStep.trim()) {
+      setNextStep(suggestion.title);
+      setNextStepEdited(true);
+    }
+    setSubmitStatus(
+      `„${suggestion.title}“ ist für ${
+        date === tomorrow ? "morgen" : planDateLabel(date, true)
+      } eingeplant.`,
     );
   };
 
-  const openCaptureFor = (
-    kind: "task" | "event" | "cost" | "income" | "document" | "journal",
-    area?: DiaryReviewArea,
-  ) => {
-    if (area && !reviewedAreas.includes(area)) {
-      setReviewedAreas((current) => [...current, area]);
-    }
-    onOpenCapture(kind);
+  const dropOnDate = (event: DragEvent<HTMLElement>, date: string) => {
+    event.preventDefault();
+    const suggestionId =
+      event.dataTransfer.getData("application/x-gerris-plan") ||
+      draggedSuggestionId;
+    const suggestion = suggestions.find((candidate) => candidate.id === suggestionId);
+    setActiveDropDate("");
+    setDraggedSuggestionId("");
+    if (suggestion) void scheduleSuggestion(suggestion, date);
   };
 
-  const submit = async (event: FormEvent) => {
+  const addCustomTask = (event: FormEvent) => {
     event.preventDefault();
-    setSubmitStatus("");
-    if (!reviewComplete) {
-      setSubmitStatus(
-        "Bitte bestätige kurz alle fünf Bereiche oder wähle „Alles geprüft“.",
-      );
-      return;
-    }
-    if (criticalGaps.length) {
-      setSubmitStatus(
-        "Der Tagesabschluss bleibt offen: Kritische Planungslücken müssen zuerst gelöst oder mit Begründung zurückgestellt werden.",
-      );
-      return;
-    }
-    setSaving(true);
-    let taskPlanned = true;
-    if (plannedTaskId) {
-      taskPlanned = tasksConnected && (await onPlanTask(plannedTaskId));
-    }
-    const saveInput: DiarySaveInput = {
-      text: currentText.trim(),
-      mood: currentMood,
-      win: currentWin.trim(),
-      nextStep: currentNextStep.trim() || plannedTask?.title || "",
-      weekPlan: weekPlan.trim(),
-      reviewedAreas,
-      closeDay: true,
-      plannedTaskId: plannedTaskId || null,
-      linkedApplicationIds,
-      snapshot: {
-        openTasks: openTasks.length,
-        overdueTasks: dueTasks.length,
-        tomorrowTasks: tomorrowTasks.length,
-        tomorrowEvents: tomorrowEvents.length,
-        weekEvents: weekEvents.length,
-        activeApplications: activeApplications.length,
-        upcomingApplicationSteps: upcomingApplicationSteps.length,
-        dueCosts: dueCosts.length,
-        documentsToReview: documentsToReview.length,
+    const title = customTaskTitle.trim();
+    if (!title) return;
+    const sourceId = crypto.randomUUID();
+    void scheduleSuggestion(
+      {
+        id: `custom:${sourceId}`,
+        sourceKind: "custom",
+        sourceId,
+        title,
+        detail: "Direkt bei der Abendplanung ergänzt",
+        status: "open",
+        priority: "normal",
+        dueAt: null,
       },
-    };
-    const journalId = onSave(saveInput);
-    setSubmitStatus("Tagesabschluss gespeichert. Offene Themen werden analysiert …");
-    const analysisStatus = await onAnalyze(journalId, saveInput);
-    setSaving(false);
+      tomorrow,
+    ).then(() => setCustomTaskTitle(""));
+  };
+
+  const closeDay = async () => {
+    setClosingDay(true);
+    onSave(saveInput(true));
+    setClosingDay(false);
     setSubmitStatus(
-      plannedTaskId && !taskPlanned
-        ? `Tagesabschluss gespeichert. Die Fokusaufgabe konnte nicht in Google Tasks verschoben werden. ${analysisStatus}`
-        : `Tagesabschluss gespeichert. ${analysisStatus}`,
+      isSundayDate(today)
+        ? "Tag abgeschlossen. Der grobe Blick auf die kommende Woche ist im Tagebuch festgehalten."
+        : "Tag abgeschlossen. Der Plan für morgen bleibt jederzeit anpassbar.",
     );
   };
 
@@ -336,687 +309,410 @@ export function DiaryView({
       <header className="page-intro diary-intro">
         <div>
           <span className="eyebrow">
-            {todayEntry?.closedAt ? "Heute bereits abgeschlossen" : "3–5 Minuten am Abend"}
+            {todayEntry?.closedAt
+              ? "Heute bereits abgeschlossen"
+              : "Ein ruhiger Abschluss ohne Pflichtfelder"}
           </span>
-          <h1 tabIndex={-1}>Tagebuch: Heute abschließen, morgen klar beginnen.</h1>
+          <h1 tabIndex={-1}>Tagebuch speichern, morgen kurz ausrichten.</h1>
           <p>
-            Halte kurz fest, was passiert ist, gleiche Änderungen direkt mit dem
-            Kompass ab und richte danach den Blick auf morgen und die nächsten
-            sieben Tage.
+            Dein Eintrag darf jederzeit so gespeichert werden, wie er gerade ist.
+            Danach prüfst du nur noch den kommenden Tag; offene Themen sind dabei
+            Inspiration, keine Hürde.
           </p>
-        </div>
-        <div className="page-intro-action">
-          <button
-            className="button button-soft"
-            onClick={() => onOpenCapture("journal")}
-            type="button"
-          >
-            Nur eine Notiz erfassen
-          </button>
         </div>
       </header>
 
-      <section className="panel diary-open-topics" aria-labelledby="diary-open-topics-title">
+      <form className="panel diary-journal-form" onSubmit={saveJournal}>
         <div className="panel-heading">
           <div>
-            <span className="eyebrow">Entscheidungszentrale</span>
-            <h2 id="diary-open-topics-title">Alle aktuell offenen Themen</h2>
+            <span className="eyebrow">Tagebuch</span>
+            <h2>Was möchtest du von heute festhalten?</h2>
           </div>
-          <span className="diary-topic-total">{openTopics.length} offen</span>
+          <span className="diary-save-freedom">Jederzeit speicherbar</span>
         </div>
-        <p>
-          KI-Vorschläge verändern nichts direkt. Belegstelle, Konfidenz, Zeitpunkt
-          und – bei Kalenderbedarf – Privat oder Fachkalender werden zuerst von dir bestätigt.
-        </p>
-        <div className="diary-topic-groups">
-          {(Object.keys(TOPIC_GROUP_LABELS) as OpenTopicGroup[]).map((group) => {
-            const topics = openTopics.filter((topic) => topic.group === group);
-            return (
-              <section key={group}>
-                <header>
-                  <strong>{TOPIC_GROUP_LABELS[group]}</strong>
-                  <span>{topics.length}</span>
-                </header>
-                {topics.length ? (
-                  <div>
-                    {topics.map((topic) => (
-                      <article key={topic.id}>
-                        <div>
-                          <strong>{topic.title}</strong>
-                          {topic.detail ? <p>{topic.detail}</p> : null}
-                          {topic.evidence ? (
-                            <blockquote>Beleg: „{topic.evidence}“</blockquote>
-                          ) : null}
-                          <small>
-                            {topic.confidence === null
-                              ? "Deterministische Lücke"
-                              : `${Math.round(topic.confidence * 100)} % Konfidenz`}
-                            {topic.dueAt ? ` · ${formatRelativeDate(topic.dueAt)}` : " · Zeitpunkt offen"}
-                          </small>
-                        </div>
-                        {topic.requiresCalendarTarget ? (
-                          <div className="diary-topic-calendar-choice">
-                            <label>
-                              Ziel vor Bestätigung
-                              <select
-                                onChange={(event) =>
-                                  void onTopicUpdate(topic.id, {
-                                    calendarTarget:
-                                      event.target.value === "private"
-                                        ? "private"
-                                        : event.target.value === "specialist"
-                                          ? "specialist"
-                                          : null,
-                                  })
-                                }
-                                value={topic.calendarTarget || ""}
-                              >
-                                <option value="">Privat oder Fachkalender wählen</option>
-                                <option value="private">Privat</option>
-                                <option value="specialist">Fachkalender</option>
-                              </select>
-                            </label>
-                            <label>
-                              Zeitpunkt bestätigen
-                              <input
-                                defaultValue={topic.dueAt?.slice(0, 16) || ""}
-                                onBlur={(event) => {
-                                  if (!event.target.value) return;
-                                  const dueAt = new Date(event.target.value);
-                                  if (!Number.isNaN(dueAt.getTime())) {
-                                    void onTopicUpdate(topic.id, {
-                                      dueAt: dueAt.toISOString(),
-                                    });
-                                  }
-                                }}
-                                type="datetime-local"
-                              />
-                            </label>
-                          </div>
-                        ) : null}
-                        <div className="diary-topic-actions">
-                          {group === "decision" ? (
-                            <button
-                              className="button button-primary"
-                              disabled={
-                                topic.requiresCalendarTarget &&
-                                (!topic.calendarTarget || !topic.dueAt)
-                              }
-                              onClick={() => {
-                                const decision = window.prompt(
-                                  `Entscheidung zu „${topic.title}“ dokumentieren:`,
-                                  topic.nextStep || "",
-                                );
-                                if (decision?.trim()) {
-                                  void onDecision(topic, decision.trim());
-                                }
-                              }}
-                              type="button"
-                            >
-                              Entscheidung dokumentieren
-                            </button>
-                          ) : (
-                            <button
-                              className="button button-soft"
-                              onClick={() =>
-                                void onTopicUpdate(topic.id, { status: "resolved" })
-                              }
-                              type="button"
-                            >
-                              Erledigt
-                            </button>
-                          )}
-                          <button
-                            className="button button-ghost"
-                            onClick={() =>
-                              void onTopicUpdate(topic.id, {
-                                status: "snoozed",
-                                snoozedUntil: new Date(
-                                  Date.now() + 24 * 60 * 60 * 1_000,
-                                ).toISOString(),
-                              })
-                            }
-                            type="button"
-                          >
-                            Bis morgen warten
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <p>Aktuell kein Thema in dieser Gruppe.</p>
-                )}
-              </section>
-            );
-          })}
-        </div>
-      </section>
-
-      {criticalGaps.length ? (
-        <section className="panel diary-critical-gaps" aria-labelledby="diary-critical-title">
+        <fieldset className="mood-field compact">
+          <legend>Stimmung – optional ein Klick</legend>
           <div>
-            <span className="eyebrow">Dringend & wichtig</span>
-            <h2 id="diary-critical-title">{criticalGaps.length} kritische Punkte verhindern „Alles geprüft“</h2>
-            <p>
-              Löse die Quelle oder dokumentiere, warum der Punkt bis morgen vertretbar zurückgestellt wird.
-            </p>
-          </div>
-          <label>
-            Begründung für eine Zurückstellung
-            <input
-              onChange={(event) => setGapReason(event.target.value)}
-              placeholder="Warum ist die Zurückstellung vertretbar?"
-              value={gapReason}
-            />
-          </label>
-          <div className="diary-critical-list">
-            {criticalGaps.slice(0, 8).map((gap) => (
-              <article key={gap.id}>
-                <div><strong>{gap.title}</strong><p>{gap.detail}</p></div>
-                <div>
-                  <button
-                    className="button button-soft"
-                    disabled={!gapReason.trim()}
-                    onClick={() => void onGapAction(gap.id, "snooze", gapReason.trim())}
-                    type="button"
-                  >
-                    Begründet bis morgen
-                  </button>
-                  <button
-                    className="button button-ghost"
-                    onClick={() =>
-                      void onGapAction(
-                        gap.id,
-                        "resolve",
-                        "Quelle wurde geprüft und korrigiert.",
-                      )
-                    }
-                    type="button"
-                  >
-                    Quelle ist gelöst
-                  </button>
-                </div>
-              </article>
+            {[1, 2, 3, 4, 5].map((value) => (
+              <button
+                aria-label={`Stimmung ${value} von 5`}
+                aria-pressed={currentMood === value}
+                className={currentMood === value ? "active" : ""}
+                key={value}
+                onClick={() => {
+                  setMood(value);
+                  setMoodEdited(true);
+                }}
+                type="button"
+              >
+                {value}
+              </button>
             ))}
           </div>
-        </section>
-      ) : null}
+        </fieldset>
+        <label>
+          Was ist heute passiert?
+          <textarea
+            onChange={(event) => {
+              setText(event.target.value);
+              setTextEdited(true);
+            }}
+            placeholder="Ein Gedanke, ein Satz oder ein paar Stichpunkte – alles ist genug."
+            rows={4}
+            value={currentText}
+          />
+        </label>
+        <label>
+          Was ist gelungen oder wichtig geworden?
+          <input
+            onChange={(event) => {
+              setWin(event.target.value);
+              setWinEdited(true);
+            }}
+            placeholder="Optional – auch ein kleiner Schritt zählt."
+            value={currentWin}
+          />
+        </label>
+        <button
+          className="button button-primary button-full"
+          disabled={savingJournal}
+          type="submit"
+        >
+          {savingJournal
+            ? "Tagebuch wird gespeichert …"
+            : planningOpen
+              ? "Tagebuch aktualisieren"
+              : "Tagebuch speichern & morgen planen"}
+        </button>
+        <p className="diary-privacy-note">
+          Keine Mindestlänge, kein Pflicht-Abgleich und keine offene Planungslücke
+          verhindert das Speichern.
+        </p>
+      </form>
 
-      <div className="diary-close-layout">
-        <form className="panel diary-close-form" onSubmit={submit}>
-          <section className="diary-step" aria-labelledby="diary-step-reflection">
-            <div className="diary-step-heading">
-              <span>1</span>
-              <div>
-                <p className="eyebrow">Rückblick</p>
-                <h2 id="diary-step-reflection">Was war heute?</h2>
-              </div>
+      {planningOpen ? (
+        <section className="panel diary-planning-board" id="planung-morgen">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">Nach dem Tagebuch</span>
+              <h2>Morgen prüfen und bei Bedarf ergänzen</h2>
             </div>
-            <fieldset className="mood-field compact">
-              <legend>Stimmung – ein Klick genügt</legend>
-              <div>
-                {[1, 2, 3, 4, 5].map((value) => (
-                  <button
-                    aria-label={`Stimmung ${value} von 5`}
-                    aria-pressed={currentMood === value}
-                    className={currentMood === value ? "active" : ""}
-                    key={value}
-                    onClick={() => {
-                      setMood(value);
-                      setMoodEdited(true);
-                    }}
-                    type="button"
-                  >
-                    {value}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-            <label>
-              Was ist heute passiert?
-              <textarea
-                onChange={(event) => {
-                  setText(event.target.value);
-                  setTextEdited(true);
-                }}
-                placeholder="Ein bis drei Stichpunkte reichen …"
-                rows={3}
-                value={currentText}
-              />
-            </label>
-            <label>
-              Was ist gelungen oder wichtig geworden?
-              <input
-                onChange={(event) => {
-                  setWin(event.target.value);
-                  setWinEdited(true);
-                }}
-                placeholder="Auch ein kleiner Schritt zählt."
-                value={currentWin}
-              />
-            </label>
-          </section>
+            <span className="diary-plan-date">{planDateLabel(tomorrow, true)}</span>
+          </div>
+          <p className="diary-planning-copy">
+            Ziehe nur das hinüber, was dir wirklich hilft. Du darfst den Tag auch
+            bewusst mit einem leeren oder sehr kleinen Plan abschließen.
+          </p>
 
-          <section className="diary-step" aria-labelledby="diary-step-sync">
-            <div className="diary-step-heading">
-              <span>2</span>
-              <div>
-                <p className="eyebrow">Abgleich</p>
-                <h2 id="diary-step-sync">Ist alles Neue im Kompass?</h2>
-              </div>
-            </div>
-            <p className="diary-step-copy">
-              Nutze die passende Schnellerfassung. So landet eine Änderung
-              sofort im richtigen Bereich und nicht nur im Tagebuchtext.
-            </p>
-            <div className="diary-capture-grid" aria-label="Neues direkt einordnen">
-              <button onClick={() => openCaptureFor("task", "tasks")} type="button">
-                <span>A</span>Aufgabe
-              </button>
-              <button
-                onClick={() => {
-                  if (!reviewedAreas.includes("calendar")) {
-                    setReviewedAreas((current) => [...current, "calendar"]);
-                  }
-                  onOpenCapture("event");
-                }}
-                type="button"
-              >
-                <span>K</span>Termin
-              </button>
-              <button
-                onClick={() => {
-                  const application = createEmptyApplication(
-                    `application-${crypto.randomUUID()}`,
-                  );
-                  if (!reviewedAreas.includes("applications")) {
-                    setReviewedAreas((current) => [...current, "applications"]);
-                  }
-                  onCreateApplication(application);
-                  setSelectedApplicationId(application.id);
-                  setSubmitStatus(
-                    "Neue Bewerbungsakte angelegt – Unternehmen und Stelle bitte unten ergänzen.",
-                  );
-                }}
-                type="button"
-              >
-                <span>B</span>Bewerbungsakte
-              </button>
-              <button onClick={() => openCaptureFor("cost", "finance")} type="button">
-                <span>€</span>Ausgabe
-              </button>
-              <button onClick={() => openCaptureFor("income", "finance")} type="button">
-                <span>+</span>Einnahme
-              </button>
-              <button
-                onClick={() => openCaptureFor("document", "documents")}
-                type="button"
-              >
-                <span>U</span>Unterlage
-              </button>
-            </div>
-
-            {dueTasks.length ? (
-              <div className="diary-attention-list">
+          <div className="diary-planning-workspace">
+            <section className="diary-tomorrow-plan" aria-labelledby="tomorrow-plan-title">
+              <header>
                 <div>
-                  <strong>Aufgaben bis heute</strong>
-                  <small>Direkt in Google Tasks abschließen</small>
+                  <span className="eyebrow">Plan für morgen</span>
+                  <h3 id="tomorrow-plan-title">Was bereits vorgesehen ist</h3>
                 </div>
-                {dueTasks.slice(0, 4).map((task) => (
+                <div className="diary-plan-counts" aria-label="Planumfang morgen">
+                  <span>{tomorrowTasks.length} Aufgaben</span>
+                  <span>{tomorrowEvents.length} Termine</span>
+                </div>
+              </header>
+              <div className="diary-tomorrow-items">
+                {tomorrowTasks.slice(0, 6).map((task) => (
                   <article key={task.id}>
+                    <span>A</span>
                     <div>
                       <strong>{task.title}</strong>
-                      <small>{task.dueAt ? formatRelativeDate(task.dueAt) : "Offen"}</small>
+                      <small>{task.estimateMinutes} Min. · {PRIORITY_LABELS[
+                        task.quadrant === "do"
+                          ? "critical"
+                          : task.quadrant === "plan"
+                            ? "important"
+                            : "normal"
+                      ]}</small>
                     </div>
-                    <button
-                      disabled={!tasksConnected || Boolean(taskActionId)}
-                      onClick={() => {
-                        if (!reviewedAreas.includes("tasks")) {
-                          setReviewedAreas((current) => [...current, "tasks"]);
-                        }
-                        void onCompleteTask(task.id);
-                      }}
-                      type="button"
-                    >
-                      Erledigt
-                    </button>
                   </article>
                 ))}
-              </div>
-            ) : null}
-
-            <div className="diary-application-update">
-              <label>
-                Bewerbungsstand heute geändert?
-                <select
-                  onChange={(event) => setSelectedApplicationId(event.target.value)}
-                  value={selectedApplicationId}
-                >
-                  <option value="">Keine oder Bewerbung auswählen</option>
-                  {applicationOptions.map((application) => (
-                    <option key={application.id} value={application.id}>
-                      {application.company} · {application.jobTitle} ·{" "}
-                      {APPLICATION_STATUS_LABELS[application.status]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {selectedApplication ? (
-                <ApplicationDailyUpdate
-                  application={selectedApplication}
-                  key={selectedApplication.id}
-                  onSave={(application) => {
-                    onUpdateApplication(application);
-                    setLinkedApplicationIds((current) =>
-                      current.includes(application.id)
-                        ? current
-                        : [...current, application.id],
-                    );
-                    setReviewedAreas((current) =>
-                      current.includes("applications")
-                        ? current
-                        : [...current, "applications"],
-                    );
-                  }}
-                />
-              ) : null}
-            </div>
-
-            <fieldset className="diary-review-checklist">
-              <legend>Abschlusscheck</legend>
-              <div>
-                {DIARY_REVIEW_AREAS.map((area) => (
-                  <label className={reviewedAreas.includes(area) ? "checked" : ""} key={area}>
-                    <input
-                      checked={reviewedAreas.includes(area)}
-                      onChange={() => markReviewed(area)}
-                      type="checkbox"
-                    />
-                    <span>
-                      <strong>{REVIEW_LABELS[area].label}</strong>
-                      <small>{attentionByArea[area]}</small>
-                    </span>
-                  </label>
+                {tomorrowEvents.slice(0, 4).map((event) => (
+                  <article key={event.id}>
+                    <span>K</span>
+                    <div>
+                      <strong>{event.title}</strong>
+                      <small>Kalendertermin</small>
+                    </div>
+                  </article>
                 ))}
+                {tomorrowApplications.slice(0, 3).map((application) => (
+                  <article key={application.id}>
+                    <span>B</span>
+                    <div>
+                      <strong>{application.nextStep || application.jobTitle}</strong>
+                      <small>{application.company}</small>
+                    </div>
+                  </article>
+                ))}
+                {!tomorrowTasks.length &&
+                !tomorrowEvents.length &&
+                !tomorrowApplications.length ? (
+                  <p className="diary-plan-empty">
+                    Noch nichts fest eingeplant – das darf eine bewusste Entscheidung sein.
+                  </p>
+                ) : null}
               </div>
-              {!reviewComplete ? (
-                <button
-                  className="button button-soft diary-check-all"
-                  disabled={criticalGaps.length > 0}
-                  onClick={() => setReviewedAreas([...DIARY_REVIEW_AREAS])}
-                  type="button"
-                >
-                  {criticalGaps.length
-                    ? "Kritische Planungspunkte zuerst bearbeiten"
-                    : "Alle Fachbereiche als geprüft markieren"}
-                </button>
-              ) : (
-                <p className="diary-check-complete">Alle Bereiche sind geprüft.</p>
-              )}
-            </fieldset>
-          </section>
 
-          <section className="diary-step" aria-labelledby="diary-step-plan">
-            <div className="diary-step-heading">
-              <span>3</span>
-              <div>
-                <p className="eyebrow">Ausrichtung</p>
-                <h2 id="diary-step-plan">Was zählt morgen und diese Woche?</h2>
-              </div>
-            </div>
-            <label>
-              Wichtigster Schritt morgen
-              <input
-                list="diary-next-step-suggestions"
-                onChange={(event) => {
-                  setNextStep(event.target.value);
-                  setNextStepEdited(true);
+              <div
+                className={`diary-plan-dropzone ${
+                  activeDropDate === tomorrow ? "is-active" : ""
+                }`}
+                onDragEnter={(event) => {
+                  event.preventDefault();
+                  setActiveDropDate(tomorrow);
                 }}
-                placeholder="Klein, konkret und machbar."
-                value={currentNextStep}
-              />
-              <datalist id="diary-next-step-suggestions">
-                {openTasks.slice(0, 12).map((task) => (
-                  <option key={task.id} value={task.title} />
-                ))}
-                {upcomingApplicationSteps.slice(0, 8).map((application) => (
-                  <option
-                    key={application.id}
-                    value={application.nextStep || `${application.company} nachfassen`}
-                  />
-                ))}
-              </datalist>
-            </label>
-            <label>
-              Vorhandene Aufgabe verbindlich auf morgen setzen
-              <select
-                disabled={!tasksConnected}
-                onChange={(event) => {
-                  const taskId = event.target.value;
-                  setPlannedTaskId(taskId);
-                  const task = openTasks.find((candidate) => candidate.id === taskId);
-                  if (task && !currentNextStep.trim()) {
-                    setNextStep(task.title);
-                    setNextStepEdited(true);
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                }}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                    setActiveDropDate("");
                   }
                 }}
-                value={plannedTaskId}
+                onDrop={(event) => dropOnDate(event, tomorrow)}
               >
-                <option value="">
-                  {tasksConnected
-                    ? "Optional – keine Aufgabe verschieben"
-                    : "Google Tasks ist noch nicht verbunden"}
-                </option>
-                {openTasks.map((task) => (
-                  <option key={task.id} value={task.id}>
-                    {task.title} · {task.dueAt ? formatRelativeDate(task.dueAt) : "ohne Termin"}
-                  </option>
-                ))}
-              </select>
-              <small>
-                {tasksConnected
-                  ? "Die Auswahl wird beim Speichern direkt in Google Tasks auf morgen datiert."
-                  : "Der wichtigste Schritt bleibt trotzdem im privaten Tagebuch gespeichert."}
-              </small>
-            </label>
-            <label>
-              Fokus für die nächsten sieben Tage
-              <textarea
-                onChange={(event) => setWeekPlan(event.target.value)}
-                placeholder="Ein Schwerpunkt oder Ergebnis für die Woche …"
-                rows={2}
-                value={weekPlan}
-              />
-            </label>
+                <strong>Hier in den Plan für morgen ziehen</strong>
+                <small>Oder bei einer Inspirationskarte „Morgen“ wählen.</small>
+              </div>
+
+              <form className="diary-custom-task" onSubmit={addCustomTask}>
+                <label htmlFor="diary-custom-task">Eigenen Punkt ergänzen</label>
+                <div>
+                  <input
+                    id="diary-custom-task"
+                    onChange={(event) => setCustomTaskTitle(event.target.value)}
+                    placeholder="Kleine Aufgabe für morgen …"
+                    value={customTaskTitle}
+                  />
+                  <button
+                    className="button button-soft"
+                    disabled={!customTaskTitle.trim() || !tasksConnected}
+                    type="submit"
+                  >
+                    Hinzufügen
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            <section className="diary-inspiration" aria-labelledby="diary-inspiration-title">
+              <header>
+                <div>
+                  <span className="eyebrow">Nur als Inspiration</span>
+                  <h3 id="diary-inspiration-title">Mögliche Themen</h3>
+                </div>
+                <span>{suggestions.length}</span>
+              </header>
+              {suggestionGroups.map((group) => (
+                <details key={group.key} open={group.key === "priority"}>
+                  <summary>
+                    <span>
+                      <strong>{group.label}</strong>
+                      <small>{group.description}</small>
+                    </span>
+                    <b>{group.items.length}</b>
+                  </summary>
+                  <div className="diary-suggestion-list">
+                    {group.items.slice(0, 7).map((suggestion) => (
+                      <article
+                        className={`diary-suggestion-card priority-${suggestion.priority}`}
+                        draggable={tasksConnected && !Boolean(schedulingId || taskActionId)}
+                        key={suggestion.id}
+                        onDragEnd={() => {
+                          setDraggedSuggestionId("");
+                          setActiveDropDate("");
+                        }}
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = "move";
+                          event.dataTransfer.setData(
+                            "application/x-gerris-plan",
+                            suggestion.id,
+                          );
+                          setDraggedSuggestionId(suggestion.id);
+                        }}
+                      >
+                        <div className="diary-suggestion-tags">
+                          <span>{PRIORITY_LABELS[suggestion.priority]}</span>
+                          <span>{
+                            suggestion.status === "snoozed"
+                              ? "Zurückgestellt"
+                              : SOURCE_LABELS[suggestion.sourceKind]
+                          }</span>
+                        </div>
+                        <strong>{suggestion.title}</strong>
+                        <p>{suggestion.detail}</p>
+                        {suggestion.dueAt ? (
+                          <small>{formatRelativeDate(suggestion.dueAt)}</small>
+                        ) : null}
+                        <footer>
+                          <button
+                            className="button button-soft"
+                            disabled={!tasksConnected || Boolean(schedulingId || taskActionId)}
+                            onClick={() => void scheduleSuggestion(suggestion, tomorrow)}
+                            type="button"
+                          >
+                            {schedulingId === suggestion.id ? "Wird eingeplant …" : "Morgen"}
+                          </button>
+                          <label>
+                            <span>Folgetag</span>
+                            <select
+                              aria-label={`Folgetag für ${suggestion.title}`}
+                              defaultValue=""
+                              disabled={!tasksConnected || Boolean(schedulingId || taskActionId)}
+                              onChange={(event) => {
+                                if (event.target.value) {
+                                  void scheduleSuggestion(suggestion, event.target.value);
+                                }
+                              }}
+                            >
+                              <option value="">Wählen …</option>
+                              {planningDates.slice(1).map((date) => (
+                                <option key={date} value={date}>
+                                  {planDateLabel(date, true)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </footer>
+                      </article>
+                    ))}
+                    {!group.items.length ? <p>Aktuell kein Thema in dieser Gruppe.</p> : null}
+                  </div>
+                </details>
+              ))}
+              {!tasksConnected ? (
+                <p className="diary-tasks-offline">
+                  Google Tasks ist nicht verbunden. Die Vorschläge bleiben sichtbar,
+                  sind aber niemals Voraussetzung für Speichern oder Tagesabschluss.
+                </p>
+              ) : null}
+            </section>
+          </div>
+
+          <section className="diary-follow-days" aria-labelledby="follow-days-title">
+            <div>
+              <span className="eyebrow">Optional</span>
+              <h3 id="follow-days-title">Als ToDo in einen Folgetag verschieben</h3>
+            </div>
+            <div>
+              {planningDates.slice(1).map((date) => (
+                <div
+                  className={activeDropDate === date ? "is-active" : ""}
+                  key={date}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setActiveDropDate(date);
+                  }}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => dropOnDate(event, date)}
+                >
+                  <strong>{planDateLabel(date)}</strong>
+                  <small>Hier ablegen</small>
+                </div>
+              ))}
+            </div>
           </section>
+
+          <label className="diary-next-focus">
+            Eigener Fokus für morgen
+            <input
+              onChange={(event) => {
+                setNextStep(event.target.value);
+                setNextStepEdited(true);
+              }}
+              placeholder="Optional – ein kleiner, klarer Schritt."
+              value={currentNextStep}
+            />
+          </label>
+
+          {isSundayDate(today) ? (
+            <section className="diary-weekly-exploration">
+              <div>
+                <span className="eyebrow">Sonntagabend</span>
+                <h3>Die kommende Woche grob erkunden</h3>
+                <p>
+                  Noch keine Detailplanung: erkenne nur Schwerpunkte, Engstellen und
+                  bewusst freie Räume für Montag bis Sonntag.
+                </p>
+              </div>
+              <dl>
+                <div><dt>Aufgaben</dt><dd>{weekTasks.length}</dd></div>
+                <div><dt>Termine</dt><dd>{weekEvents.length}</dd></div>
+                <div><dt>Bewerbungsschritte</dt><dd>{weekApplications.length}</dd></div>
+                <div><dt>Zahlungen morgen</dt><dd>{tomorrowCosts.length}</dd></div>
+              </dl>
+              <label>
+                Grober Wochenfokus
+                <textarea
+                  onChange={(event) => setWeekPlan(event.target.value)}
+                  placeholder="Was soll in der kommenden Woche Orientierung geben?"
+                  rows={3}
+                  value={weekPlan}
+                />
+              </label>
+            </section>
+          ) : null}
 
           {submitStatus ? (
             <p className="diary-submit-status" role="status">{submitStatus}</p>
           ) : null}
-          <button className="button button-primary button-full" disabled={saving} type="submit">
-            {saving
-              ? "Tagesabschluss wird gespeichert …"
+          <button
+            className="button button-primary button-full diary-close-day"
+            disabled={closingDay}
+            onClick={() => void closeDay()}
+            type="button"
+          >
+            {closingDay
+              ? "Tag wird abgeschlossen …"
               : todayEntry?.closedAt
-                ? "Tagesabschluss aktualisieren"
-                : "Tag abschließen"}
+                ? "Planung geprüft & Tagesabschluss aktualisieren"
+                : "Planung geprüft – Tag abschließen"}
           </button>
           <p className="diary-privacy-note">
-            Der Tagebuchtext und der Abgleich bleiben im privaten Kompass. Nur
-            ausdrücklich gewählte Aufgaben und Termine werden an Google übergeben.
+            Du entscheidest selbst, wann der Blick auf morgen genügt. Offene,
+            zurückgestellte oder wichtige Themen blockieren den Abschluss nie.
           </p>
-        </form>
-
-        <aside className="diary-outlook" aria-label="Planungsgrundlage">
-          <section className="panel">
-            <span className="eyebrow">Morgen</span>
-            <h2>Der nächste Tag auf einen Blick</h2>
-            <dl className="diary-outlook-grid">
-              <div><dt>Aufgaben</dt><dd>{tomorrowTasks.length}</dd></div>
-              <div><dt>Termine</dt><dd>{tomorrowEvents.length}</dd></div>
-              <div><dt>Bewerbungen</dt><dd>{tomorrowApplicationSteps.length}</dd></div>
-              <div><dt>Zahlungen</dt><dd>{weekCosts.filter((cost) => withinDays(cost.dueAt, 1, 1)).length}</dd></div>
-            </dl>
-          </section>
-          <section className="panel">
-            <span className="eyebrow">Nächste 7 Tage</span>
-            <h2>Deine Planungsgrundlage</h2>
-            <ul className="diary-week-list">
-              <li><strong>{weekTasks.length}</strong><span>datierte Aufgaben</span></li>
-              <li><strong>{weekEvents.length}</strong><span>Termine und Fokuszeiten</span></li>
-              <li><strong>{upcomingApplicationSteps.length}</strong><span>Bewerbungsschritte</span></li>
-              <li><strong>{weekCosts.length}</strong><span>anstehende Zahlungen</span></li>
-            </ul>
-            <p>
-              Neue Punkte kannst du links direkt erfassen. Vorhandene Einträge
-              bleiben in ihren Fachbereichen die führende Quelle.
-            </p>
-          </section>
-        </aside>
-      </div>
+        </section>
+      ) : null}
 
       <section className="panel diary-history">
         <div className="panel-heading">
-          <div><span className="eyebrow">Verlauf</span><h2>{state.journal.length} Tagebucheinträge</h2></div>
+          <div>
+            <span className="eyebrow">Verlauf</span>
+            <h2>{state.journal.length} Tagebucheinträge</h2>
+          </div>
         </div>
         <div className="diary-history-grid">
-          {state.journal.map((entry) => {
-            const linkedApplications = state.applications.filter((application) =>
-              entry.linkedApplicationIds?.includes(application.id),
-            );
-            return (
-              <article key={entry.id}>
-                <header>
-                  <div><time dateTime={entry.date}>{formatDate(entry.date)}</time><span>Stimmung {entry.mood}/5</span></div>
-                  {entry.closedAt ? <strong>Tagesabschluss</strong> : <strong>Notiz</strong>}
-                </header>
-                {entry.text ? <p>{entry.text}</p> : null}
-                {entry.win ? <blockquote><strong>Gelungen:</strong> {entry.win}</blockquote> : null}
-                {entry.nextStep ? <small><strong>Morgen:</strong> {entry.nextStep}</small> : null}
-                {entry.weekPlan ? <small><strong>7-Tage-Fokus:</strong> {entry.weekPlan}</small> : null}
-                {linkedApplications.length ? (
-                  <small><strong>Bewerbungen aktualisiert:</strong> {linkedApplications.map((application) => application.company).join(", ")}</small>
-                ) : null}
-              </article>
-            );
-          })}
+          {state.journal.map((entry) => (
+            <article key={entry.id}>
+              <header>
+                <div>
+                  <time dateTime={entry.date}>{formatDate(entry.date)}</time>
+                  <span>Stimmung {entry.mood}/5</span>
+                </div>
+                {entry.closedAt ? <strong>Tagesabschluss</strong> : <strong>Notiz</strong>}
+              </header>
+              {entry.text ? <p>{entry.text}</p> : null}
+              {entry.win ? (
+                <blockquote><strong>Gelungen:</strong> {entry.win}</blockquote>
+              ) : null}
+              {entry.nextStep ? (
+                <small><strong>Morgen:</strong> {entry.nextStep}</small>
+              ) : null}
+              {entry.weekPlan ? (
+                <small><strong>Wochenfokus:</strong> {entry.weekPlan}</small>
+              ) : null}
+            </article>
+          ))}
         </div>
       </section>
-    </div>
-  );
-}
-
-function ApplicationDailyUpdate({
-  application,
-  onSave,
-}: {
-  application: ApplicationProcess;
-  onSave: (application: ApplicationProcess) => void;
-}) {
-  const [status, setStatus] = useState(application.status);
-  const [company, setCompany] = useState(application.company);
-  const [jobTitle, setJobTitle] = useState(application.jobTitle);
-  const [sourceUrl, setSourceUrl] = useState(application.sourceUrl);
-  const [nextStep, setNextStep] = useState(application.nextStep);
-  const [nextStepAt, setNextStepAt] = useState(application.nextStepAt ?? "");
-  const [note, setNote] = useState("");
-  const [saved, setSaved] = useState(false);
-
-  const update = () => {
-    const datedNote = note.trim()
-      ? `${isoDateInput()} · ${note.trim()}`
-      : "";
-    onSave({
-      ...application,
-      company: company.trim(),
-      jobTitle: jobTitle.trim() || "Neue Bewerbung",
-      sourceUrl: sourceUrl.trim(),
-      status,
-      appliedAt:
-        APPLIED_APPLICATION_STATUSES.has(status) && !application.appliedAt
-          ? isoDateInput()
-          : application.appliedAt,
-      nextStep: nextStep.trim(),
-      nextStepAt: nextStepAt || null,
-      notes: [application.notes.trim(), datedNote].filter(Boolean).join("\n\n"),
-    });
-    setSaved(true);
-  };
-
-  return (
-    <div className="diary-application-fields">
-      {application.researchTier === "own" ? (
-        <>
-          <div className="form-grid">
-            <label>
-              Unternehmen
-              <input
-                onChange={(event) => setCompany(event.target.value)}
-                placeholder="Name des Unternehmens"
-                value={company}
-              />
-            </label>
-            <label>
-              Stelle
-              <input
-                onChange={(event) => setJobTitle(event.target.value)}
-                placeholder="Stellenbezeichnung"
-                value={jobTitle}
-              />
-            </label>
-          </div>
-          <label>
-            Link zur Ausschreibung
-            <input
-              onChange={(event) => setSourceUrl(event.target.value)}
-              placeholder="Optional"
-              type="url"
-              value={sourceUrl}
-            />
-          </label>
-        </>
-      ) : null}
-      <div className="form-grid">
-        <label>
-          Neuer Status
-          <select
-            onChange={(event) => setStatus(event.target.value as ApplicationStatus)}
-            value={status}
-          >
-            {(Object.keys(APPLICATION_STATUS_LABELS) as ApplicationStatus[]).map((value) => (
-              <option key={value} value={value}>{APPLICATION_STATUS_LABELS[value]}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Nächster Schritt am
-          <input onChange={(event) => setNextStepAt(event.target.value)} type="date" value={nextStepAt} />
-        </label>
-      </div>
-      <label>
-        Nächster Schritt
-        <input onChange={(event) => setNextStep(event.target.value)} value={nextStep} />
-      </label>
-      <label>
-        Heutige Rückmeldung oder Änderung
-        <textarea
-          onChange={(event) => setNote(event.target.value)}
-          placeholder="z. B. Einladung erhalten, Unterlagen versendet, Konditionen geklärt"
-          rows={2}
-          value={note}
-        />
-      </label>
-      <div className="diary-application-actions">
-        <button
-          className="button button-soft"
-          disabled={saved || !company.trim()}
-          onClick={update}
-          type="button"
-        >
-          Bewerbungsakte aktualisieren
-        </button>
-        {saved ? <span role="status">In Bewerbungen übernommen</span> : null}
-      </div>
     </div>
   );
 }

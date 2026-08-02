@@ -187,6 +187,33 @@ test("gibt an die Dokumenterstellung nur bestätigte Fakten weiter", () => {
   assert.deepEqual(hardenedContext.sources, [REQUESTED_URL]);
 });
 
+test("übergibt auf Wunsch nur einzeln ausgewählte bestätigte Web-Ergebnisse", () => {
+  const research = normalize(
+    rawResearch({
+      ad_facts: [
+        rawClaim(),
+        rawClaim({
+          claim_id: "claim-2",
+          fact_key: "offer.salary",
+          value: "EG 11 TVöD",
+        }),
+      ],
+    }),
+  );
+  const first = researchWithDecision(research, "ad-1", "confirmed").research;
+  const both = researchWithDecision(first, "ad-2", "confirmed").research;
+
+  const selected = confirmedResearchContext(both, ["ad-2"]);
+  const none = confirmedResearchContext(both, []);
+
+  assert.deepEqual(selected.confirmedFacts.map((fact) => fact.factKey), [
+    "offer.salary",
+  ]);
+  assert.deepEqual(selected.sources, [REQUESTED_URL]);
+  assert.deepEqual(none.confirmedFacts, []);
+  assert.deepEqual(none.sources, []);
+});
+
 test("übernimmt bestätigte Kernfakten kontrolliert in die Bewerbungsakte", () => {
   const research = normalize();
   const { claim } = researchWithDecision(

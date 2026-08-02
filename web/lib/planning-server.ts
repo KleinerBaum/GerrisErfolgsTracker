@@ -74,6 +74,7 @@ import {
   normalizeDashboardSettings,
 } from "./dashboard";
 import { normalizeMasterCvContent } from "./master-cv";
+import { normalizeApplicationKpiSettings } from "./application-workflow";
 
 const NO_CALENDAR_ERROR = "Kalenderdaten konnten nicht geladen werden.";
 const MAX_CALENDARS_FOR_PLANNING = 12;
@@ -130,6 +131,7 @@ function emptyState(): AppState {
     contacts: [],
     journal: [],
     dashboardSettings: createDefaultDashboardSettings(0),
+    applicationKpiSettings: normalizeApplicationKpiSettings(null),
   };
 }
 
@@ -159,6 +161,9 @@ function parsedStoredState(value: string | null | undefined): AppState {
       dashboardSettings: normalizeDashboardSettings(
         state.dashboardSettings,
         state.monthlyBudget,
+      ),
+      applicationKpiSettings: normalizeApplicationKpiSettings(
+        state.applicationKpiSettings,
       ),
     };
   } catch {

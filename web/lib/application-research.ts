@@ -3,6 +3,12 @@ import {
   JOB_RADAR_VERIFIED_AT,
   type JobRadarRecord,
 } from "./application-research-2026-08-01.ts";
+import {
+  DEFAULT_APPLICATION_GENERATION_PREFERENCES,
+  normalizeApplicationActivities,
+  normalizeApplicationContacts,
+  normalizeApplicationGenerationPreferences,
+} from "./application-workflow.ts";
 import type {
   ApplicationProcess,
   ApplicationResearchTier,
@@ -958,6 +964,10 @@ function legacyVacancy(seed: VacancySeed): ApplicationProcess {
     appliedTerms: "",
     contactPerson: "",
     contactEmail: "",
+    contactPhone: "",
+    contacts: [],
+    jobDescriptionText: "",
+    tags: [],
     nextStep: deadline
       ? "Bewerbungsentscheidung treffen"
       : "Ausschreibungsstatus prüfen und priorisieren",
@@ -965,6 +975,12 @@ function legacyVacancy(seed: VacancySeed): ApplicationProcess {
     notes: "",
     artifacts: [],
     vacancyResearch: null,
+    generationPreferences: {
+      ...DEFAULT_APPLICATION_GENERATION_PREFERENCES,
+      outputKinds: [...DEFAULT_APPLICATION_GENERATION_PREFERENCES.outputKinds],
+      researchScopes: [...DEFAULT_APPLICATION_GENERATION_PREFERENCES.researchScopes],
+    },
+    activities: [],
   };
 }
 
@@ -1147,6 +1163,48 @@ function contactPerson(record: JobRadarRecord): string {
     .join(" · ");
 }
 
+function applicationContacts(record: JobRadarRecord) {
+  const email = firstContactEmail(record);
+  const phone = knownPublishedValue(record.phone);
+  const note = knownPublishedValue(record.contactNote);
+  const contacts = [
+    {
+      id: `${record.sourceId}-contact-functional`,
+      kind: "functional" as const,
+      name: knownPublishedValue(record.functionalContact),
+      email,
+      phone,
+      note,
+    },
+    {
+      id: `${record.sourceId}-contact-recruiting`,
+      kind: "recruiting" as const,
+      name: knownPublishedValue(record.recruitingContact),
+      email,
+      phone,
+      note,
+    },
+  ];
+  return contacts.filter(
+    (contact) => contact.name || contact.email || contact.phone || contact.note,
+  );
+}
+
+function digitalJobDescription(record: JobRadarRecord): string {
+  return [
+    record.tasks ? `AUFGABEN\n${record.tasks}` : "",
+    record.mustRequirements
+      ? `MUSS-ANFORDERUNGEN\n${record.mustRequirements}`
+      : "",
+    record.niceToHave ? `PLUSPUNKTE\n${record.niceToHave}` : "",
+    record.applicationProcess
+      ? `BEWERBUNGSPROZESS UND UNTERLAGEN\n${record.applicationProcess}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 function salaryOutlook(record: JobRadarRecord): SalaryOutlook {
   const value = record.salaryTarget.toLowerCase();
   if (value === "ja") return "yes";
@@ -1315,11 +1373,21 @@ function jobRadarVacancy(record: JobRadarRecord, rank: number): ApplicationProce
     appliedTerms: "",
     contactPerson: contactPerson(record),
     contactEmail: firstContactEmail(record),
+    contactPhone: knownPublishedValue(record.phone),
+    contacts: applicationContacts(record),
+    jobDescriptionText: digitalJobDescription(record),
+    tags: [...record.tags],
     nextStep: record.nextStep || "Ausschreibungsstatus prüfen und priorisieren",
     nextStepAt: record.deadline,
     notes: "",
     artifacts: [],
     vacancyResearch: importedVacancyResearch(record),
+    generationPreferences: {
+      ...DEFAULT_APPLICATION_GENERATION_PREFERENCES,
+      outputKinds: [...DEFAULT_APPLICATION_GENERATION_PREFERENCES.outputKinds],
+      researchScopes: [...DEFAULT_APPLICATION_GENERATION_PREFERENCES.researchScopes],
+    },
+    activities: [],
   };
 }
 
@@ -1400,6 +1468,16 @@ function mergeSeededApplication(
     appliedTerms: current.appliedTerms ?? "",
     contactPerson: researchValue("contactPerson"),
     contactEmail: researchValue("contactEmail"),
+    contactPhone: current.contactPhone ?? seeded.contactPhone,
+    contacts: normalizeApplicationContacts(current.contacts).length
+      ? normalizeApplicationContacts(current.contacts)
+      : seeded.contacts,
+    jobDescriptionText: current.jobDescriptionText?.trim()
+      ? current.jobDescriptionText
+      : seeded.jobDescriptionText,
+    tags: Array.isArray(current.tags) && current.tags.length
+      ? current.tags
+      : seeded.tags,
     nextStep: researchValue("nextStep"),
     nextStepAt: researchValue("nextStepAt"),
     notes: current.notes ?? "",
@@ -1407,6 +1485,10 @@ function mergeSeededApplication(
     vacancyResearch: isSavedVacancyResearch(current.vacancyResearch)
       ? current.vacancyResearch
       : seeded.vacancyResearch,
+    generationPreferences: normalizeApplicationGenerationPreferences(
+      current.generationPreferences,
+    ),
+    activities: normalizeApplicationActivities(current.activities),
   };
 }
 
@@ -1476,11 +1558,20 @@ export function mergeApplicationResearch(
       vacancyResearch: isSavedVacancyResearch(application.vacancyResearch)
         ? application.vacancyResearch
         : null,
+      contactPhone: application.contactPhone ?? "",
+      contacts: normalizeApplicationContacts(application.contacts),
+      jobDescriptionText: application.jobDescriptionText ?? "",
+      tags: Array.isArray(application.tags) ? application.tags : [],
+      generationPreferences: normalizeApplicationGenerationPreferences(
+        application.generationPreferences,
+      ),
+      activities: normalizeApplicationActivities(application.activities),
     }));
   return [...seeded, ...own];
 }
 
 export function createEmptyApplication(id: string): ApplicationProcess {
+  const createdAt = new Date().toISOString();
   return {
     id,
     researchRank: null,
@@ -1496,17 +1587,34 @@ export function createEmptyApplication(id: string): ApplicationProcess {
     fitRating: "",
     researchSummary: "",
     sourceUrl: "",
-    sourceVerifiedAt: new Date().toISOString().slice(0, 10),
+    sourceVerifiedAt: createdAt.slice(0, 10),
     status: "draft",
     appliedAt: null,
     applicationChannel: "",
     appliedTerms: "",
     contactPerson: "",
     contactEmail: "",
+    contactPhone: "",
+    contacts: [],
+    jobDescriptionText: "",
+    tags: [],
     nextStep: "Stellenanzeige und Bewerbungsunterlagen vervollständigen",
     nextStepAt: null,
     notes: "",
     artifacts: [],
     vacancyResearch: null,
+    generationPreferences: {
+      ...DEFAULT_APPLICATION_GENERATION_PREFERENCES,
+      outputKinds: [...DEFAULT_APPLICATION_GENERATION_PREFERENCES.outputKinds],
+      researchScopes: [...DEFAULT_APPLICATION_GENERATION_PREFERENCES.researchScopes],
+    },
+    activities: [
+      {
+        id: `activity-vacancy-added-${id}`,
+        type: "vacancy_added",
+        occurredAt: createdAt,
+        note: "Manuell im Kompass angelegt",
+      },
+    ],
   };
 }

@@ -120,8 +120,9 @@ test("Tagebuchanalyse speichert nicht, sucht nicht im Web und mutiert nur Vorsch
   assert.match(assistant, /deterministicJournalAnalysis/);
   assert.match(assistant, /Der Tagebuchtext ist untrusted data/);
   assert.match(planningClient, /\/api\/planning\/topics/);
-  assert.match(diary, /KI-Vorschläge verändern nichts direkt/);
-  assert.match(diary, /Privat oder Fachkalender wählen/);
+  assert.match(diary, /Nur als Inspiration/);
+  assert.match(diary, /onAnalyze\(journalId, input\)/);
+  assert.match(diary, /onScheduleSuggestion/);
   assert.match(store, /requiresCalendarTarget/);
   assert.match(store, /recordDecision/);
 });

@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -32,8 +33,12 @@ import { createDemoState } from "../lib/demo-data";
 import {
   DASHBOARD_KPI_DEFINITIONS,
 } from "../lib/dashboard";
+import {
+  APPLICATION_KPI_DEFINITIONS,
+} from "../lib/application-workflow";
 import { COST_TEMPLATES } from "../lib/finance-catalog";
 import { diaryRhythmDays, upsertDiaryEntry } from "../lib/diary";
+import type { DiaryPlanningSuggestion } from "../lib/diary-planning";
 import {
   applyCostPaymentReward,
   applyDayCloseReward,
@@ -46,6 +51,10 @@ import {
   REWARD_MODE_LABELS,
   upsertTaskProfile,
   withGamification,
+  XP_GOAL_LIMITS,
+  xpProgressByPeriod,
+  type XpGoalProgress,
+  type XpProgressByPeriod,
 } from "../lib/gamification";
 import {
   calendarDayDifference,
@@ -81,7 +90,6 @@ import {
   getPlanningReport,
   reconcilePlanning,
   removePlanningDayIntent,
-  savePlanningDecision,
   savePlanningDayIntent,
   setPlanningAutomationMode,
   updatePlanningGap,
@@ -96,6 +104,9 @@ import {
   type AccountBalances,
   type AppState,
   type ApplicationArtifact,
+  type ApplicationKpiKey,
+  type ApplicationKpiPeriod,
+  type ApplicationKpiSettings,
   type ApplicationProcess,
   type CalendarEvent,
   type CaptureKind,
@@ -115,9 +126,9 @@ import {
   type DayIntentKind,
   type DashboardKpiKey,
   type DashboardSettings,
-  type OpenTopic,
   type PlanningHealthReport,
   type ViewKey,
+  type XpGoals,
 } from "../lib/types";
 import { useGerriState } from "../lib/use-gerri-state";
 
@@ -152,6 +163,36 @@ const VIEW_TITLES: Record<ViewKey, string> = {
   contacts: "Kontakte & Verbindungen",
   journal: "Tagebuch & Tagesabschluss",
 };
+
+const XP_GOAL_FIELDS: Array<{
+  key: keyof XpGoals;
+  progressKey: keyof XpProgressByPeriod;
+  label: string;
+  shortLabel: string;
+  description: string;
+}> = [
+  {
+    key: "daily",
+    progressKey: "day",
+    label: "Tagesziel",
+    shortLabel: "Heute",
+    description: "XP seit Mitternacht in Berliner Zeit.",
+  },
+  {
+    key: "weekly",
+    progressKey: "week",
+    label: "Wochenziel",
+    shortLabel: "Woche",
+    description: "XP seit Montagmorgen.",
+  },
+  {
+    key: "monthly",
+    progressKey: "month",
+    label: "Monatsziel",
+    shortLabel: "Monat",
+    description: "XP seit dem ersten Tag des Monats.",
+  },
+];
 
 const uid = (prefix: string): string =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -202,6 +243,60 @@ const formatFileSize = (bytes: number): string =>
     ? `${Math.max(1, Math.round(bytes / 1_024))} KB`
     : `${(bytes / 1_048_576).toFixed(1).replace(".", ",")} MB`;
 
+function XpGoalMeter({
+  className,
+  label,
+  period,
+  progress,
+  showDetail = false,
+}: {
+  className: string;
+  label: string;
+  period: keyof XpProgressByPeriod;
+  progress: XpGoalProgress;
+  showDetail?: boolean;
+}) {
+  const visiblePercentage = Math.min(100, progress.percentage);
+  const remainingXp = Math.max(0, progress.goalXp - progress.earnedXp);
+  return (
+    <div
+      aria-label={`${label}: ${progress.earnedXp} von ${progress.goalXp} XP`}
+      className={`${className} ${progress.goalReached ? "goal-reached" : ""}`}
+      data-period={period}
+    >
+      <div className="xp-goal-meter-heading">
+        <span>{label}</span>
+        <small>{progress.percentage} %</small>
+      </div>
+      <strong>
+        {progress.earnedXp.toLocaleString("de-DE")}
+        <small> / {progress.goalXp.toLocaleString("de-DE")} XP</small>
+      </strong>
+      <div
+        aria-label={`${label}: ${visiblePercentage} Prozent des Ziels erreicht`}
+        aria-valuemax={100}
+        aria-valuemin={0}
+        aria-valuenow={visiblePercentage}
+        className="xp-goal-track"
+        role="progressbar"
+      >
+        <span style={{ width: `${visiblePercentage}%` }} />
+      </div>
+      {showDetail ? (
+        <p>
+          {progress.goalReached
+            ? progress.earnedXp > progress.goalXp
+              ? `Ziel erreicht · ${(
+                  progress.earnedXp - progress.goalXp
+                ).toLocaleString("de-DE")} XP darüber`
+              : "Ziel erreicht"
+            : `${remainingXp.toLocaleString("de-DE")} XP bis zum Ziel`}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 type LifeOsAppProps = {
   initialState: AppState;
   integrations: IntegrationConfig;
@@ -244,6 +339,7 @@ export function LifeOsApp({
   const [taskConnectUrl, setTaskConnectUrl] = useState("");
   const [taskActionId, setTaskActionId] = useState("");
   const [rewardTaskId, setRewardTaskId] = useState("");
+  const [xpProgressNow, setXpProgressNow] = useState(initialState.updatedAt);
   const taskInitialLoadStarted = useRef(false);
   const planningInitialLoadStarted = useRef(false);
   const planningRequestActive = useRef(false);
@@ -259,6 +355,13 @@ export function LifeOsApp({
     importBackup,
   } = useGerriState(initialState);
   const pendingLegacyTasks = state.pendingTaskImports ?? [];
+
+  useEffect(() => {
+    const refreshProgressTime = () => setXpProgressNow(new Date().toISOString());
+    refreshProgressTime();
+    const timer = window.setInterval(refreshProgressTime, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const refreshPlanning = useCallback(
     async (reason: string, forceDryRun = false) => {
@@ -811,18 +914,15 @@ export function LifeOsApp({
       ...current,
       documents: [
         bundle.cvDocument,
-        bundle.passportDocument,
         ...current.documents.filter(
-          (document) =>
-            document.id !== bundle.cvDocument.id &&
-            document.id !== bundle.passportDocument.id,
+          (document) => document.id !== bundle.cvDocument.id,
         ),
       ],
       masterCvDocumentId: bundle.cvDocument.id,
-      careerPassportDocumentId: bundle.passportDocument.id,
+      careerPassportDocumentId: null,
       masterCvContent: bundle.masterCvContent,
     }));
-    setNotice("Master-CV und Career Passport importiert");
+    setNotice("Master-CV importiert");
   };
 
   const saveMasterCvContent = (content: MasterCvContent) => {
@@ -932,8 +1032,8 @@ export function LifeOsApp({
         : `${result.analysis.summary} Deterministischer Fallback ohne KI-Mutation.`;
     } catch (caught) {
       return caught instanceof Error
-        ? `Tagesabschluss gespeichert. Analysehinweis: ${caught.message}`
-        : "Tagesabschluss gespeichert. Die Analyse wird später erneut versucht.";
+        ? `Analysehinweis: ${caught.message}`
+        : "Die optionale Analyse wird später erneut versucht.";
     }
   };
 
@@ -954,101 +1054,6 @@ export function LifeOsApp({
         caught instanceof Error
           ? caught.message
           : "Die Tagesabsicht konnte nicht gespeichert werden.",
-      );
-    }
-  };
-
-  const actOnPlanningGap = async (
-    gapId: string,
-    action: "reopen" | "snooze" | "resolve",
-    note = "",
-  ): Promise<void> => {
-    try {
-      await updatePlanningGap(gapId, {
-        action,
-        note,
-        ...(action === "snooze"
-          ? {
-              snoozedUntil: new Date(
-                Date.now() + 24 * 60 * 60 * 1_000,
-              ).toISOString(),
-            }
-          : {}),
-      });
-      const report = await getPlanningReport();
-      setPlanningReport(report);
-      setNotice(
-        action === "snooze"
-          ? "Planungslücke mit Begründung bis morgen zurückgestellt"
-          : action === "resolve"
-            ? "Planungslücke als gelöst dokumentiert"
-            : "Planungslücke wieder geöffnet",
-      );
-    } catch (caught) {
-      setNotice(
-        caught instanceof Error
-          ? caught.message
-          : "Die Planungslücke konnte nicht bearbeitet werden.",
-      );
-    }
-  };
-
-  const updateTopic = async (
-    topicId: string,
-    input: Partial<
-      Pick<
-        OpenTopic,
-        | "status"
-        | "group"
-        | "nextStep"
-        | "dueAt"
-        | "calendarTarget"
-        | "snoozedUntil"
-      >
-    >,
-  ): Promise<void> => {
-    try {
-      await updatePlanningTopic(topicId, input);
-      await refreshPlanning("open-topic-change");
-      setNotice("Offenes Thema aktualisiert");
-    } catch (caught) {
-      setNotice(
-        caught instanceof Error
-          ? caught.message
-          : "Das offene Thema konnte nicht aktualisiert werden.",
-      );
-    }
-  };
-
-  const recordTopicDecision = async (
-    topic: OpenTopic,
-    decision: string,
-  ): Promise<void> => {
-    try {
-      await savePlanningDecision({
-        topicId: topic.id,
-        sourceJournalId:
-          topic.sourceId && topic.sourceType === "open-topic"
-            ? topic.sourceId
-            : undefined,
-        title: topic.title,
-        decision,
-        calendarTarget: topic.calendarTarget,
-        apply: true,
-      });
-      await updatePlanningTopic(topic.id, {
-        status:
-          topic.dueAt && topic.calendarTarget ? "open" : "resolved",
-        group:
-          topic.dueAt && topic.calendarTarget ? "scheduled" : topic.group,
-      });
-      await refreshPlanning("decision-confirmed");
-      setNotice("Entscheidung gespeichert und auf die Planung angewendet");
-    } catch (caught) {
-      setNotice(
-        caught instanceof Error
-          ? caught.message
-          : "Die Entscheidung konnte nicht gespeichert werden.",
       );
     }
   };
@@ -1075,28 +1080,89 @@ export function LifeOsApp({
     }
   };
 
-  const planTaskForTomorrow = async (taskId: string): Promise<boolean> => {
-    const task = state.tasks.find((candidate) => candidate.id === taskId);
-    if (!task || taskActionId) return false;
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    setTaskActionId(taskId);
+  const scheduleDiarySuggestion = async (
+    suggestion: DiaryPlanningSuggestion,
+    date: string,
+  ): Promise<boolean> => {
+    if (taskActionId) return false;
+    const existingTask =
+      suggestion.sourceKind === "task"
+        ? state.tasks.find((candidate) => candidate.id === suggestion.sourceId)
+        : null;
+    if (suggestion.sourceKind === "task" && !existingTask) return false;
+    const actionId = existingTask?.id || suggestion.sourceId;
+    const dueAt = dateAtNine(date);
+    setTaskActionId(actionId);
     setTaskError("");
     try {
-      const updated = await updateGoogleTask(task, {
-        dueAt: dateAtNine(isoDateInput(tomorrow.toISOString())),
-      });
-      updateState((current) => ({
-        ...current,
-        tasks: current.tasks.map((candidate) =>
-          candidate.id === taskId ? updated : candidate,
-        ),
-      }));
+      let planningHintDeferred = false;
+      if (existingTask) {
+        const updated = await updateGoogleTask(existingTask, { dueAt });
+        updateState((current) => ({
+          ...current,
+          tasks: current.tasks.map((candidate) =>
+            candidate.id === existingTask.id ? updated : candidate,
+          ),
+        }));
+      } else {
+        const task = await createGoogleTask({
+          id: suggestion.sourceId,
+          title: suggestion.title,
+          notes: [
+            suggestion.detail,
+            `Aus der Abendplanung übernommen (${suggestion.sourceKind}).`,
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+          area: "alltag",
+          quadrant:
+            suggestion.priority === "critical" ? "do" : "plan",
+          dueAt,
+          estimateMinutes: suggestion.priority === "critical" ? 15 : 30,
+          progress: 0,
+          completed: false,
+          confidential: true,
+        });
+        updateState((current) => ({
+          ...current,
+          tasks: [task, ...current.tasks],
+        }));
+
+        try {
+          if (suggestion.sourceKind === "gap") {
+            await updatePlanningGap(suggestion.sourceId, {
+              action: "snooze",
+              snoozedUntil: dueAt,
+              note: `Als ToDo für ${date} eingeplant.`,
+            });
+          } else if (suggestion.sourceKind === "topic") {
+            await updatePlanningTopic(suggestion.sourceId, {
+              status: "snoozed",
+              group: "scheduled",
+              nextStep: suggestion.title,
+              dueAt,
+              snoozedUntil: dueAt,
+            });
+          }
+          if (["gap", "topic"].includes(suggestion.sourceKind)) {
+            await refreshPlanning("diary-plan-drop");
+          }
+        } catch {
+          planningHintDeferred = true;
+        }
+      }
+      setNotice(
+        planningHintDeferred
+          ? "ToDo gespeichert; der Planungshinweis wird beim nächsten Abgleich aktualisiert"
+          : suggestion.sourceKind === "task"
+          ? "Aufgabe auf den gewählten Tag verschoben"
+          : "Inspiration als ToDo gespeichert",
+      );
       return true;
     } catch (caught) {
       rememberGoogleError(
         caught,
-        "Die Fokusaufgabe konnte nicht auf morgen gesetzt werden.",
+        "Der Planungspunkt konnte nicht in Google Tasks übernommen werden.",
       );
       return false;
     } finally {
@@ -1135,6 +1201,27 @@ export function LifeOsApp({
       return withGamification(current, { ...gamification, milestoneStepXp });
     });
     setNotice(`Neue Fortschrittsetappe: alle ${milestoneStepXp.toLocaleString("de-DE")} XP`);
+  };
+
+  const changeXpGoal = (period: keyof XpGoals, targetXp: number) => {
+    if (!Number.isFinite(targetXp)) return;
+    const limits = XP_GOAL_LIMITS[period];
+    const normalizedTarget = Math.min(
+      limits.max,
+      Math.max(limits.min, Math.round(targetXp)),
+    );
+    updateState((current) => {
+      const gamification =
+        current.gamification ??
+        createDefaultGamification(current.points, current.updatedAt);
+      return withGamification(current, {
+        ...gamification,
+        xpGoals: {
+          ...gamification.xpGoals,
+          [period]: normalizedTarget,
+        },
+      });
+    });
   };
 
   const changeAdaptiveFocus = (points: number) => {
@@ -1210,6 +1297,45 @@ export function LifeOsApp({
     }));
   };
 
+  const changeApplicationKpi = (
+    key: ApplicationKpiKey,
+    changes: {
+      enabled?: boolean;
+      period?: ApplicationKpiPeriod;
+      target?: number;
+    },
+  ) => {
+    updateState((current) => ({
+      ...current,
+      applicationKpiSettings: {
+        goals: current.applicationKpiSettings.goals.map((goal) => {
+          if (goal.key !== key) return goal;
+          const next = {
+            ...goal,
+            enabled:
+              typeof changes.enabled === "boolean"
+                ? changes.enabled
+                : goal.enabled,
+          };
+          if (
+            changes.period &&
+            typeof changes.target === "number" &&
+            Number.isFinite(changes.target)
+          ) {
+            next.targets = {
+              ...goal.targets,
+              [changes.period]: Math.min(
+                999,
+                Math.max(0, Math.round(changes.target)),
+              ),
+            };
+          }
+          return next;
+        }),
+      },
+    }));
+  };
+
   const openDocument = (document: DocumentRef) => {
     setSelectedDocument(document);
   };
@@ -1227,6 +1353,15 @@ export function LifeOsApp({
   const currentGamification =
     state.gamification ?? createDefaultGamification(state.points, state.updatedAt);
   const progressTotals = ledgerTotals(currentGamification.ledger);
+  const xpProgress = useMemo(
+    () =>
+      xpProgressByPeriod(
+        currentGamification.ledger,
+        currentGamification.xpGoals,
+        xpProgressNow,
+      ),
+    [currentGamification.ledger, currentGamification.xpGoals, xpProgressNow],
+  );
   const celebrationCopy = completionMessage("CELEBRATE", currentGamification);
   const previousEarnedXp = useRef(progressTotals.earnedXp);
   const rewardTask = state.tasks.find((task) => task.id === rewardTaskId) ?? null;
@@ -1406,14 +1541,32 @@ export function LifeOsApp({
               </span>
               <strong>{VIEW_TITLES[view]}</strong>
             </div>
-            <div className="topbar-progress" aria-label="Gesamter Fortschritt">
-              <span>Gesamter Fortschritt</span>
-              <strong>{progressTotals.earnedXp.toLocaleString("de-DE")} XP</strong>
-              <small>
-                Level {levelForXp(progressTotals.earnedXp)} ·{" "}
-                {progressTotals.balanceXp.toLocaleString("de-DE")} Klarpunkte verfügbar
-              </small>
-              <p>{celebrationCopy.text}</p>
+            <div
+              className="topbar-progress"
+              aria-label="XP-Fortschritt insgesamt, heute, diese Woche und diesen Monat"
+            >
+              <div className="topbar-progress-total">
+                <div>
+                  <span>Gesamtfortschritt</span>
+                  <strong>{progressTotals.earnedXp.toLocaleString("de-DE")} XP</strong>
+                </div>
+                <small>
+                  Level {levelForXp(progressTotals.earnedXp)} ·{" "}
+                  {progressTotals.balanceXp.toLocaleString("de-DE")} Klarpunkte verfügbar
+                </small>
+                <p>{celebrationCopy.text}</p>
+              </div>
+              <div className="topbar-period-progress">
+                {XP_GOAL_FIELDS.map((field) => (
+                  <XpGoalMeter
+                    className="topbar-xp-goal"
+                    key={field.key}
+                    label={field.shortLabel}
+                    period={field.progressKey}
+                    progress={xpProgress[field.progressKey]}
+                  />
+                ))}
+              </div>
             </div>
           </div>
           <div className="topbar-actions">
@@ -1537,16 +1690,9 @@ export function LifeOsApp({
           {view === "journal" ? (
             <DiaryView
               externalEvents={externalEvents}
-              onCompleteTask={completeTask}
-              onCreateApplication={createApplication}
-              onOpenCapture={openCapture}
-              onPlanTask={planTaskForTomorrow}
               onSave={saveDiary}
               onAnalyze={analyzeSavedDiary}
-              onGapAction={actOnPlanningGap}
-              onDecision={recordTopicDecision}
-              onTopicUpdate={updateTopic}
-              onUpdateApplication={updateApplication}
+              onScheduleSuggestion={scheduleDiarySuggestion}
               planningReport={planningReport}
               state={state}
               taskActionId={taskActionId}
@@ -1646,6 +1792,7 @@ export function LifeOsApp({
 
       {settingsOpen ? (
         <SettingsDialog
+          applicationKpiSettings={state.applicationKpiSettings}
           dashboardSettings={state.dashboardSettings}
           gamification={currentGamification}
           integrations={integrations}
@@ -1654,6 +1801,7 @@ export function LifeOsApp({
           onClose={() => setSettingsOpen(false)}
           onDrRossChange={changeDrRoss}
           onDashboardKpiChange={changeDashboardKpi}
+          onApplicationKpiChange={changeApplicationKpi}
           onExport={exportBackup}
           onImport={(raw) => {
             try {
@@ -1677,11 +1825,13 @@ export function LifeOsApp({
           }}
           onRefreshGoogle={() => void refreshWorkspaceStatus()}
           onMilestoneStepChange={changeMilestoneStep}
+          onXpGoalChange={changeXpGoal}
           onRewardCatalogToggle={toggleRewardCatalogItem}
           onRewardModeChange={changeRewardMode}
           onSurprisesChange={changeSurprises}
           syncCopy={syncCopy}
           workspaceStatus={workspaceStatus}
+          xpProgress={xpProgress}
         />
       ) : null}
 
@@ -3170,12 +3320,14 @@ function DocumentViewer({
 }
 
 function SettingsDialog({
+  applicationKpiSettings,
   dashboardSettings,
   gamification,
   integrations,
   syncCopy,
   workspaceStatus,
   onAdaptiveFocusChange,
+  onApplicationKpiChange,
   onCelebrationsChange,
   onClose,
   onDashboardKpiChange,
@@ -3188,13 +3340,24 @@ function SettingsDialog({
   onRewardCatalogToggle,
   onRewardModeChange,
   onSurprisesChange,
+  onXpGoalChange,
+  xpProgress,
 }: {
+  applicationKpiSettings: ApplicationKpiSettings;
   dashboardSettings: DashboardSettings;
   gamification: GamificationState;
   integrations: IntegrationConfig;
   syncCopy: string;
   workspaceStatus: GoogleWorkspaceStatus | null;
   onAdaptiveFocusChange: (points: number) => void;
+  onApplicationKpiChange: (
+    key: ApplicationKpiKey,
+    changes: {
+      enabled?: boolean;
+      period?: ApplicationKpiPeriod;
+      target?: number;
+    },
+  ) => void;
   onCelebrationsChange: (enabled: boolean) => void;
   onClose: () => void;
   onDashboardKpiChange: (
@@ -3205,11 +3368,13 @@ function SettingsDialog({
   onExport: () => void;
   onImport: (raw: string) => void;
   onMilestoneStepChange: (milestoneStepXp: number) => void;
+  onXpGoalChange: (period: keyof XpGoals, targetXp: number) => void;
   onReset: () => void;
   onRefreshGoogle: () => void;
   onRewardCatalogToggle: (rewardId: string, active: boolean) => void;
   onRewardModeChange: (mode: RewardMode) => void;
   onSurprisesChange: (enabled: boolean) => void;
+  xpProgress: XpProgressByPeriod;
 }) {
   const importRef = useRef<HTMLInputElement>(null);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -3369,6 +3534,77 @@ function SettingsDialog({
             })}
           </div>
         </div>
+        <div className="settings-section application-kpi-settings-section">
+          <span className="eyebrow">Bewerbungsziele</span>
+          <h3>Lege fest, welche Pipeline-Kennzahlen dich steuern</h3>
+          <p>
+            Aktiviere nur die Kennzahlen, die in „Bewerbungen“ erscheinen sollen,
+            und setze getrennte Ziele für Tag, Woche und Monat.
+          </p>
+          <div
+            aria-label="Bewerbungsziele konfigurieren"
+            className="application-kpi-settings"
+          >
+            {APPLICATION_KPI_DEFINITIONS.map((definition) => {
+              const setting = applicationKpiSettings.goals.find(
+                (candidate) => candidate.key === definition.key,
+              ) ?? {
+                key: definition.key,
+                enabled: true,
+                targets: definition.defaultTargets,
+              };
+              return (
+                <article
+                  className={setting.enabled ? "is-enabled" : ""}
+                  key={definition.key}
+                >
+                  <label className="application-kpi-toggle">
+                    <input
+                      checked={setting.enabled}
+                      onChange={(event) =>
+                        onApplicationKpiChange(definition.key, {
+                          enabled: event.target.checked,
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>{definition.label}</strong>
+                      <small>{definition.description}</small>
+                    </span>
+                  </label>
+                  <div className="application-kpi-targets">
+                    {(
+                      [
+                        ["day", "Tag"],
+                        ["week", "Woche"],
+                        ["month", "Monat"],
+                      ] as const
+                    ).map(([period, label]) => (
+                      <label key={period}>
+                        <span>{label}</span>
+                        <input
+                          aria-label={`${definition.label} pro ${label}`}
+                          max={999}
+                          min={0}
+                          onChange={(event) =>
+                            onApplicationKpiChange(definition.key, {
+                              period,
+                              target: Number(event.target.value),
+                            })
+                          }
+                          step={1}
+                          type="number"
+                          value={setting.targets[period]}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
         <div className="settings-section reward-settings-section">
           <span className="eyebrow">Belohnungssystem</span>
           <h3>Wähle die Darstellung, die dich gerade trägt</h3>
@@ -3385,6 +3621,55 @@ function SettingsDialog({
               Level {levelForXp(rewardTotals.earnedXp)} ·{" "}
               {rewardTotals.balanceXp.toLocaleString("de-DE")} Klarpunkte verfügbar
             </small>
+          </div>
+          <div className="xp-goal-settings" aria-label="XP-Ziele konfigurieren">
+            <div className="xp-goal-settings-heading">
+              <div>
+                <strong>Deine XP-Ziele</strong>
+                <small>
+                  Jeder Zeitraum startet automatisch neu; dein Gesamtfortschritt bleibt
+                  vollständig erhalten.
+                </small>
+              </div>
+              <span className="status-chip">Direkt sichtbar</span>
+            </div>
+            <div className="xp-goal-settings-grid">
+              {XP_GOAL_FIELDS.map((field) => {
+                const limits = XP_GOAL_LIMITS[field.key];
+                return (
+                  <article key={field.key}>
+                    <div className="xp-goal-setting-heading">
+                      <label htmlFor={`xp-goal-${field.key}`}>
+                        <strong>{field.label}</strong>
+                        <small>{field.description}</small>
+                      </label>
+                      <span className="xp-goal-input">
+                        <input
+                          aria-label={`${field.label} in XP`}
+                          id={`xp-goal-${field.key}`}
+                          max={limits.max}
+                          min={limits.min}
+                          onChange={(event) =>
+                            onXpGoalChange(field.key, Number(event.target.value))
+                          }
+                          step={limits.step}
+                          type="number"
+                          value={gamification.xpGoals[field.key]}
+                        />
+                        <small>XP</small>
+                      </span>
+                    </div>
+                    <XpGoalMeter
+                      className="settings-xp-goal-progress"
+                      label={field.shortLabel}
+                      period={field.progressKey}
+                      progress={xpProgress[field.progressKey]}
+                      showDetail
+                    />
+                  </article>
+                );
+              })}
+            </div>
           </div>
           <div className="reward-mode-settings" aria-label="Belohnungswelt wählen">
             {REWARD_MODES.map((mode) => (

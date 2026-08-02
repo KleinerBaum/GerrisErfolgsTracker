@@ -1,19 +1,16 @@
 import { strFromU8, unzipSync } from "fflate";
 
 import type {
-  CareerEvidenceConfidence,
   CareerPassportEvidence,
   CareerPassportSnapshot,
-  CareerPassportSource,
   MasterCvSection,
 } from "../types";
 
 const MAX_DOCUMENT_XML_BYTES = 4 * 1024 * 1024;
 const MAX_SECTIONS = 24;
+const MAX_EVIDENCE = 240;
 
-type JsonRecord = Record<string, unknown>;
-
-type ParsedMasterCvBundle = {
+type ParsedMasterCvDocument = {
   name: string;
   headline: string;
   subheadline: string;
@@ -22,29 +19,6 @@ type ParsedMasterCvBundle = {
   sections: MasterCvSection[];
   passport: CareerPassportSnapshot;
 };
-
-function record(value: unknown): JsonRecord {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as JsonRecord)
-    : {};
-}
-function text(value: unknown, max: number): string {
-  return typeof value === "string" ? value.trim().slice(0, max) : "";
-}
-
-function strings(value: unknown, limit: number, max = 600): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => text(item, max))
-    .filter(Boolean)
-    .slice(0, limit);
-}
-
-function confidence(value: unknown): CareerEvidenceConfidence {
-  return value === "user_confirmed" || value === "externally_corroborated"
-    ? value
-    : "source_only";
-}
 
 function decodeXmlEntities(value: string): string {
   return value
@@ -117,8 +91,7 @@ function extractDocx(bytes: Uint8Array) {
   const profileParagraphs = paragraphs.slice(0, firstSection < 0 ? 4 : firstSection);
   const name = byStyle("CvName") || profileParagraphs[0]?.value || "";
   const headline = byStyle("CvHeadline") || profileParagraphs[1]?.value || "";
-  const subheadline =
-    byStyle("CvSubheadline") || profileParagraphs[2]?.value || "";
+  const subheadline = byStyle("CvSubheadline") || profileParagraphs[2]?.value || "";
   const contactLine = byStyle("CvContact") || profileParagraphs[3]?.value || "";
 
   const sectionDrafts: Array<{ heading: string; lines: string[] }> = [];
@@ -154,116 +127,73 @@ function extractDocx(bytes: Uint8Array) {
   return { name, headline, subheadline, contactLine, sections };
 }
 
-function passportSource(value: unknown): CareerPassportSource | null {
-  const source = record(value);
-  const sourceId = text(source.source_id, 160);
-  const name = text(source.name, 300);
-  if (!sourceId || !name) return null;
-  return {
-    sourceId,
-    name,
-    sourceType: text(source.source_type, 100),
-    isPrimary: source.is_primary === true,
-    notes: strings(source.notes, 10),
-  };
+function evidenceFromSections(
+  sections: MasterCvSection[],
+  importedAt: string,
+): CareerPassportEvidence[] {
+  const evidence: CareerPassportEvidence[] = [];
+  for (const [sectionIndex, section] of sections.entries()) {
+    const lines = section.content
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^\s*•\s*/, "").trim())
+      .filter(Boolean);
+    for (const [lineIndex, line] of lines.entries()) {
+      evidence.push({
+        evidenceId: `CV-${sectionIndex + 1}-${lineIndex + 1}`,
+        claim: line.slice(0, 1_000),
+        safeWording: line.slice(0, 4_000),
+        sourceType: "current_cv",
+        sourceName: "Importierter Master-CV (DOCX)",
+        confidence: "source_only",
+        restrictions: [],
+        roleRelevance: [section.heading],
+        capturedAt: importedAt,
+      });
+      if (evidence.length >= MAX_EVIDENCE) return evidence;
+    }
+  }
+  return evidence;
 }
 
-function passportEvidence(value: unknown): CareerPassportEvidence | null {
-  const evidence = record(value);
-  const evidenceId = text(evidence.evidence_id, 160);
-  const safeWording = text(evidence.safe_wording, 4_000);
-  if (!evidenceId || !safeWording) return null;
-  return {
-    evidenceId,
-    claim: text(evidence.claim, 1_000),
-    safeWording,
-    sourceType: text(evidence.source_type, 100),
-    sourceName: text(evidence.source_name, 300),
-    confidence: confidence(evidence.confidence),
-    restrictions: strings(evidence.restrictions, 20, 1_000),
-    roleRelevance: strings(evidence.role_relevance, 20, 300),
-    capturedAt: text(evidence.captured_at, 80) || null,
-  };
+function inferLanguage(sections: MasterCvSection[]): string {
+  const sample = sections
+    .slice(0, 8)
+    .map((section) => `${section.heading} ${section.content}`)
+    .join(" ")
+    .toLocaleLowerCase("de-DE");
+  return /\b(berufserfahrung|ausbildung|kompetenzen|profil|weiterbildung|sprachen)\b/.test(
+    sample,
+  )
+    ? "de-DE"
+    : "de-DE";
 }
 
-function extractPassport(raw: string, importedAt: string): CareerPassportSnapshot {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error("Der Career Passport ist keine gültige JSON-Datei.");
-  }
-  const passport = record(parsed);
-  const profile = record(passport.profile);
-  const profileName = text(profile.name, 240);
-  const schemaVersion = text(passport.schema_version, 30);
-  if (!profileName || !schemaVersion) {
-    throw new Error("Der Career Passport hat kein unterstütztes Format.");
-  }
-  const sources = Array.isArray(passport.source_documents)
-    ? passport.source_documents
-        .map(passportSource)
-        .filter((item): item is CareerPassportSource => Boolean(item))
-        .slice(0, 80)
-    : [];
-  const evidence = Array.isArray(passport.evidence)
-    ? passport.evidence
-        .map(passportEvidence)
-        .filter((item): item is CareerPassportEvidence => Boolean(item))
-        .slice(0, 240)
-    : [];
-  if (!sources.length || !evidence.length) {
-    throw new Error("Im Career Passport fehlen Quellen oder Evidenzangaben.");
-  }
-  const preferences = record(passport.preferences);
-  const versions = Array.isArray(passport.document_versions)
-    ? passport.document_versions.map(record)
-    : [];
-  return {
-    schemaVersion,
-    profileName,
-    targetDirections: strings(preferences.target_directions, 12, 300),
-    sourceDocuments: sources,
+export function parseMasterCvDocument(
+  docxBytes: Uint8Array,
+  importedAt = new Date().toISOString(),
+): ParsedMasterCvDocument {
+  const docx = extractDocx(docxBytes);
+  const evidence = evidenceFromSections(docx.sections, importedAt);
+  const passport: CareerPassportSnapshot = {
+    schemaVersion: "master-cv-evidence-v1",
+    profileName: docx.name,
+    targetDirections: [],
+    sourceDocuments: [
+      {
+        sourceId: "master-cv-docx",
+        name: "Importierter Master-CV (DOCX)",
+        sourceType: "current_cv",
+        isPrimary: true,
+        notes: ["Evidenz wurde ausschließlich aus dem importierten Master-CV übernommen."],
+      },
+    ],
     evidence,
-    documentVersionStatus: text(versions[0]?.status, 80) || null,
+    documentVersionStatus: "source_only",
     importedAt,
   };
-}
-
-export function parseMasterCvBundle(
-  docxBytes: Uint8Array,
-  passportJson: string,
-  importedAt = new Date().toISOString(),
-): ParsedMasterCvBundle {
-  const docx = extractDocx(docxBytes);
-  const passport = extractPassport(passportJson, importedAt);
-  if (
-    docx.name &&
-    passport.profileName &&
-    docx.name.localeCompare(passport.profileName, undefined, {
-      sensitivity: "base",
-    }) !== 0
-  ) {
-    throw new Error("Master-CV und Career Passport gehören nicht zur selben Person.");
-  }
-  const parsedPassport = JSON.parse(passportJson) as JsonRecord;
-  const profile = record(parsedPassport.profile);
-  const preferences = record(parsedPassport.preferences);
-  const documentPreferences = record(preferences.document_preferences);
-  const contact = Array.isArray(profile.contact)
-    ? profile.contact
-        .map((entry) => text(record(entry).text, 300))
-        .filter(Boolean)
-    : [];
   return {
-    name: docx.name || passport.profileName,
-    headline: docx.headline || text(profile.headline, 400),
-    subheadline: docx.subheadline,
-    contactLine:
-      docx.contactLine ||
-      [text(profile.location, 300), ...contact].filter(Boolean).join(" | "),
-    language: text(documentPreferences.language, 30) || "en",
-    sections: docx.sections,
+    ...docx,
+    language: inferLanguage(docx.sections),
     passport,
   };
 }

@@ -195,6 +195,8 @@ export function ContactsView({ contacts, createRequest, onChange, toast }: Conta
   const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
+    // Externer, bewusst inkrementierter Öffnungsimpuls aus der Hauptnavigation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (createRequest > 0) setEditing(null);
   }, [createRequest]);
 

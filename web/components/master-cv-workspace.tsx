@@ -18,7 +18,6 @@ import type {
 type MasterCvWorkspaceProps = {
   documents: DocumentRef[];
   masterCvDocumentId: string | null;
-  careerPassportDocumentId: string | null;
   masterCvContent: MasterCvContent | null;
   onImport: (bundle: MasterCvImportBundle) => void;
   onSave: (content: MasterCvContent) => void;
@@ -85,16 +84,13 @@ function downloadEditedVersion(content: MasterCvContent) {
 export function MasterCvWorkspace({
   documents,
   masterCvDocumentId,
-  careerPassportDocumentId,
   masterCvContent,
   onImport,
   onSave,
   toast,
 }: MasterCvWorkspaceProps) {
   const cvInputRef = useRef<HTMLInputElement>(null);
-  const passportInputRef = useRef<HTMLInputElement>(null);
   const [cvFile, setCvFile] = useState<File | null>(null);
-  const [passportFile, setPassportFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [showImport, setShowImport] = useState(!masterCvContent);
   const [showEditor, setShowEditor] = useState(false);
@@ -104,25 +100,16 @@ export function MasterCvWorkspace({
   const masterCvDocument = documents.find(
     (document) => document.id === masterCvDocumentId,
   );
-  const passportDocument = documents.find(
-    (document) => document.id === careerPassportDocumentId,
-  );
-
   const importBundle = async () => {
-    if (!cvFile || !passportFile || busy) return;
+    if (!cvFile || busy) return;
     if (!cvFile.name.toLowerCase().endsWith(".docx")) {
       toast("Bitte den Master-CV als DOCX auswählen");
-      return;
-    }
-    if (!passportFile.name.toLowerCase().endsWith(".json")) {
-      toast("Bitte den Career Passport als JSON auswählen");
       return;
     }
     setBusy(true);
     try {
       const form = new FormData();
       form.append("cv", cvFile);
-      form.append("passport", passportFile);
       const response = await fetch("/api/master-cv", {
         method: "POST",
         body: form,
@@ -132,25 +119,21 @@ export function MasterCvWorkspace({
       if (
         !response.ok ||
         !isDocumentRef(payload.cvDocument) ||
-        !isDocumentRef(payload.passportDocument) ||
         !content
       ) {
         throw new Error(
-          payload.error || "Master-CV und Career Passport konnten nicht importiert werden.",
+          payload.error || "Der Master-CV konnte nicht importiert werden.",
         );
       }
       onImport({
         cvDocument: payload.cvDocument,
-        passportDocument: payload.passportDocument,
         masterCvContent: content,
       });
       setCvFile(null);
-      setPassportFile(null);
       if (cvInputRef.current) cvInputRef.current.value = "";
-      if (passportInputRef.current) passportInputRef.current.value = "";
       setShowImport(false);
       setShowEditor(true);
-      toast("Master-CV und Evidenzregister privat importiert");
+      toast("Master-CV privat importiert");
     } catch (error) {
       toast(
         error instanceof Error
@@ -264,7 +247,7 @@ export function MasterCvWorkspace({
               <strong>{masterCvContent.headline || masterCvContent.name}</strong>
               <br />
               {masterCvContent.sections.length} Abschnitte ·{" "}
-              {masterCvContent.passport.evidence.length} Evidenzen · Sprache{" "}
+              {masterCvContent.passport.evidence.length} belegte Textbausteine · Sprache{" "}
               {masterCvContent.language.toLowerCase().startsWith("de")
                 ? "Deutsch"
                 : masterCvContent.language.toUpperCase()} · gespeichert{" "}
@@ -273,13 +256,13 @@ export function MasterCvWorkspace({
           ) : masterCvDocument ? (
             <p>
               <strong>{masterCvDocument.name}</strong> ist als Datei hinterlegt.
-              Importiere zusätzlich den Career Passport, um den Inhalt hier
-              bearbeiten zu können.
+              Importiere die DOCX-Datei erneut, um den Inhalt hier bearbeiten zu
+              können.
             </p>
           ) : (
             <p>
-              Importiere den vollständigen DOCX-Master-CV zusammen mit dem Career
-              Passport. Das Original bleibt unverändert; die Arbeitsfassung wird
+              Importiere den vollständigen DOCX-Master-CV. Das Original bleibt
+              unverändert; die Arbeitsfassung und ihre belegten Textbausteine werden
               separat und privat bearbeitbar gespeichert.
             </p>
           )}
@@ -311,26 +294,16 @@ export function MasterCvWorkspace({
               Original öffnen
             </a>
           ) : null}
-          {passportDocument?.downloadUrl ? (
-            <a
-              className="button button-ghost"
-              href={passportDocument.downloadUrl}
-              rel="noreferrer"
-              target="_blank"
-            >
-              Passport öffnen
-            </a>
-          ) : null}
         </div>
       </div>
 
       {showImport ? (
         <div className="master-cv-import" aria-label="Master-CV importieren">
           <div className="master-cv-import-copy">
-            <strong>DOCX und Evidenzregister gemeinsam einlesen</strong>
+            <strong>DOCX-Master-CV einlesen</strong>
             <small>
-              Beide Dateien werden geprüft und ausschließlich in deiner privaten
-              Ablage gespeichert.
+              Die Datei wird geprüft und ausschließlich in deiner privaten Ablage
+              gespeichert. Belegte Textbausteine entstehen direkt aus dem CV.
             </small>
           </div>
           <input
@@ -338,15 +311,6 @@ export function MasterCvWorkspace({
             className="visually-hidden"
             onChange={(event) => setCvFile(event.target.files?.[0] ?? null)}
             ref={cvInputRef}
-            type="file"
-          />
-          <input
-            accept=".json,application/json"
-            className="visually-hidden"
-            onChange={(event) =>
-              setPassportFile(event.target.files?.[0] ?? null)
-            }
-            ref={passportInputRef}
             type="file"
           />
           <button
@@ -363,27 +327,12 @@ export function MasterCvWorkspace({
             </div>
           </button>
           <button
-            className={`master-cv-file-choice ${passportFile ? "selected" : ""}`}
-            onClick={() => passportInputRef.current?.click()}
-            type="button"
-          >
-            <span>JSON</span>
-            <div>
-              <strong>{passportFile?.name || "Career Passport auswählen"}</strong>
-              <small>
-                {passportFile
-                  ? formatBytes(passportFile.size)
-                  : "Quellen- und Evidenzregister · höchstens 2 MB"}
-              </small>
-            </div>
-          </button>
-          <button
             className="button button-primary"
-            disabled={!cvFile || !passportFile || busy}
+            disabled={!cvFile || busy}
             onClick={() => void importBundle()}
             type="button"
           >
-            {busy ? "Privater Import läuft …" : "Gemeinsam importieren"}
+            {busy ? "Privater Import läuft …" : "Master-CV importieren"}
           </button>
         </div>
       ) : null}
@@ -533,13 +482,14 @@ export function MasterCvWorkspace({
         <div className="master-cv-evidence-grid">
           <details className="master-cv-evidence">
             <summary>
-              Quellen & Evidenz ansehen ·{" "}
+              Belegte Textbausteine ansehen ·{" "}
               {masterCvContent.passport.evidence.length} Einträge
             </summary>
             <div className="master-cv-evidence-body">
               <p>
-                Das Register ist bewusst schreibgeschützt. Änderungen am CV-Text
-                verändern die zugrunde liegenden Quellen nicht automatisch.
+                Die beim Import übernommenen Textbausteine bleiben als sichere
+                Referenz schreibgeschützt. Änderungen an der Arbeitsfassung verändern
+                diese Grundlage nicht automatisch.
               </p>
               <div className="master-cv-targets">
                 {masterCvContent.passport.targetDirections.map((target) => (

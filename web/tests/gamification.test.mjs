@@ -165,12 +165,55 @@ test("ältere Zustände erhalten sichere Standardwerte für Etappenfeiern", asyn
   const legacy = createDefaultGamification(1240, now);
   delete legacy.celebrationsEnabled;
   delete legacy.milestoneStepXp;
+  delete legacy.xpGoals;
 
   const normalized = normalizeGamificationState(legacy, 1240, now);
 
   assert.equal(normalized.celebrationsEnabled, true);
   assert.equal(normalized.milestoneStepXp, 250);
+  assert.deepEqual(normalized.xpGoals, {
+    daily: 25,
+    weekly: 125,
+    monthly: 500,
+  });
   assert.equal(normalized.ledger[0].xpDelta, 1240);
+});
+
+test("Tages-, Wochen- und Monatsfortschritt folgt Berliner Kalendergrenzen", async () => {
+  const { createDefaultGamification, xpProgressByPeriod } =
+    await importGamification();
+  const game = createDefaultGamification(1240, "2026-08-03T08:00:00.000Z");
+  const reward = (id, createdAt, xpDelta) => ({
+    ...game.ledger[0],
+    id,
+    idempotencyKey: id,
+    createdAt,
+    kind: "TASK_REWARD",
+    xpDelta,
+  });
+  game.ledger.push(
+    reward("today-after-midnight", "2026-08-02T22:30:00.000Z", 12),
+    reward("sunday-before-week", "2026-08-02T20:00:00.000Z", 25),
+    reward("month-start", "2026-08-01T08:00:00.000Z", 50),
+    reward("previous-month", "2026-07-31T20:00:00.000Z", 100),
+    reward("future-today", "2026-08-03T12:00:00.000Z", 500),
+  );
+
+  const progress = xpProgressByPeriod(
+    game.ledger,
+    { daily: 25, weekly: 125, monthly: 500 },
+    "2026-08-03T10:00:00.000Z",
+  );
+
+  assert.deepEqual(progress.day, {
+    earnedXp: 12,
+    goalXp: 25,
+    percentage: 48,
+    goalReached: false,
+  });
+  assert.equal(progress.week.earnedXp, 12);
+  assert.equal(progress.month.earnedXp, 87);
+  assert.equal(progress.month.percentage, 17);
 });
 
 test("Ruhetage und bewusst ausgesetzte Tage zählen nicht in den 14-Tage-Rhythmus", async () => {

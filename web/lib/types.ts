@@ -231,6 +231,12 @@ export type AdaptiveRewardWeights = {
   lastAdjustedAt: string | null;
 };
 
+export type XpGoals = {
+  daily: number;
+  weekly: number;
+  monthly: number;
+};
+
 export type GamificationState = {
   schemaVersion: 1;
   rewardMode: RewardMode;
@@ -238,6 +244,7 @@ export type GamificationState = {
   surprisesEnabled: boolean;
   celebrationsEnabled: boolean;
   milestoneStepXp: number;
+  xpGoals: XpGoals;
   quietHours: { start: string; end: string };
   profiles: TaskGamificationProfile[];
   ledger: RewardLedgerEntry[];
@@ -736,6 +743,90 @@ export type ApplicationArtifact = {
   createdAt: string;
 };
 
+export type ApplicationKpiKey =
+  | "new_vacancies"
+  | "complete_application_packs"
+  | "sent_applications"
+  | "phone_interviews"
+  | "onsite_interviews";
+
+export type ApplicationKpiPeriod = "day" | "week" | "month";
+
+export type ApplicationKpiGoal = {
+  key: ApplicationKpiKey;
+  enabled: boolean;
+  targets: Record<ApplicationKpiPeriod, number>;
+};
+
+export type ApplicationKpiSettings = {
+  goals: ApplicationKpiGoal[];
+};
+
+export type ApplicationActivityType =
+  | "vacancy_added"
+  | "application_pack_completed"
+  | "application_sent"
+  | "phone_interview"
+  | "onsite_interview";
+
+export type ApplicationActivity = {
+  id: string;
+  type: ApplicationActivityType;
+  occurredAt: string;
+  note: string;
+};
+
+export type ApplicationResearchScope =
+  | "job_posting"
+  | "company"
+  | "department"
+  | "projects"
+  | "publications"
+  | "salary";
+
+export type ApplicationOutputKind =
+  | "tailored-cv"
+  | "cover-letter"
+  | "application-email"
+  | "company-brief"
+  | "interview-prep";
+
+export type ApplicationFormality =
+  | "modern"
+  | "balanced"
+  | "formal";
+
+export type ApplicationResearchSelectionMode =
+  | "all_confirmed"
+  | "selected_only"
+  | "none";
+
+export type ApplicationGenerationPreferences = {
+  formality: ApplicationFormality;
+  addressStyle: "auto" | "sie" | "du";
+  language: "Deutsch" | "Englisch";
+  cvLength: "compact" | "two_pages";
+  focusThemes: string[];
+  customFocus: string;
+  outputKinds: ApplicationOutputKind[];
+  researchScopes: ApplicationResearchScope[];
+  researchSelectionMode: ApplicationResearchSelectionMode;
+  selectedResearchClaimIds: string[];
+  desiredSalaryAnnual: number | null;
+  minimumSalaryAnnual: number | null;
+  salaryFlexibility: "fixed" | "negotiable" | "open";
+  mentionSalary: "never" | "if_requested" | "always";
+};
+
+export type ApplicationContact = {
+  id: string;
+  kind: "functional" | "recruiting" | "general";
+  name: string;
+  email: string;
+  phone: string;
+  note: string;
+};
+
 export type CareerEvidenceConfidence =
   | "source_only"
   | "user_confirmed"
@@ -780,7 +871,7 @@ export type MasterCvSection = {
 export type MasterCvContent = {
   schemaVersion: 1;
   sourceDocumentId: string;
-  passportDocumentId: string;
+  passportDocumentId: string | null;
   name: string;
   headline: string;
   subheadline: string;
@@ -795,7 +886,7 @@ export type MasterCvContent = {
 
 export type MasterCvImportBundle = {
   cvDocument: DocumentRef;
-  passportDocument: DocumentRef;
+  passportDocument?: DocumentRef | null;
   masterCvContent: MasterCvContent;
 };
 
@@ -823,6 +914,9 @@ export type JobResearchFactKey =
   | "process.onboarding"
   | "company.context"
   | "company.current_developments"
+  | "company.department"
+  | "company.projects"
+  | "company.publications"
   | "market.salary"
   | "market.talent_supply"
   | "market.skill_demand"
@@ -932,11 +1026,17 @@ export type ApplicationProcess = {
   appliedTerms: string;
   contactPerson: string;
   contactEmail: string;
+  contactPhone: string;
+  contacts: ApplicationContact[];
+  jobDescriptionText: string;
+  tags: string[];
   nextStep: string;
   nextStepAt: string | null;
   notes: string;
   artifacts: ApplicationArtifact[];
   vacancyResearch: VacancyResearch | null;
+  generationPreferences: ApplicationGenerationPreferences;
+  activities: ApplicationActivity[];
 };
 
 export type Contact = {
@@ -984,6 +1084,7 @@ export type AppState = {
   contacts: Contact[];
   journal: JournalEntry[];
   dashboardSettings: DashboardSettings;
+  applicationKpiSettings: ApplicationKpiSettings;
 };
 
 export type IntegrationConfig = {

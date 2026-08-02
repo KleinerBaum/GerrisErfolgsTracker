@@ -109,14 +109,13 @@ export function normalizeMasterCvContent(value: unknown): MasterCvContent | null
   const candidate = value as Partial<MasterCvContent>;
   const passport = normalizePassport(candidate.passport);
   const sourceDocumentId = text(candidate.sourceDocumentId, 200);
-  const passportDocumentId = text(candidate.passportDocumentId, 200);
+  const passportDocumentId = text(candidate.passportDocumentId, 200) || null;
   const name = text(candidate.name, 240);
   const importedAt = text(candidate.importedAt, 80);
   if (
     candidate.schemaVersion !== 1 ||
     !passport ||
     !sourceDocumentId ||
-    !passportDocumentId ||
     !name ||
     !importedAt
   ) {
@@ -192,7 +191,7 @@ export function masterCvToPlainText(masterCv: MasterCvContent): string {
     ...sections,
     "",
     isGerman
-      ? "EVIDENZREGISTER ZUM BERUFLICHEN PROFIL — NUR DIE NACHSTEHENDEN SICHEREN FORMULIERUNGEN VERWENDEN"
+      ? "BELEGREGISTER ZUM BERUFLICHEN PROFIL — NUR DIE NACHSTEHENDEN SICHEREN FORMULIERUNGEN VERWENDEN"
       : "CAREER EVIDENCE REGISTER — USE ONLY THE SAFE WORDING BELOW",
     ...evidence,
   ].join("\n");
