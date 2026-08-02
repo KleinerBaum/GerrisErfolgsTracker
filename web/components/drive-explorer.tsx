@@ -401,7 +401,7 @@ function DriveFilePreview({
       >
         <header>
           <div>
-            <span className="eyebrow">Vollständige Vorschau · Google Drive</span>
+            <span className="eyebrow">Google Drive</span>
             <h2 id="drive-preview-title">{file.name}</h2>
             <p>
               {file.modifiedAt
@@ -410,7 +410,7 @@ function DriveFilePreview({
               {file.sizeBytes ? ` · ${formatSize(file.sizeBytes)}` : ""}
               {file.previewKind === "pdf"
                 ? " · ganze Seite im Original-Layout eingepasst"
-                : " · vollständig eingepasst"}
+                : " · eingepasst"}
             </p>
           </div>
           <div className="button-group">
@@ -450,11 +450,8 @@ function DriveFilePreview({
           ) : (
             <div className="viewer-empty drive-preview-fallback">
               <span>DATEI</span>
-              <h3>Für dieses Format ist keine direkte Vorschau verfügbar.</h3>
-              <p>
-                Du kannst die Datei sicher herunterladen oder in Google Drive
-                öffnen.
-              </p>
+              <h3>Keine Vorschau verfügbar</h3>
+              <p>Lade die Datei herunter oder öffne sie in Google Drive.</p>
               <div className="button-group">
                 <a className="button button-primary" href={download}>
                   Herunterladen
@@ -593,8 +590,8 @@ export function DriveExplorer({
   if (!controller.status?.configured) {
     return (
       <Notice>
-        <strong>Google Drive ist noch nicht vollständig eingerichtet.</strong>
-        <span>Die Zugangsdaten und der Zielordner müssen in Sites hinterlegt werden.</span>
+        <strong>Google Drive ist noch nicht eingerichtet.</strong>
+        <span>Verbindung und Zielordner fehlen noch.</span>
       </Notice>
     );
   }
@@ -604,12 +601,9 @@ export function DriveExplorer({
       <section className="drive-connect-card">
         <span className="integration-initial">G</span>
         <div>
-          <span className="eyebrow">Live und nur lesend</span>
+          <span className="eyebrow">Unterlagen · nur lesend</span>
           <h2>Google Drive verbinden</h2>
-          <p>
-            Nach deiner einmaligen Google-Anmeldung zeigt Gerris Kompass die
-            Ordner und Dateien aus „Unterlagen und Dokumente“ automatisch an.
-          </p>
+          <p>Nach der Anmeldung erscheint „Unterlagen und Dokumente“ hier.</p>
         </div>
         <a className="button button-primary" href="/api/drive/connect">
           Mit Google verbinden
@@ -622,7 +616,7 @@ export function DriveExplorer({
     <section className="drive-browser" aria-label="Google-Drive-Dateibrowser">
       <header className="drive-browser-heading">
         <div>
-          <span className="eyebrow">Google Drive · live und nur lesend</span>
+          <span className="eyebrow">Google Drive · nur lesend</span>
           <h2>{content?.folder.name || "Unterlagen und Dokumente"}</h2>
           <nav aria-label="Ordnerpfad" className="drive-breadcrumbs">
             {(content?.breadcrumbs || []).map((folder, index) => (
@@ -705,8 +699,8 @@ export function DriveExplorer({
           {!content.items.length ? (
             <div className="drive-empty">
               <span>LEER</span>
-              <h3>Dieser Ordner enthält noch keine Dateien oder Unterordner.</h3>
-              <p>Neue Inhalte aus Google Drive erscheinen nach „Aktualisieren“.</p>
+              <h3>Dieser Ordner ist leer.</h3>
+              <p>Nach „Aktualisieren“ erscheinen neue Inhalte.</p>
             </div>
           ) : null}
         </>

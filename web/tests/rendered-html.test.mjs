@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 import ts from "typescript";
 
@@ -42,16 +42,16 @@ test("enthält den vollständigen privaten Organisationsbereich", async () => {
 
   assert.match(page, /createDemoState/);
   assert.match(app, /Gerris Kompass/);
-  assert.match(app, /Heute im Blick/);
-  assert.match(app, /Wichtige Unterlagen/);
-  assert.match(app, /Kosten im Überblick/);
+  assert.match(app, /label: "Zentrale", short: "Zentrale", mark: "Z"/);
+  assert.match(app, /documents: "Unterlagen"/);
+  assert.match(app, /finance: "Finanzen"/);
   assert.match(finance, /Einnahmen und Ausgaben/);
   assert.match(finance, /Laufende Kosten/);
   assert.match(finance, /PayPal/);
   assert.match(finance, /Revolut/);
   assert.equal((catalog.match(/\{ id: \d+, title:/g) ?? []).length, 48);
   assert.match(app, /DIN-A4-Ansicht/);
-  assert.match(layout, /og-zentrale\.png/);
+  assert.match(layout, /og\.png/);
   assert.match(layout, /manifest\.webmanifest/);
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /aspect-ratio:\s*210\s*\/\s*297/);
@@ -118,7 +118,7 @@ test("formatiert Termine in der festen deutschen App-Zeitzone", async () => {
   );
 });
 
-test("macht Heute zur konfigurierbaren bereichsübergreifenden Zentrale", async () => {
+test("macht die Zentrale zur konfigurierbaren bereichsübergreifenden Übersicht", async () => {
   const [app, today, css, types, state, dashboard, layout] = await Promise.all([
     readFile(new URL("components/life-os-app.tsx", root), "utf8"),
     readFile(new URL("components/today-view.tsx", root), "utf8"),
@@ -129,20 +129,20 @@ test("macht Heute zur konfigurierbaren bereichsübergreifenden Zentrale", async 
     readFile(new URL("app/layout.tsx", root), "utf8"),
   ]);
 
-  assert.match(today, /Master-Dashboard/);
-  assert.match(today, /Bereichsübergreifende Prioritäten/);
-  assert.match(today, /Deine Zentrale: Was jetzt zählt/);
-  assert.match(today, /Dashboard anpassen/);
-  assert.match(today, /Langfristig in Bewegung/);
-  assert.match(today, /Jeder Lebensbereich mit genügend Substanz/);
-  assert.match(today, /title="Fokus & große Vorhaben"/);
-  assert.match(today, /title="Zeit & Verbindlichkeit"/);
-  assert.match(today, /title="Geld & Verpflichtungen"/);
-  assert.match(today, /title="Chancen & nächste Schritte"/);
-  assert.match(today, /title="Tagesabschluss & Muster"/);
+  assert.match(today, /Guten Tag, \{state\.ownerName\}/);
+  assert.match(today, /Prioritäten/);
+  assert.match(today, /Was jetzt zählt/);
+  assert.match(today, /Zentrale anpassen/);
+  assert.match(today, /Langfristig/);
+  assert.match(today, /Alles im Blick/);
+  assert.match(today, /title="Fokus und Vorhaben"/);
+  assert.match(today, /title="Zeit und Termine"/);
+  assert.match(today, /title="Geld und Zahlungen"/);
+  assert.match(today, /title="Chancen und Schritte"/);
+  assert.match(today, /title="Tagesabschluss"/);
   assert.doesNotMatch(today, /Deine Quellen|CoreKpiGroup/);
-  assert.match(app, /Deine Quellen & Integrationen/);
-  assert.match(app, /KPI-Ziele konfigurieren/);
+  assert.match(app, /Google-Dienste/);
+  assert.match(app, /Ziele konfigurieren/);
   assert.match(types, /dashboardSettings: DashboardSettings/);
   assert.match(state, /normalizeDashboardSettings/);
   assert.match(css, /\.central-command/);
@@ -169,8 +169,40 @@ test("macht Heute zur konfigurierbaren bereichsübergreifenden Zentrale", async 
     normalized.kpis.find((kpi) => kpi.key === "weekly_task_completions").target,
     50,
   );
-  assert.match(layout, /og-zentrale\.png/);
-  await access(new URL("public/og-zentrale.png", root));
+  assert.match(layout, /og\.png/);
+  await access(new URL("public/og.png", root));
+});
+
+test("hält die appweite Mikrocopy frei von leeren und technischen Leitbegriffen", async () => {
+  const componentNames = (await readdir(new URL("components/", root))).filter(
+    (name) => name.endsWith(".tsx"),
+  );
+  const components = (
+    await Promise.all(
+      componentNames.map((name) =>
+        readFile(new URL(`components/${name}`, root), "utf8"),
+      ),
+    )
+  ).join("\n");
+
+  for (const phrase of [
+    "Master-Dashboard",
+    "Informative Vertiefung",
+    "Jeder Lebensbereich mit genügend Substanz",
+    "Die Zentrale zeigt den Zusammenhang",
+    "Heute zentral",
+    "Privat & zentral",
+    "Append-only · Engine v1",
+    "Deterministischer Reward nach Bestätigung",
+    "Definition of Done",
+    "Dashboard anpassen",
+    "KPI-Ziele",
+    "Bewerbungsstudio",
+    "CV-basiertes Offline-Paket",
+    "Digitale Stellenbeschreibung",
+  ]) {
+    assert.doesNotMatch(components, new RegExp(phrase));
+  }
 });
 
 test("integriert das Belohnungssystem in Einstellungen, Kopfzeile und Sidebar", async () => {
@@ -223,21 +255,21 @@ test("trennt freies Tagebuchspeichern von der inspirativen Tagesplanung", async 
     ]);
 
   assert.match(app, /label: "Tagebuch", short: "Tagebuch", mark: "T"/);
-  assert.match(app, /journal: "Tagebuch & Tagesabschluss"/);
+  assert.match(app, /journal: "Tagebuch"/);
   assert.doesNotMatch(app, /label: "Journal"|title="Journal"/);
-  assert.match(diaryView, /Ein ruhiger Abschluss ohne Pflichtfelder/);
-  assert.match(diaryView, /Jederzeit speicherbar/);
+  assert.match(diaryView, /Ohne Pflichtfelder/);
+  assert.match(diaryView, /Jederzeit speichern/);
   assert.match(diaryView, /Tagebuch speichern & morgen planen/);
-  assert.match(diaryView, /Morgen prüfen und bei Bedarf ergänzen/);
-  assert.match(diaryView, /Nur als Inspiration/);
+  assert.match(diaryView, /<h2>Kurz prüfen<\/h2>/);
+  assert.match(diaryView, /Mögliche Themen/);
   assert.match(diaryView, /Dringend oder wichtig/);
   assert.match(diaryView, /Zurückgestellt/);
   assert.match(diaryView, /Noch offen/);
   assert.match(diaryView, /application\/x-gerris-plan/);
   assert.match(diaryView, /Hier in den Plan für morgen ziehen/);
-  assert.match(diaryView, /Als ToDo in einen Folgetag verschieben/);
-  assert.match(diaryView, /Sonntagabend/);
-  assert.match(diaryView, /Die kommende Woche grob erkunden/);
+  assert.match(diaryView, /Auf einen Folgetag verschieben/);
+  assert.match(diaryView, /Wochenblick/);
+  assert.match(diaryView, /Nächste Woche grob planen/);
   assert.match(diaryView, /Planung geprüft – Tag abschließen/);
   assert.doesNotMatch(diaryView, /if \(!reviewComplete\)|criticalGaps\.length/);
   assert.match(diaryPlanning, /buildDiaryPlanningSuggestions/);
@@ -258,7 +290,7 @@ test("trennt freies Tagebuchspeichern von der inspirativen Tagesplanung", async 
   assert.match(css, /\.diary-planning-workspace/);
   assert.match(css, /\.diary-plan-dropzone/);
   assert.match(css, /\.diary-follow-days/);
-  assert.match(layout, /Tagebuch im Blick/);
+  assert.match(layout, /Aufgaben, Termine, Finanzen, Bewerbungen und Tagebuch/);
 });
 
 test("übernimmt alte Journal-Einträge und führt Nachträge ohne Datenverlust zusammen", async () => {
@@ -410,7 +442,7 @@ test("liefert einen geschützten Live-Drive-Explorer mit Vollbild-Vorschau", asy
 
   assert.match(explorer, /DriveSidebarTree/);
   assert.match(explorer, /Unterlagen und Dokumente/);
-  assert.match(explorer, /Vollständige Vorschau/);
+  assert.match(explorer, /Keine Vorschau verfügbar/);
   assert.match(explorer, /Unterordner öffnen/);
   assert.match(server, /drive\.readonly/);
   assert.match(server, /assertInsideRoot/);
@@ -628,9 +660,9 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(applications, /Konditionen meiner Bewerbung/);
   assert.match(applications, /Erwarteter nächster Schritt/);
   assert.match(applications, /Screenshot der Ausschreibung/);
-  assert.match(applications, /Digitale Stellenbeschreibung/);
+  assert.match(applications, /Stellenbeschreibung/);
   assert.match(applications, /application-record/);
-  assert.match(applications, /Unterlagen generieren/);
+  assert.match(applications, /Unterlagen erstellen/);
   assert.match(applications, /Telefoninterview/);
   assert.match(applications, /Vor-Ort-Gespräch/);
   assert.match(masterCvWorkspace, /Master-CV/);
@@ -652,6 +684,11 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(actions, /Persönliche Untergrenze/);
   assert.match(actions, /assessSalaryPreference/);
   assert.match(actions, /Als Word-Datei herunterladen/);
+  assert.match(actions, /Aus Master-CV erstellt/);
+  assert.match(actions, /Fokussiert · 2–3 gut gefüllte Seiten/);
+  assert.match(actions, /ApplicationDocumentPreview/);
+  assert.match(actions, /downloadTemplateBackedDocx/);
+  assert.doesNotMatch(actions, /Aus dem Original-CV übernehmen/);
   assert.match(actions, /<JobResearchPanel/);
   assert.match(jobResearchPanel, /Vakanz recherchieren/);
   assert.match(jobResearchPanel, /Bestätigen/);
@@ -666,7 +703,7 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(jobResearchRoute, /background: true/);
   assert.match(jobResearchRoute, /verifyJobToken/);
   assert.match(jobResearchRoute, /payload\.status === "queued"/);
-  assert.match(jobResearchPanel, /Recherche läuft im Hintergrund/);
+  assert.match(jobResearchPanel, /Quellen und Widersprüche werden geprüft/);
   assert.match(jobResearchPanel, /job: \{ id: payload\.job\.id, token: payload\.job\.token \}/);
   assert.match(jobResearchRoute, /sameOrigin\(request\)/);
   assert.doesNotMatch(assistantRoute, /type: "web_search"/);
@@ -674,13 +711,16 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(assistantRoute, /selectedResearchClaimIds/);
   assert.match(assistantRoute, /Persönliche Untergrenze, ausschließlich zur Strategie/);
   assert.match(assistantRoute, /absichtlich keinen Webzugriff/);
+  assert.match(assistantRoute, /750–1\.150 Wörter/);
+  assert.match(assistantRoute, /Redaktionsanweisungen/);
   assert.match(masterCvWorkspace, /Inhalte bearbeiten/);
-  assert.match(masterCvWorkspace, /Belegte Textbausteine ansehen/);
+  assert.match(masterCvWorkspace, /Belege ansehen/);
   assert.match(masterCvWorkspace, /Master-CV importieren/);
   assert.doesNotMatch(masterCvWorkspace, /Career Passport/);
   assert.match(masterCvRoute, /parseMasterCvDocument/);
   assert.doesNotMatch(masterCvRoute, /form\.get\("passport"\)/);
   assert.match(masterCvRoute, /env\.FILES\.put/);
+  assert.match(masterCvRoute, /16 \* 1024 \* 1024/);
   assert.match(masterCvRoute, /sameOrigin\(request\)/);
   assert.match(research, /JOB_RADAR_RECORDS/);
   assert.match(research, /LEGACY_ID_BY_SOURCE_ID/);

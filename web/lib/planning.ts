@@ -579,41 +579,37 @@ function reportCopy(
 ): Pick<PlanningHealthReport, "title" | "message"> {
   if (state === "unknown") {
     return {
-      title: "Planungsstatus unbekannt – sofort klären",
-      message:
-        "Ohne verlässlich geladene Kalenderdaten darf kein Tag als frei gelten. Verbindung und Auswahl haben Top-Priorität.",
+      title: "Kalender prüfen",
+      message: "Kalenderdaten fehlen. Freie Zeit bleibt bis zum Abgleich ungeklärt.",
     };
   }
   if (state === "stale") {
     return {
-      title: "Kalenderstand veraltet – sofort aktualisieren",
-      message:
-        "Die Planung basiert nicht mehr auf frischen Daten. Bis zum erfolgreichen Abgleich sind Freiräume unbestätigt.",
+      title: "Kalender aktualisieren",
+      message: "Die Daten sind veraltet. Freie Zeit bleibt bis zum Abgleich ungeklärt.",
     };
   }
   if (state === "conflicted") {
     return {
-      title: "Planungskonflikt braucht eine Entscheidung",
-      message: `${criticalCount} kritische und ${importantCount} wichtige Lücken verhindern gerade einen belastbaren Plan.`,
+      title: "Planungskonflikt klären",
+      message: `${criticalCount} dringende und ${importantCount} wichtige Lücken brauchen eine Entscheidung.`,
     };
   }
   if (state === "incomplete") {
     return {
-      title: "Kalenderpflege unvollständig",
-      message: `${criticalCount} kritische und ${importantCount} wichtige Lücken werden priorisiert und im sicheren Abgleich nachgeführt.`,
+      title: "Planung ergänzen",
+      message: `${criticalCount} dringende und ${importantCount} wichtige Lücken sind noch offen.`,
     };
   }
   if (state === "intentionally_free") {
     return {
-      title: "Heute ist ausdrücklich frei",
-      message:
-        "Die Kalenderdaten sind frisch und vollständig; der freie Tag wurde bewusst bestätigt.",
+      title: "Heute ist bewusst frei",
+      message: "Kalender aktuell; freier Tag bestätigt.",
     };
   }
   return {
-    title: "Planung ist verlässlich gepflegt",
-    message:
-      "Kalenderdaten, Verpflichtungen und nächste Schritte sind frisch und vollständig miteinander verknüpft.",
+    title: "Planung aktuell",
+    message: "Kalender und nächste Schritte sind abgeglichen.",
   };
 }
 
@@ -650,9 +646,8 @@ export function buildPlanningHealthReport(
       gap({
         kind: "calendar_connection_unknown",
         severity: "critical",
-        title: "Google-Kalender ist nicht verlässlich verbunden",
-        detail:
-          "Termine, Konflikte und freie Zeit können nicht vollständig geprüft werden.",
+        title: "Google Kalender verbinden",
+        detail: "Termine, Konflikte und freie Zeit können noch nicht geprüft werden.",
         sourceType: "calendar",
         sourceId: "connection",
       }),
@@ -676,8 +671,7 @@ export function buildPlanningHealthReport(
         kind: "calendar_selection_empty",
         severity: "critical",
         title: "Kein Kalender ist für die Planung ausgewählt",
-        detail:
-          "Ohne ausgewählte Kalender ist der Status unbekannt und kein Tag darf als frei bewertet werden.",
+        detail: "Wähle mindestens einen Kalender, um freie Zeit zu erkennen.",
         sourceType: "calendar",
         sourceId: "selection",
       }),
@@ -717,8 +711,7 @@ export function buildPlanningHealthReport(
             kind: "calendar_day_empty",
             severity: severityForDate(date, today),
             title: `${date} ist ungeplant`,
-            detail:
-              "Der Tag enthält weder einen echten Planungsblock noch eine ausdrückliche Freigabe als bewusst frei, Urlaub oder Krankheit.",
+            detail: "Kein Planungsblock und nicht als frei, Urlaub oder Krankheit markiert.",
             sourceType: "calendar",
             sourceId: date,
             date,

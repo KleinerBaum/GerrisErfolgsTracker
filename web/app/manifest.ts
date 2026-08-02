@@ -4,8 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Gerris Kompass",
     short_name: "Kompass",
-    description:
-      "Privates Selbstmanagement mit transparentem, wechselbarem Fortschrittssystem.",
+    description: "Privater Kompass für Aufgaben, Termine und nächste Schritte.",
     start_url: "/",
     display: "standalone",
     background_color: "#f2f5f0",

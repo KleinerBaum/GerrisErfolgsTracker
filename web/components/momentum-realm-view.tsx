@@ -154,7 +154,7 @@ export function MomentumRealmView({
       .map((item) => item.trim())
       .filter(Boolean);
     if (!goalTitle.trim() || !goalDone.trim() || !goalNext.trim()) {
-      setGoalError("Titel, Definition of Done und nächster Schritt sind erforderlich.");
+      setGoalError("Titel, Abschlusskriterium und nächster Schritt sind erforderlich.");
       return;
     }
     if (milestones.length < 3 || milestones.length > 7) {
@@ -191,13 +191,9 @@ export function MomentumRealmView({
     <div className="view-stack momentum-view">
       <section className="momentum-hero">
         <div className="momentum-hero-copy">
-          <span className="eyebrow">Ein Fortschrittssystem · drei Erlebnisweisen</span>
+          <span className="eyebrow">Fortschritt</span>
           <h1 tabIndex={-1}>Momentum Realm</h1>
-          <p>
-            Dein Fortschritt bleibt derselbe, egal welche Belohnungswelt du heute
-            sehen möchtest. Keine Minuspunkte, kein Verfall und kein zerbrechlicher
-            Streak.
-          </p>
+          <p>XP, Klarpunkte und Ressourcen bleiben beim Wechsel erhalten. Keine Minuspunkte, kein Verfall.</p>
           <div className="momentum-mode-switch" aria-label="Belohnungswelt wählen">
             {REWARD_MODES.map((mode) => (
               <button
@@ -255,12 +251,9 @@ export function MomentumRealmView({
       <section className="panel momentum-anchors">
         <header className="momentum-section-heading">
           <div>
-            <span className="eyebrow">Heute · maximal drei Anker</span>
-            <h2>Weniger auswählen, klarer vorankommen.</h2>
-            <p>
-              Urlaub, Ruhe und bewusst ausgesetzte Tage zählen nicht gegen deinen
-              Rhythmus.
-            </p>
+            <span className="eyebrow">Heute · bis zu drei Anker</span>
+            <h2>Wähle, was heute zählt</h2>
+            <p>Urlaub, Ruhe und Pausen zählen nicht gegen deinen Rhythmus.</p>
           </div>
           <div className="anchor-status-switch" aria-label="Art des heutigen Tages">
             {(Object.keys(ANCHOR_DAY_STATUS_LABELS) as AnchorDayStatus[]).map((status) => (
@@ -321,8 +314,8 @@ export function MomentumRealmView({
         <div className="panel realm-panel">
           <header className="momentum-section-heading">
             <div>
-              <span className="eyebrow">Lebende Chronik</span>
-              <h2>Deine Bezirke wachsen aus echten Abschlüssen.</h2>
+              <span className="eyebrow">Chronik</span>
+              <h2>Deine Welt wächst mit Abschlüssen</h2>
             </div>
           </header>
           <div className="realm-district-grid">
@@ -361,18 +354,15 @@ export function MomentumRealmView({
             >
               Bewusst ausbauen
             </button>
-            <p>
-              Weltinhalte sind Gratifikation. Aufgaben, Kalender und andere wichtige
-              Kompass-Funktionen werden niemals gesperrt.
-            </p>
+            <p>Weltinhalte sind Bonus; alle Kompass-Funktionen bleiben zugänglich.</p>
           </div>
         </div>
 
         <div className="panel reward-catalog-panel">
           <header className="momentum-section-heading">
             <div>
-              <span className="eyebrow">Klarpunkte-Katalog</span>
-              <h2>Du entscheidest, was sich wirklich gut anfühlt.</h2>
+              <span className="eyebrow">Klarpunkte</span>
+              <h2>Deine Belohnungen</h2>
             </div>
           </header>
           <div className="reward-catalog-list">
@@ -391,7 +381,7 @@ export function MomentumRealmView({
             ))}
           </div>
           <p className="reward-safety-note">
-            Der Kompass markiert nur deine Entscheidung. Er kauft und bucht niemals etwas.
+            Der Kompass markiert nur – er kauft oder bucht nichts.
           </p>
         </div>
       </section>
@@ -399,8 +389,8 @@ export function MomentumRealmView({
       <section className="panel campaign-panel">
         <header className="momentum-section-heading">
           <div>
-            <span className="eyebrow">Kampagnen statt vager Großziele</span>
-            <h2>Definition of Done, drei bis sieben Meilensteine, nächster Schritt.</h2>
+            <span className="eyebrow">Große Vorhaben</span>
+            <h2>Kampagnen in klare Etappen teilen</h2>
           </div>
           <button className="button button-soft" onClick={() => setGoalOpen((open) => !open)} type="button">
             {goalOpen ? "Formular schließen" : "Kampagne anlegen"}
@@ -434,7 +424,7 @@ export function MomentumRealmView({
               <input onChange={(event) => setGoalTitle(event.target.value)} value={goalTitle} />
             </label>
             <label>
-              Definition of Done
+              Fertig, wenn
               <textarea onChange={(event) => setGoalDone(event.target.value)} rows={2} value={goalDone} />
             </label>
             <label>
@@ -473,8 +463,8 @@ export function MomentumRealmView({
         <div className="panel reward-ledger-panel">
           <header className="momentum-section-heading">
             <div>
-              <span className="eyebrow">Append-only · Engine v1</span>
-              <h2>Jeder Reward bleibt nachvollziehbar.</h2>
+              <span className="eyebrow">Chronik</span>
+              <h2>Punkteverlauf</h2>
             </div>
           </header>
           <div className="reward-ledger-list">
@@ -495,14 +485,14 @@ export function MomentumRealmView({
               </article>
             ))}
           </div>
-          {!game.ledger.length ? <p>Noch keine Ledger-Einträge.</p> : null}
+          {!game.ledger.length ? <p>Noch keine Einträge.</p> : null}
         </div>
 
         <div className="panel momentum-controls-panel">
           <header className="momentum-section-heading">
             <div>
-              <span className="eyebrow">Druck niedrig halten</span>
-              <h2>Optionale Ebenen bleiben wirklich optional.</h2>
+              <span className="eyebrow">Optional</span>
+              <h2>Druck rausnehmen</h2>
             </div>
           </header>
           <label className="momentum-toggle-row">
@@ -533,7 +523,7 @@ export function MomentumRealmView({
             />
           </label>
           <div className="quiet-hours-note">
-            <strong>Quiet Hours</strong>
+            <strong>Ruhezeit</strong>
             <span>{game.quietHours.start}–{game.quietHours.end} Uhr</span>
           </div>
           <p>
@@ -564,11 +554,10 @@ export function MomentumRealmView({
       </section>
 
       <details className="panel reward-rules-panel">
-        <summary>So berechnet die Regel-Engine die Belohnung</summary>
+        <summary>So entstehen deine Punkte</summary>
         <p>
-          Die KI darf Aufwand, Denklast, Überwindung und Koordination von 1 bis 5
-          vorschlagen. Du bestätigst die Klasse; erst danach berechnet die lokale
-          Engine die XP. Dringlichkeit verändert nur die Reihenfolge.
+          Die KI kann vier Faktoren vorschlagen. Du bestätigst; feste Regeln berechnen
+          die XP. Dringlichkeit ändert nur die Reihenfolge.
         </p>
         <div className="reward-rule-grid">
           {DIFFICULTY_BANDS.map((band) => (

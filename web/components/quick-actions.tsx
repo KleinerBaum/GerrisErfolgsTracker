@@ -9,9 +9,19 @@ import {
 
 import { JobResearchPanel } from "./job-research-panel";
 import { gmailDraftUrl } from "../lib/google-links";
-import { downloadEditableDocx } from "../lib/docx-export";
+import {
+  downloadEditableDocx,
+  downloadTemplateBackedDocx,
+} from "../lib/docx-export";
+import {
+  applicationPackageQualityIssues,
+  buildLocalApplicationPackage,
+  type ApplicationPackage,
+  type CvContentSource,
+} from "../lib/application-package";
 import { applyConfirmedResearchClaim } from "../lib/job-research";
 import { masterCvToPlainText } from "../lib/master-cv";
+import { parseMasterCvDocument } from "../lib/server/master-cv-import";
 import {
   addApplicationActivity,
   assessSalaryPreference,
@@ -52,7 +62,7 @@ export function SidebarQuickActions({
   return (
     <section className="sidebar-quick-actions" aria-labelledby="quick-actions-title">
       <span className="quick-actions-kicker" id="quick-actions-title">
-        Schnell erledigt
+        Schnellzugriff
       </span>
       <div className="quick-actions-grid">
         {QUICK_ACTIONS.map((action) => (
@@ -90,16 +100,16 @@ const ACTION_COPY: Record<
   { eyebrow: string; title: string }
 > = {
   upload: {
-    eyebrow: "Private Ablage",
-    title: "Dateien sicher und auffindbar ablegen",
+    eyebrow: "Unterlagen",
+    title: "Dateien ablegen",
   },
   email: {
-    eyebrow: "Schreibassistenz",
-    title: "E-Mail formulieren oder beantworten",
+    eyebrow: "E-Mail",
+    title: "Antwort entwerfen",
   },
   application: {
-    eyebrow: "Bewerbungsstudio",
-    title: "Ein stimmiges Bewerbungspaket erstellen",
+    eyebrow: "Bewerbung",
+    title: "Bewerbungspaket erstellen",
   },
 };
 
@@ -316,10 +326,7 @@ function UploadForm({
       <div className="action-success" role="status">
         <span>{savedCount}</span>
         <h3>{savedCount === 1 ? "Datei abgelegt" : "Dateien abgelegt"}</h3>
-        <p>
-          Die Inhalte liegen in deiner privaten Ablage. Ordner, Schlagworte und
-          Prüftermin sind im Kompass gespeichert.
-        </p>
+        <p>Ordner, Schlagworte und Prüftermin sind gespeichert.</p>
         {error ? <p className="form-error">{error}</p> : null}
         <button className="button button-primary" onClick={onClose} type="button">
           Fertig
@@ -333,10 +340,7 @@ function UploadForm({
       <div className="source-path-card">
         <span>Vorgesehener Quellordner</span>
         <strong>{integrations.driveLocalPath}</strong>
-        <small>
-          Der Browser öffnet aus Sicherheitsgründen den Dateidialog; navigiere
-          dort bei Bedarf zu diesem Ordner.
-        </small>
+        <small>Wähle diesen Ordner bei Bedarf im Dateidialog.</small>
       </div>
 
       <label
@@ -443,10 +447,7 @@ function UploadForm({
           value={note}
         />
       </label>
-      <p className="form-trust">
-        Dateien werden privat und kontogebunden gespeichert. Unterstützte
-        Formate werden geprüft; ausführbare Dateien sind ausgeschlossen.
-      </p>
+      <p className="form-trust">Privat gespeichert; ausführbare Dateien sind ausgeschlossen.</p>
       {progress ? <p className="form-progress" role="status">{progress}</p> : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="dialog-actions">
@@ -696,7 +697,7 @@ function EmailComposer({
             <span className={`assistant-mode ${usedFallback ? "local" : ""}`}>
               {usedFallback ? "Lokale Vorlage" : "Individueller Entwurf"}
             </span>
-            <h3>Deine Antwort ist bereit zur Feinabstimmung</h3>
+            <h3>Entwurf bereit</h3>
           </div>
           <button onClick={() => setDraft(null)} type="button">
             Angaben ändern
@@ -870,33 +871,15 @@ function EmailComposer({
           />
         </label>
       </details>
-      <p className="form-trust">
-        Die eingefügte E-Mail wird nur zur Erstellung dieses Entwurfs
-        verarbeitet und nicht im Kompass gespeichert. Vor dem Senden behältst du
-        die volle Kontrolle.
-      </p>
+      <p className="form-trust">Die E-Mail wird nicht gespeichert. Du prüfst vor dem Versand.</p>
       <div className="dialog-actions">
         <button className="button button-primary" disabled={busy} type="submit">
-          {busy ? "Antwort wird formuliert …" : "Antwort generieren"}
+          {busy ? "Antwort wird formuliert …" : "Antwort entwerfen"}
         </button>
       </div>
     </form>
   );
 }
-
-type ApplicationPackage = {
-  roleTitle: string;
-  companyName: string;
-  coverLetter: string;
-  tailoredCv: string;
-  companyBrief: string;
-  interviewPrep: string;
-  applicationEmailSubject: string;
-  applicationEmailBody: string;
-  fitHighlights: string[];
-  openQuestions: string[];
-  sources: string[];
-};
 
 function isApplicationPackage(value: unknown): value is ApplicationPackage {
   if (!value || typeof value !== "object") return false;
@@ -912,111 +895,6 @@ function isApplicationPackage(value: unknown): value is ApplicationPackage {
     Array.isArray(result.openQuestions) &&
     Array.isArray(result.sources)
   );
-}
-
-function localApplicationPackage(input: {
-  companyName: string;
-  roleTitle: string;
-  contactPerson: string;
-  motivation: string;
-  achievements: string;
-  strengths: string;
-  availability: string;
-  jobUrl: string;
-}): ApplicationPackage {
-  const greeting = input.contactPerson
-    ? `Sehr geehrte${input.contactPerson.match(/frau/i) ? "" : "r"} ${input.contactPerson},`
-    : "Guten Tag,";
-  return {
-    roleTitle: input.roleTitle,
-    companyName: input.companyName,
-    coverLetter: [
-      `Bewerbung als ${input.roleTitle}`,
-      "",
-      greeting,
-      "",
-      input.motivation ||
-        `die Position als ${input.roleTitle} bei ${input.companyName} spricht mich an, weil sie zu meinem nächsten beruflichen Schritt passt.`,
-      "",
-      input.achievements ||
-        "[Hier einen konkreten, belegbaren Erfolg aus dem Lebenslauf ergänzen.]",
-      "",
-      input.strengths ||
-        "[Hier zwei für die Rolle relevante Stärken mit kurzem Beleg ergänzen.]",
-      "",
-      input.availability ? `${input.availability}` : "",
-      "",
-      "Gerne erläutere ich Ihnen meine Motivation und Passung in einem persönlichen Gespräch.",
-      "",
-      "Mit freundlichen Grüßen",
-      "[Name]",
-    ]
-      .filter(Boolean)
-      .join("\n"),
-    tailoredCv: [
-      `# Lebenslauf – Zielrolle ${input.roleTitle}`,
-      "",
-      "## Kurzprofil",
-      input.strengths ||
-        "[3–4 Zeilen Profil mit den für die Zielrolle wichtigsten Kompetenzen]",
-      "",
-      "## Ausgewählte Erfolge",
-      input.achievements || "[Belegbare Erfolge aus dem hochgeladenen CV priorisieren]",
-      "",
-      "## Berufserfahrung",
-      "[Stationen aus dem Original-CV in unveränderter Chronologie übernehmen und relevante Punkte zuerst nennen]",
-      "",
-      "## Ausbildung und Qualifikationen",
-      "[Unverändert aus dem Original-CV übernehmen]",
-    ].join("\n"),
-    companyBrief: [
-      `# ${input.companyName} · ${input.roleTitle}`,
-      "",
-      `Stellenquelle: ${input.jobUrl}`,
-      "",
-      "Die Live-Recherche war nicht verfügbar. Vor dem Versand bitte Geschäftsmodell, Werte, aktuelle Schwerpunkte, Rollenanforderungen und Ansprechperson anhand der offiziellen Seite ergänzen.",
-    ].join("\n"),
-    interviewPrep: [
-      `# Interviewvorbereitung · ${input.companyName}`,
-      "",
-      "## Kernbotschaft",
-      input.motivation ||
-        `[In 60–90 Sekunden erklären, warum ${input.roleTitle} der passende nächste Schritt ist.]`,
-      "",
-      "## Belege aus dem eigenen Profil",
-      input.achievements ||
-        "[Drei belegbare Beispiele nach Situation, Aufgabe, Vorgehen und Ergebnis vorbereiten.]",
-      "",
-      "## Fragen an den Arbeitgeber",
-      "- Woran wird Erfolg in den ersten sechs Monaten gemessen?",
-      "- Welche Aufgaben und Anforderungen haben im Alltag tatsächlich Priorität?",
-      "- Welche Rahmenbedingungen der Anzeige sind noch offen?",
-      "",
-      "Die öffentliche Recherche war nicht verfügbar. Aussagen zur Vakanz vor dem Gespräch anhand der Originalquelle prüfen.",
-    ].join("\n"),
-    applicationEmailSubject: `Bewerbung als ${input.roleTitle}`,
-    applicationEmailBody: [
-      greeting,
-      "",
-      `anbei übersende ich Ihnen meine Bewerbung als ${input.roleTitle}.`,
-      "Die Position und die beschriebenen Aufgaben passen sehr gut zu meinem Profil und meinem gewünschten nächsten Schritt.",
-      "",
-      "Über die Gelegenheit zu einem persönlichen Gespräch freue ich mich.",
-      "",
-      "Mit freundlichen Grüßen",
-      "[Name]",
-    ].join("\n"),
-    fitHighlights: [
-      input.strengths || "Relevante Stärken aus dem CV auswählen",
-      input.achievements || "Konkreten, messbaren Erfolg ergänzen",
-    ],
-    openQuestions: [
-      "Kontaktdaten, Name und Anschrift prüfen",
-      "Konkrete CV-Inhalte in den lokalen Entwurf übernehmen",
-      "Unternehmensfakten anhand offizieller Quellen verifizieren",
-    ],
-    sources: [],
-  };
 }
 
 type ApplicationTab =
@@ -1041,6 +919,81 @@ const OUTPUT_TAB_MAP: Record<ApplicationOutputKind, ApplicationTab> = {
   "interview-prep": "interviewPrep",
   "application-email": "applicationEmailBody",
 };
+
+function previewInline(value: string) {
+  return value
+    .split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g)
+    .filter(Boolean)
+    .map((part, index) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return <strong key={`${part}-${index}`}>{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith("*") && part.endsWith("*")) {
+        return <em key={`${part}-${index}`}>{part.slice(1, -1)}</em>;
+      }
+      const label = /^([A-ZÄÖÜ0-9][A-ZÄÖÜ0-9 &/+.-]{2,42}:)\s*(.*)$/u.exec(part);
+      return label ? (
+        <span key={`${part}-${index}`}>
+          <strong>{label[1]}</strong>
+          {label[2] ? ` ${label[2]}` : ""}
+        </span>
+      ) : (
+        part
+      );
+    });
+}
+
+function ApplicationDocumentPreview({
+  content,
+  kind,
+}: {
+  content: string;
+  kind: ApplicationTab;
+}) {
+  return (
+    <article
+      aria-label="Formatierte Dokumentvorschau"
+      className={`application-document-preview preview-${kind}`}
+    >
+      {content.replace(/\r\n?/g, "\n").split("\n").map((rawLine, index) => {
+        const line = rawLine.trim();
+        if (!line) return <div className="document-spacer" key={`space-${index}`} />;
+        const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+        if (heading?.[1].length === 1) {
+          return <h1 key={`line-${index}`}>{previewInline(heading[2])}</h1>;
+        }
+        if (heading?.[1].length === 2) {
+          return <h2 key={`line-${index}`}>{previewInline(heading[2])}</h2>;
+        }
+        if (heading?.[1].length === 3) {
+          return <h3 key={`line-${index}`}>{previewInline(heading[2])}</h3>;
+        }
+        if (/^BEWERBUNGSFASSUNG\s*\|/i.test(line)) {
+          return <span className="document-kicker" key={`line-${index}`}>{line}</span>;
+        }
+        const bullet = /^\s*(?:[-•])\s+(.+)$/.exec(line);
+        if (bullet) {
+          return (
+            <div className="document-bullet" key={`line-${index}`}>
+              <span aria-hidden="true">•</span>
+              <p>{previewInline(bullet[1])}</p>
+            </div>
+          );
+        }
+        if (/^\*\*.*\*\*$/.test(line) && /\d/.test(line)) {
+          return <p className="document-date" key={`line-${index}`}>{previewInline(line)}</p>;
+        }
+        if (/^\*(?!\*)(.+)\*$/.test(line)) {
+          return <p className="document-company" key={`line-${index}`}>{previewInline(line)}</p>;
+        }
+        if (/^[A-ZÄÖÜ0-9][A-ZÄÖÜ0-9 &/+.-]{2,42}:\s+/u.test(line)) {
+          return <p className="document-proof" key={`line-${index}`}>{previewInline(line)}</p>;
+        }
+        return <p key={`line-${index}`}>{previewInline(line)}</p>;
+      })}
+    </article>
+  );
+}
 
 function downloadText(name: string, content: string) {
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
@@ -1124,6 +1077,7 @@ function ApplicationStudio({
     );
   const [result, setResult] = useState<ApplicationPackage | null>(null);
   const [activeTab, setActiveTab] = useState<ApplicationTab>("coverLetter");
+  const [editingResult, setEditingResult] = useState(false);
   const [busy, setBusy] = useState(false);
   const [usedFallback, setUsedFallback] = useState(false);
   const confirmedClaims = useMemo(
@@ -1224,6 +1178,7 @@ function ApplicationStudio({
     }
     setBusy(true);
     setUsedFallback(false);
+    setEditingResult(false);
     const values = {
       jobUrl,
       companyName,
@@ -1262,8 +1217,8 @@ function ApplicationStudio({
       mentionSalary: normalizedPreferences.mentionSalary,
       researchContext: JSON.stringify(research),
     };
+    let sourceCv = cv;
     try {
-      let sourceCv = cv;
       if (!sourceCv && useMasterCv && masterCvContent) {
         sourceCv = new File(
           [masterCvToPlainText(masterCvContent)],
@@ -1296,13 +1251,78 @@ function ApplicationStudio({
         error?: string;
       };
       if (!response.ok || !isApplicationPackage(payload.result)) {
-        throw new Error(payload.error || "Bewerbungsstudio nicht erreichbar");
+        throw new Error(payload.error || "Bewerbungserstellung nicht erreichbar");
+      }
+      const qualityIssues = applicationPackageQualityIssues(
+        payload.result,
+        normalizedPreferences.outputKinds,
+        normalizedPreferences.cvLength,
+      );
+      if (qualityIssues.length) {
+        throw new Error(`Qualitätsprüfung fehlgeschlagen: ${qualityIssues.join("; ")}`);
       }
       setResult(payload.result);
     } catch {
-      setResult(localApplicationPackage(values));
+      let fallbackSource: CvContentSource | null = masterCvContent;
+      if (!fallbackSource && sourceCv) {
+        const extension = sourceCv.name
+          .split(".")
+          .pop()
+          ?.toLocaleLowerCase("de-DE");
+        try {
+          if (extension === "docx") {
+            fallbackSource = parseMasterCvDocument(
+              new Uint8Array(await sourceCv.arrayBuffer()),
+            );
+          } else if (extension === "txt" || extension === "md") {
+            fallbackSource = {
+              name: sourceCv.name.replace(/\.(?:txt|md)$/i, ""),
+              headline: roleTitle,
+              subheadline: "",
+              contactLine: "",
+              sections: [
+                {
+                  id: "hochgeladener-lebenslauf",
+                  heading: "BERUFSPROFIL",
+                  content: await sourceCv.text(),
+                },
+              ],
+            };
+          }
+        } catch {
+          fallbackSource = null;
+        }
+      }
+      const confirmedFacts = confirmedClaims
+        .map((claim) => claim.decision.value || claim.value)
+        .filter((value): value is string => Boolean(value));
+      const sources = [
+        ...new Set(confirmedClaims.flatMap((claim) => claim.sourceUrls)),
+      ];
+      const fallback = buildLocalApplicationPackage({
+        companyName: companyName.trim(),
+        roleTitle: roleTitle.trim(),
+        contactPerson: contactPerson.trim(),
+        motivation: motivation.trim(),
+        achievements: achievements.trim(),
+        strengths: strengths.trim(),
+        constraints: constraints.trim(),
+        availability: availability.trim(),
+        jobUrl: jobUrl.trim(),
+        cvLength: normalizedPreferences.cvLength,
+        focusThemes: normalizedPreferences.focusThemes,
+        outputKinds: normalizedPreferences.outputKinds,
+        confirmedFacts,
+        sources,
+        cvSource: fallbackSource,
+      });
+      setResult(fallback);
       setUsedFallback(true);
-      toast("Lokales Bewerbungspaket erstellt · Live-Recherche derzeit nicht erreichbar");
+      toast(
+        fallbackSource
+          ? "Vollständiges Bewerbungspaket aus dem Master-CV erstellt"
+          : "Teilpaket erstellt · CV-Inhalt lokal nicht lesbar",
+      );
     } finally {
       setBusy(false);
     }
@@ -1310,6 +1330,9 @@ function ApplicationStudio({
 
   if (result) {
     const activeContent = result[activeTab];
+    const activeWordCount = activeContent.trim()
+      ? activeContent.trim().split(/\s+/).length
+      : 0;
     const fileNames: Record<ApplicationTab, string> = {
       coverLetter: `Anschreiben-${result.companyName}.docx`,
       tailoredCv: `CV-${result.roleTitle}.docx`,
@@ -1317,12 +1340,51 @@ function ApplicationStudio({
       interviewPrep: `Interview-${result.companyName}.docx`,
       applicationEmailBody: `Bewerbungs-Mail-${result.companyName}.txt`,
     };
+    const downloadActiveDocument = async () => {
+      if (activeTab === "applicationEmailBody") {
+        downloadText(fileNames[activeTab], activeContent);
+        return;
+      }
+      if (activeTab === "tailoredCv") {
+        try {
+          let templateBytes: Uint8Array | null = null;
+          if (cv?.name.toLocaleLowerCase("de-DE").endsWith(".docx")) {
+            templateBytes = new Uint8Array(await cv.arrayBuffer());
+          } else if (useMasterCv && masterCv?.downloadUrl) {
+            const response = await fetch(masterCv.downloadUrl, {
+              headers: {
+                accept:
+                  masterCv.contentType ||
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              },
+            });
+            if (response.ok) {
+              templateBytes = new Uint8Array(await response.arrayBuffer());
+            }
+          }
+          if (templateBytes) {
+            downloadTemplateBackedDocx(
+              fileNames[activeTab],
+              activeContent,
+              templateBytes,
+            );
+            toast("Word-CV im Design des Master-CV erstellt");
+            return;
+          }
+        } catch {
+          toast("Master-Design nicht vollständig nutzbar · sicheres Word-Layout verwendet");
+        }
+      }
+      downloadEditableDocx(fileNames[activeTab], activeContent);
+    };
     return (
       <div className="application-result">
         <div className="assistant-result-heading">
           <div>
             <span className={`assistant-mode ${usedFallback ? "local" : ""}`}>
-              {usedFallback ? "Lokales Paket" : "Recherchegestütztes Paket"}
+              {usedFallback
+                ? "Aus Master-CV erstellt"
+                : "Paket mit Recherche"}
             </span>
             <h3>
               {result.companyName} · {result.roleTitle}
@@ -1343,7 +1405,10 @@ function ApplicationStudio({
               aria-selected={activeTab === tab.key}
               className={activeTab === tab.key ? "active" : ""}
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => {
+                setActiveTab(tab.key);
+                setEditingResult(false);
+              }}
               role="tab"
               type="button"
             >
@@ -1366,19 +1431,44 @@ function ApplicationStudio({
             />
           </label>
         ) : null}
-        <textarea
-          aria-label={`${APPLICATION_TABS.find((tab) => tab.key === activeTab)?.label} bearbeiten`}
-          className="result-editor application-editor"
-          onChange={(event) =>
-            setResult((current) =>
-              current
-                ? { ...current, [activeTab]: event.target.value }
-                : current,
-            )
-          }
-          rows={19}
-          value={activeContent}
-        />
+        <div className="application-output-meta">
+          <div>
+            <span>{activeWordCount.toLocaleString("de-DE")} Wörter</span>
+            <strong>
+              {activeTab === "tailoredCv"
+                ? preferences.cvLength === "compact"
+                  ? "Kompakte Bewerbungsfassung"
+                  : preferences.cvLength === "detailed"
+                    ? "Ausführliche Bewerbungsfassung"
+                    : "Fokussierte 2–3-Seiten-Fassung"
+                : "Bearbeitbarer Inhalt"}
+            </strong>
+          </div>
+          <button
+            aria-pressed={editingResult}
+            onClick={() => setEditingResult((current) => !current)}
+            type="button"
+          >
+            {editingResult ? "Formatierte Vorschau" : "Inhalt bearbeiten"}
+          </button>
+        </div>
+        {editingResult ? (
+          <textarea
+            aria-label={`${APPLICATION_TABS.find((tab) => tab.key === activeTab)?.label} bearbeiten`}
+            className="result-editor application-editor"
+            onChange={(event) =>
+              setResult((current) =>
+                current
+                  ? { ...current, [activeTab]: event.target.value }
+                  : current,
+              )
+            }
+            rows={19}
+            value={activeContent}
+          />
+        ) : (
+          <ApplicationDocumentPreview content={activeContent} kind={activeTab} />
+        )}
         <div className="artifact-actions">
           <button
             className="button button-soft"
@@ -1392,11 +1482,7 @@ function ApplicationStudio({
           </button>
           <button
             className="button button-ghost"
-            onClick={() =>
-              activeTab === "applicationEmailBody"
-                ? downloadText(fileNames[activeTab], activeContent)
-                : downloadEditableDocx(fileNames[activeTab], activeContent)
-            }
+            onClick={downloadActiveDocument}
             type="button"
           >
             {activeTab === "applicationEmailBody"
@@ -1483,7 +1569,7 @@ function ApplicationStudio({
         <span>1</span>
         <div>
           <strong>Stelle und Lebenslauf</strong>
-          <small>Die Grundlage für Recherche und Abgleich</small>
+          <small>Stelle und CV auswählen</small>
         </div>
       </div>
       <label>
@@ -1570,7 +1656,7 @@ function ApplicationStudio({
         <div>
           <strong>{cv ? cv.name : "Lebenslauf hochladen"}</strong>
           <small>
-            {cv ? formatBytes(cv.size) : "PDF, Word, ODT, RTF oder Text · max. 8 MB"}
+            {cv ? formatBytes(cv.size) : "PDF, Word, ODT, RTF oder Text · max. 16 MB"}
           </small>
         </div>
         <button
@@ -1599,8 +1685,8 @@ function ApplicationStudio({
             <strong>Master-CV verwenden</strong>
             <small>
               {masterCvContent
-                ? `Bearbeitete Fassung · Version ${masterCvContent.editRevision + 1} · mit belegten Textbausteinen`
-                : `${masterCv.name} · privat hinterlegt und nur für dieses Paket geladen`}
+                ? `Bearbeitete Fassung · Version ${masterCvContent.editRevision + 1} · mit Belegen`
+                : `${masterCv.name} · nur für dieses Paket geladen`}
             </small>
           </div>
           <b>{useMasterCv && !cv ? "Ausgewählt" : "Auswählen"}</b>
@@ -1611,7 +1697,7 @@ function ApplicationStudio({
         <span>2</span>
         <div>
           <strong>Deine Passung</strong>
-          <small>Kurze Antworten machen das Ergebnis unverwechselbar</small>
+          <small>Kurze, konkrete Antworten genügen</small>
         </div>
       </div>
       <label>
@@ -1666,7 +1752,7 @@ function ApplicationStudio({
         <span>3</span>
         <div>
           <strong>Auswahl für dein Paket</strong>
-          <small>Inhalte, Ton, Recherche und Gehaltsrahmen bewusst steuern</small>
+          <small>Inhalte, Ton, Recherche und Gehalt</small>
         </div>
       </div>
       <div className="form-grid studio-style-grid">
@@ -1728,8 +1814,9 @@ function ApplicationStudio({
             }
             value={preferences.cvLength}
           >
-            <option value="two_pages">Bis zu zwei Seiten</option>
-            <option value="compact">Kompakt und stark verdichtet</option>
+            <option value="two_pages">Fokussiert · 2–3 gut gefüllte Seiten</option>
+            <option value="compact">Kompakt · 1–2 Seiten</option>
+            <option value="detailed">Ausführlich · 4–6 Seiten</option>
           </select>
         </label>
       </div>
@@ -1943,11 +2030,9 @@ function ApplicationStudio({
         </small>
       </fieldset>
       <p className="form-trust">
-        Der ausgewählte Lebenslauf und deine Antworten werden nur für dieses
-        Paket verarbeitet. Beim Master-CV wird die zuletzt gespeicherte,
-        bearbeitbare Arbeitsfassung mit ihren belegten Textbausteinen genutzt;
-        das DOCX-Original bleibt unverändert. Generierte Texte werden nicht
-        automatisch gespeichert. Das System erfindet keine Stationen oder Erfolge.
+        CV und Antworten werden nur für dieses Paket verarbeitet. Das Original bleibt
+        unverändert; Texte werden nicht automatisch gespeichert oder um erfundene
+        Angaben ergänzt.
       </p>
       <div className="dialog-actions">
         <button

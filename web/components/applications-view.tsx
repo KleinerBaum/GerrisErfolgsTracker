@@ -279,13 +279,12 @@ export function ApplicationsView({
       <section className="page-intro applications-intro">
         <div>
           <span className="eyebrow">
-            Bewerbungssteuerung · Recherche vom {formatDate(researchVerifiedAt)}
+            Bewerbungen · Stand {formatDate(researchVerifiedAt)}
           </span>
-          <h1 tabIndex={-1}>Jede Chance. Jeder nächste Schritt. Eine klare Akte.</h1>
+          <h1 tabIndex={-1}>Chancen im Blick</h1>
           <p>
-            Verfolge Bewerbungen, Fristen, Konditionen und Gespräche. Alle{" "}
-            {researchPoolCount} recherchierten Vakanzen sind bereits enthalten;
-            nur tatsächlich versendete Bewerbungen zählen als Bewerbung.
+            {researchPoolCount} recherchierte Vakanzen, Fristen und nächste Schritte.
+            Als Bewerbung zählt nur, was du tatsächlich versendet hast.
           </p>
         </div>
         <div className="page-intro-action">
@@ -380,7 +379,7 @@ export function ApplicationsView({
         <div className="panel applications-list-panel">
           <div className="applications-list-heading">
             <div>
-              <span className="eyebrow">Pipeline und Recherche</span>
+              <span className="eyebrow">Übersicht</span>
               <h2>{visible.length} von {applications.length} Vakanzen</h2>
             </div>
             <span className="research-stamp">
@@ -703,7 +702,7 @@ function ApplicationDetail({
           </a>
         ) : null}
         <button onClick={() => onOpenStudio(draft)} type="button">
-          Unterlagen generieren
+          Unterlagen erstellen
         </button>
         <button
           onClick={() =>
@@ -783,8 +782,8 @@ function ApplicationDetail({
       <div className="application-detail-section">
         <div className="application-section-heading">
           <div>
-            <span className="eyebrow">Vakanz</span>
-            <h3>Rolle und veröffentlichte Konditionen</h3>
+            <span className="eyebrow">Stelle</span>
+            <h3>Rolle und Konditionen</h3>
           </div>
           <label className="shortlist-toggle">
             <input
@@ -929,8 +928,8 @@ function ApplicationDetail({
       <details className="application-digital-job" open={Boolean(draft.jobDescriptionText)}>
         <summary>
           <span>
-            <strong>Digitale Stellenbeschreibung</strong>
-            <small>Durchsuchbare Arbeitsgrundlage für Recherche und Generierung</small>
+            <strong>Stellenbeschreibung</strong>
+            <small>Grundlage für Recherche und Unterlagen</small>
           </span>
           <b>{draft.jobDescriptionText ? "Vorhanden" : "Noch ergänzen"}</b>
         </summary>
@@ -964,8 +963,8 @@ function ApplicationDetail({
       <div className="application-detail-section">
         <div className="application-section-heading">
           <div>
-            <span className="eyebrow">Bewerbungsstand</span>
-            <h3>Konditionen und nächster Schritt</h3>
+            <span className="eyebrow">Stand</span>
+            <h3>Nächster Schritt</h3>
           </div>
         </div>
         <label>
@@ -1071,8 +1070,8 @@ function ApplicationDetail({
       <div className="application-detail-section research-detail">
         <div className="application-section-heading">
           <div>
-            <span className="eyebrow">Rechercheergebnis</span>
-            <h3>Passung und entscheidender Punkt</h3>
+            <span className="eyebrow">Einschätzung</span>
+            <h3>Passung</h3>
           </div>
           <span className={`salary-chip ${salaryClass(draft.salaryOutlook)}`}>
             {SALARY_OUTLOOK_LABELS[draft.salaryOutlook]}
@@ -1080,7 +1079,7 @@ function ApplicationDetail({
         </div>
         <p>{draft.researchSummary || "Noch keine Rechercheeinschätzung hinterlegt."}</p>
         <details className="application-generation-summary">
-          <summary>Auswahl für die nächste Generierung</summary>
+          <summary>Für neue Unterlagen verwenden</summary>
           <div>
             <p>
               <strong>Ergebnisse:</strong>{" "}
@@ -1122,8 +1121,8 @@ function ApplicationDetail({
       <div className="application-detail-section application-artifacts">
         <div className="application-section-heading">
           <div>
-            <span className="eyebrow">Private Bewerbungsakte</span>
-            <h3>Anschreiben, CV, Recherche und Ausschreibung</h3>
+            <span className="eyebrow">Unterlagen</span>
+            <h3>Bewerbungsakte</h3>
           </div>
           <span>{draft.artifacts.length} Unterlagen</span>
         </div>
@@ -1132,7 +1131,7 @@ function ApplicationDetail({
             <span>MASTER-CV</span>
             <p>
               <strong>{masterCv.name}</strong>
-              <small>Globale Orientierungsgrundlage · wird nicht verändert</small>
+              <small>Basis für neue Bewerbungspakete · bleibt unverändert</small>
             </p>
             {masterCv.downloadUrl ? (
               <a href={masterCv.downloadUrl} rel="noreferrer" target="_blank">
@@ -1176,8 +1175,8 @@ function ApplicationDetail({
         </div>
         {!primaryArtifacts.length ? (
           <p className="artifact-empty">
-            Noch keine primären vakanzbezogenen Dateien verknüpft. Füge die
-            Stellenausschreibung oder deine finalen Unterlagen gezielt hinzu.
+            Noch keine Unterlagen verknüpft. Füge Ausschreibung, CV oder
+            Anschreiben hinzu.
           </p>
         ) : null}
         {screenshotArtifacts.length ? (
@@ -1250,7 +1249,7 @@ function ApplicationDetail({
       <div className="application-detail-actions">
         {draft.activities.length ? (
           <details className="application-activity-log">
-            <summary>Aktivitätsverlauf · {draft.activities.length}</summary>
+            <summary>Verlauf · {draft.activities.length}</summary>
             <ul>
               {[...draft.activities].reverse().map((activity) => (
                 <li key={activity.id}>
@@ -1267,7 +1266,7 @@ function ApplicationDetail({
           onClick={() => onOpenStudio(draft)}
           type="button"
         >
-          Bewerbungsstudio öffnen
+          Unterlagen erstellen
         </button>
         <button className="button button-primary" type="submit">
           Änderungen speichern

@@ -4,9 +4,9 @@ import type { ReactNode } from "react";
 
 import "./globals.css";
 
-const title = "Gerris Kompass · Deine Zentrale";
+const title = "Gerris Kompass";
 const description =
-  "Aufgaben, Kalender, Finanzen, Bewerbungen und Tagebuch im Blick – gemeinsam priorisiert, mit persönlichen KPI-Zielen und klaren nächsten Schritten.";
+  "Aufgaben, Termine, Finanzen, Bewerbungen und Tagebuch an einem privaten Ort.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -40,10 +40,10 @@ export async function generateMetadata(): Promise<Metadata> {
       url: baseUrl,
       images: [
         {
-          url: `${baseUrl}/og-zentrale.png`,
-          width: 1729,
+          url: `${baseUrl}/og.png`,
+          width: 1728,
           height: 910,
-          alt: "Gerris Kompass – deine Zentrale für klar priorisierte nächste Schritte",
+          alt: "Gerris Kompass – was jetzt zählt",
         },
       ],
     },
@@ -51,7 +51,7 @@ export async function generateMetadata(): Promise<Metadata> {
       card: "summary_large_image",
       title,
       description,
-      images: [`${baseUrl}/og-zentrale.png`],
+      images: [`${baseUrl}/og.png`],
     },
   };
 }

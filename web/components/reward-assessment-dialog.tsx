@@ -141,7 +141,7 @@ export function RewardAssessmentDialog({
       >
         <header className="dialog-heading">
           <div>
-            <span className="eyebrow">Vor dem Reward · du entscheidest</span>
+            <span className="eyebrow">Belohnung</span>
             <h2 id="reward-assessment-title">Wie anspruchsvoll war diese Aufgabe?</h2>
           </div>
           <button aria-label="Schließen" disabled={busy} onClick={onClose} type="button">
@@ -156,9 +156,7 @@ export function RewardAssessmentDialog({
 
         <div className="assessment-ai-row">
           <div>
-            <strong>
-              {assessment.source === "AI" ? "KI-Vorschlag geladen" : "Lokaler Vorschlag"}
-            </strong>
+            <strong>{assessment.source === "AI" ? "KI-Vorschlag" : "Lokaler Vorschlag"}</strong>
             <p>
               Für den optionalen KI-Vorschlag werden nur Titel, Dauer, Lebensbereich und
               Prioritätsart gesendet – keine Notizen, Kalenderdaten oder Personen.
@@ -258,14 +256,11 @@ export function RewardAssessmentDialog({
         </fieldset>
 
         <div className="assessment-reward-preview">
-          <span>Deterministischer Reward nach Bestätigung</span>
+          <span>Deine Belohnung</span>
           <strong>
             {previewXp === null ? "Meilenstein-XP + 20 %" : `${previewXp} XP`}
           </strong>
-          <small>
-            Kein Punkt für Anlegen, Öffnen oder Verschieben. Bei Unteraufgaben wird das
-            Budget der Hauptaufgabe geteilt.
-          </small>
+          <small>Nur Abschlüsse zählen. Unteraufgaben teilen das Budget der Hauptaufgabe.</small>
         </div>
 
         {error ? <p className="form-error" role="alert">{error}</p> : null}

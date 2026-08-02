@@ -24,12 +24,12 @@ export function PlanningHealthBanner({
   const title =
     report?.title ||
     (loading
-      ? "Planungsstand wird verlässlich geprüft"
-      : "Planungsstatus unbekannt – sofort klären");
+      ? "Planung wird geprüft"
+      : "Kalender prüfen");
   const message =
     error ||
     report?.message ||
-    "Solange Kalenderdaten nicht frisch und vollständig bestätigt sind, gilt kein Zeitraum als frei.";
+    "Freie Zeit bleibt bis zum Kalenderabgleich ungeklärt.";
   return (
     <section
       aria-live={urgent ? "assertive" : "polite"}
@@ -41,13 +41,13 @@ export function PlanningHealthBanner({
       </div>
       <div className="planning-health-copy">
         <span className="eyebrow">
-          {urgent ? "Top-Priorität · Dringend & wichtig" : "Planungsgesundheit"}
+          {urgent ? "Dringend" : "Planungscheck"}
         </span>
         <strong>{title}</strong>
         <p>{message}</p>
         {report ? (
           <small>
-            {report.criticalCount} kritisch · {report.importantCount} wichtig · Abgleich {report.automationMode === "safe" ? "sicher automatisch" : "im Dry-run"}
+            {report.criticalCount} dringend · {report.importantCount} wichtig · {report.automationMode === "safe" ? "Automatik aktiv" : "Vorschau aktiv"}
           </small>
         ) : null}
       </div>
@@ -57,7 +57,7 @@ export function PlanningHealthBanner({
           onClick={() => onNavigate("calendar")}
           type="button"
         >
-          Planung klären
+          Planung öffnen
         </button>
         <button
           className="button button-soft"
@@ -65,7 +65,7 @@ export function PlanningHealthBanner({
           onClick={onRefresh}
           type="button"
         >
-          {loading ? "Prüfung läuft …" : "Neu abgleichen"}
+          {loading ? "Prüfung läuft …" : "Neu prüfen"}
         </button>
       </div>
     </section>

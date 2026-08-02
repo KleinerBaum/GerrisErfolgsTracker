@@ -311,10 +311,6 @@ export function CalendarEventForm({
             </option>
           ))}
         </select>
-        <small>
-          Die Auswahl zeigt nur die Angaben, die für diese Terminart gebraucht
-          werden.
-        </small>
       </label>
 
       {isBirthday ? (
@@ -322,11 +318,8 @@ export function CalendarEventForm({
           <section className="birthday-entry-intro" aria-label="Geburtstagserinnerung">
             <span aria-hidden="true">G</span>
             <div>
-              <strong>Erinnern, ohne den Tag zu blockieren</strong>
-              <p>
-                Der Geburtstag erscheint ganztägig und jedes Jahr erneut. Deine
-                Verfügbarkeit bleibt in Google Kalender trotzdem frei.
-              </p>
+              <strong>Jährlich erinnern</strong>
+              <p>Ganztägig sichtbar, ohne deine Zeit zu blockieren.</p>
             </div>
           </section>
           <div className="form-grid">
@@ -399,8 +392,7 @@ export function CalendarEventForm({
             />
           </label>
           <p className="form-trust birthday-trust">
-            Wird privat, jährlich wiederkehrend und als „Verfügbar“ gespeichert.
-            Es wird keine Einladung verschickt und kein Zeitfenster reserviert.
+            Privat, jährlich und als „Verfügbar“. Keine Einladung, kein Zeitblock.
           </p>
         </>
       ) : (
@@ -550,21 +542,20 @@ export function CalendarEventForm({
             </label>
           ) : null}
           <p className="form-trust">
-            Mit „Termin speichern“ wird der Eintrag sofort im Zielkalender angelegt.
+            Wird sofort im Zielkalender gespeichert.
             {isPrivate
               ? " Die Details bleiben bei eingeschränkter Kalenderfreigabe verborgen."
               : " Die Sichtbarkeit folgt den Freigaben des Zielkalenders."}
             {shareByEmail
-              ? " Die eingeladene Person erhält eine Google-Kalender-Einladung."
-              : " Es wird keine E-Mail versendet."}
+              ? " Google sendet eine Einladung."
+              : " Keine E-Mail."}
           </p>
         </>
       )}
 
       {calendarSelectionConnectUrl ? (
         <p className="form-progress">
-          Die Kalenderauswahl benötigt einmalig eine ergänzte Google-Freigabe. Bis
-          dahin wird sicher der Hauptkalender verwendet.
+          Für die Kalenderauswahl fehlt noch eine Google-Freigabe. Bis dahin gilt der Hauptkalender.
         </p>
       ) : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}

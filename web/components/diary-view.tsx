@@ -309,26 +309,20 @@ export function DiaryView({
       <header className="page-intro diary-intro">
         <div>
           <span className="eyebrow">
-            {todayEntry?.closedAt
-              ? "Heute bereits abgeschlossen"
-              : "Ein ruhiger Abschluss ohne Pflichtfelder"}
+            {todayEntry?.closedAt ? "Heute abgeschlossen" : "Ohne Pflichtfelder"}
           </span>
-          <h1 tabIndex={-1}>Tagebuch speichern, morgen kurz ausrichten.</h1>
-          <p>
-            Dein Eintrag darf jederzeit so gespeichert werden, wie er gerade ist.
-            Danach prüfst du nur noch den kommenden Tag; offene Themen sind dabei
-            Inspiration, keine Hürde.
-          </p>
+          <h1 tabIndex={-1}>Tagesabschluss</h1>
+          <p>Halte fest, was bleibt, und richte morgen kurz aus.</p>
         </div>
       </header>
 
       <form className="panel diary-journal-form" onSubmit={saveJournal}>
         <div className="panel-heading">
           <div>
-            <span className="eyebrow">Tagebuch</span>
-            <h2>Was möchtest du von heute festhalten?</h2>
+            <span className="eyebrow">Rückblick</span>
+            <h2>Was bleibt von heute?</h2>
           </div>
-          <span className="diary-save-freedom">Jederzeit speicherbar</span>
+          <span className="diary-save-freedom">Jederzeit speichern</span>
         </div>
         <fieldset className="mood-field compact">
           <legend>Stimmung – optional ein Klick</legend>
@@ -384,32 +378,26 @@ export function DiaryView({
               ? "Tagebuch aktualisieren"
               : "Tagebuch speichern & morgen planen"}
         </button>
-        <p className="diary-privacy-note">
-          Keine Mindestlänge, kein Pflicht-Abgleich und keine offene Planungslücke
-          verhindert das Speichern.
-        </p>
+        <p className="diary-privacy-note">Keine Pflichtfelder.</p>
       </form>
 
       {planningOpen ? (
         <section className="panel diary-planning-board" id="planung-morgen">
           <div className="panel-heading">
             <div>
-              <span className="eyebrow">Nach dem Tagebuch</span>
-              <h2>Morgen prüfen und bei Bedarf ergänzen</h2>
+              <span className="eyebrow">Morgen</span>
+              <h2>Kurz prüfen</h2>
             </div>
             <span className="diary-plan-date">{planDateLabel(tomorrow, true)}</span>
           </div>
-          <p className="diary-planning-copy">
-            Ziehe nur das hinüber, was dir wirklich hilft. Du darfst den Tag auch
-            bewusst mit einem leeren oder sehr kleinen Plan abschließen.
-          </p>
+          <p className="diary-planning-copy">Plane nur, was dir morgen wirklich hilft.</p>
 
           <div className="diary-planning-workspace">
             <section className="diary-tomorrow-plan" aria-labelledby="tomorrow-plan-title">
               <header>
                 <div>
-                  <span className="eyebrow">Plan für morgen</span>
-                  <h3 id="tomorrow-plan-title">Was bereits vorgesehen ist</h3>
+                  <span className="eyebrow">Plan</span>
+                  <h3 id="tomorrow-plan-title">Bereits vorgesehen</h3>
                 </div>
                 <div className="diary-plan-counts" aria-label="Planumfang morgen">
                   <span>{tomorrowTasks.length} Aufgaben</span>
@@ -454,7 +442,7 @@ export function DiaryView({
                 !tomorrowEvents.length &&
                 !tomorrowApplications.length ? (
                   <p className="diary-plan-empty">
-                    Noch nichts fest eingeplant – das darf eine bewusste Entscheidung sein.
+                    Noch nichts fest eingeplant.
                   </p>
                 ) : null}
               </div>
@@ -505,7 +493,7 @@ export function DiaryView({
             <section className="diary-inspiration" aria-labelledby="diary-inspiration-title">
               <header>
                 <div>
-                  <span className="eyebrow">Nur als Inspiration</span>
+                  <span className="eyebrow">Inspiration</span>
                   <h3 id="diary-inspiration-title">Mögliche Themen</h3>
                 </div>
                 <span>{suggestions.length}</span>
@@ -589,8 +577,7 @@ export function DiaryView({
               ))}
               {!tasksConnected ? (
                 <p className="diary-tasks-offline">
-                  Google Tasks ist nicht verbunden. Die Vorschläge bleiben sichtbar,
-                  sind aber niemals Voraussetzung für Speichern oder Tagesabschluss.
+                  Google Tasks ist nicht verbunden. Die Vorschläge bleiben sichtbar.
                 </p>
               ) : null}
             </section>
@@ -598,8 +585,8 @@ export function DiaryView({
 
           <section className="diary-follow-days" aria-labelledby="follow-days-title">
             <div>
-              <span className="eyebrow">Optional</span>
-              <h3 id="follow-days-title">Als ToDo in einen Folgetag verschieben</h3>
+              <span className="eyebrow">Später</span>
+              <h3 id="follow-days-title">Auf einen Folgetag verschieben</h3>
             </div>
             <div>
               {planningDates.slice(1).map((date) => (
@@ -635,12 +622,9 @@ export function DiaryView({
           {isSundayDate(today) ? (
             <section className="diary-weekly-exploration">
               <div>
-                <span className="eyebrow">Sonntagabend</span>
-                <h3>Die kommende Woche grob erkunden</h3>
-                <p>
-                  Noch keine Detailplanung: erkenne nur Schwerpunkte, Engstellen und
-                  bewusst freie Räume für Montag bis Sonntag.
-                </p>
+                <span className="eyebrow">Wochenblick</span>
+                <h3>Nächste Woche grob planen</h3>
+                <p>Schwerpunkte, Engstellen und freie Räume – noch ohne Details.</p>
               </div>
               <dl>
                 <div><dt>Aufgaben</dt><dd>{weekTasks.length}</dd></div>
@@ -675,10 +659,7 @@ export function DiaryView({
                 ? "Planung geprüft & Tagesabschluss aktualisieren"
                 : "Planung geprüft – Tag abschließen"}
           </button>
-          <p className="diary-privacy-note">
-            Du entscheidest selbst, wann der Blick auf morgen genügt. Offene,
-            zurückgestellte oder wichtige Themen blockieren den Abschluss nie.
-          </p>
+          <p className="diary-privacy-note">Offene Themen blockieren den Abschluss nicht.</p>
         </section>
       ) : null}
 

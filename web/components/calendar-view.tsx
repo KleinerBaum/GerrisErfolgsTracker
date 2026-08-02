@@ -611,12 +611,12 @@ function AgendaCalendar({
       <div className="calendar-empty-state">
         <strong>
           {planningReport?.state === "intentionally_free"
-            ? "Der aktuelle Tag ist ausdrücklich frei bestätigt."
+            ? "Der Tag ist bewusst frei."
             : "Keine Einträge geladen – dieser Zeitraum gilt als Planungslücke."}
         </strong>
         <p>
           {planningReport?.message ||
-            "Erst frische, vollständige Kalenderdaten plus eine ausdrückliche Tagesfreigabe erlauben die Bewertung als frei."}
+            "Nur aktuelle Kalenderdaten und eine Tagesfreigabe bestätigen freie Zeit."}
         </p>
       </div>
     );
@@ -722,7 +722,7 @@ function NewCalendarDialog({
         <div className="dialog-handle" />
         <header className="dialog-heading">
           <div>
-            <span className="eyebrow">Neue Zeitstruktur</span>
+            <span className="eyebrow">Neuer Kalender</span>
             <h2 id="new-calendar-title">Google-Kalender anlegen</h2>
           </div>
           <button aria-label="Schließen" onClick={onClose} type="button">
@@ -752,12 +752,8 @@ function NewCalendarDialog({
             />
           </label>
           <div className="calendar-create-info">
-            <strong>Privat und in deinem Konto</strong>
-            <p>
-              Der Kalender wird als sekundärer Kalender in deinem verbundenen
-              Google-Konto erstellt. Termine entstehen erst durch deine späteren
-              Eingaben.
-            </p>
+            <strong>In deinem Google-Konto</strong>
+            <p>Der Kalender bleibt leer, bis du Termine hinzufügst.</p>
           </div>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
           <div className="dialog-actions">
@@ -1109,14 +1105,14 @@ export function CalendarView({
           </small>
         </div>
         <div className="calendar-day-copy">
-          <span className="eyebrow">Heute zentral</span>
+          <span className="eyebrow">Heute</span>
           <h1 id="calendar-day-title" tabIndex={-1}>
             {runningEvent
               ? `${runningEvent.title} ist jetzt dran.`
               : nextEvent && sameDay(new Date(nextEvent.startAt), today)
                 ? `Dein nächster Termin beginnt um ${formatTime(nextEvent.startAt)}.`
                 : todayPlanning?.state === "intentionally_free"
-                  ? "Heute ist ausdrücklich frei bestätigt."
+                  ? "Heute ist bewusst frei."
                   : planningReport?.title || "Der Planungsstand ist noch unbekannt."}
           </h1>
           <p>
@@ -1125,8 +1121,8 @@ export function CalendarView({
                   busyMinutes,
                 )} gebundene Zeit und ${focusBlocks || "noch keine"} Fokusblöcke.`
               : todayPlanning?.state === "intentionally_free"
-                ? "Der freie Tag wurde bei frischen Kalenderdaten ausdrücklich bestätigt."
-                : "Keine echten Planungsblöcke erkannt. Das ist eine dringende Planungslücke, keine Freizeit."}
+                ? "Freier Tag bestätigt."
+                : "Keine Planungsblöcke. Der Tag gilt noch nicht als frei."}
           </p>
         </div>
         <div className="calendar-day-actions">
@@ -1169,24 +1165,24 @@ export function CalendarView({
         aria-labelledby="calendar-planning-health-title"
       >
         <div className="calendar-planning-summary">
-          <span className="eyebrow">Selbstpflegende Planungszentrale</span>
+          <span className="eyebrow">Planungscheck</span>
           <h2 id="calendar-planning-health-title">
-            {planningReport?.title || "Planungsstatus unbekannt – sofort klären"}
+            {planningReport?.title || "Planung prüfen"}
           </h2>
           <p>
             {planningError ||
               planningReport?.message ||
-              "Ohne vollständigen Kalenderabgleich wird kein Zeitraum als frei bewertet."}
+              "Freie Zeit bleibt bis zum Kalenderabgleich ungeklärt."}
           </p>
           <div className="calendar-planning-counts">
-            <span><strong>{planningReport?.criticalCount || 0}</strong> dringend & wichtig</span>
+            <span><strong>{planningReport?.criticalCount || 0}</strong> dringend</span>
             <span><strong>{planningReport?.importantCount || 0}</strong> wichtig</span>
-            <span><strong>{planningReport?.managedCalendars.filter((item) => item.status === "ready").length || 0}/4</strong> Bereichskalender bereit</span>
+            <span><strong>{planningReport?.managedCalendars.filter((item) => item.status === "ready").length || 0}/4</strong> Bereichskalender</span>
           </div>
         </div>
         <div className="calendar-day-intent">
-          <strong>Heutige Tagesabsicht</strong>
-          <p>Nur eine ausdrückliche Auswahl kann einen leeren Tag als frei bestätigen.</p>
+          <strong>Heute</strong>
+          <p>Ist der Tag bewusst frei?</p>
           <div>
             {([
               ["intentionally_free", "Bewusst frei"],
@@ -1216,7 +1212,7 @@ export function CalendarView({
           </div>
         </div>
         <div className="calendar-gap-priority">
-          <strong>Höchste offene Prioritäten</strong>
+          <strong>Offene Punkte</strong>
           {activePlanningGaps.length ? (
             <ol>
               {activePlanningGaps.slice(0, 5).map((gap) => (
@@ -1229,7 +1225,7 @@ export function CalendarView({
               ))}
             </ol>
           ) : (
-            <p>Keine offene Planungslücke.</p>
+            <p>Planung ist geklärt.</p>
           )}
         </div>
         <div className="calendar-automation-actions">
@@ -1239,7 +1235,7 @@ export function CalendarView({
             onClick={() => void onPlanningRefresh("manual-dry-run", true)}
             type="button"
           >
-            {planningBusy ? "Soll/Ist wird geprüft …" : "Dry-run: Soll/Ist prüfen"}
+            {planningBusy ? "Änderungen werden geprüft …" : "Änderungen prüfen"}
           </button>
           {planningReport?.automationMode === "safe" ? (
             <button
@@ -1248,7 +1244,7 @@ export function CalendarView({
               onClick={() => void onPlanningModeChange("dry-run")}
               type="button"
             >
-              Sichere Automatik pausieren
+              Automatik pausieren
             </button>
           ) : (
             <button
@@ -1257,7 +1253,7 @@ export function CalendarView({
               onClick={() => {
                 if (
                   window.confirm(
-                    "Der letzte Dry-run war konfliktfrei. Sichere Automatik für ausschließlich Gerris-eigene Termine und Gap-Aufgaben aktivieren?",
+                    "Der letzte Abgleich war konfliktfrei. Automatische Pflege für Gerris-Termine und Lückenaufgaben aktivieren?",
                   )
                 ) {
                   void onPlanningModeChange("safe");
@@ -1265,18 +1261,18 @@ export function CalendarView({
               }}
               type="button"
             >
-              Sichere Automatik aktivieren
+              Automatik aktivieren
             </button>
           )}
           <small>
-            Fremde Termine bleiben schreibgeschützt. Unklare Zeiten und manuelle Änderungen werden als Entscheidung gemeldet.
+            Fremde Termine bleiben schreibgeschützt. Unklare Änderungen fragst du selbst ab.
           </small>
         </div>
       </section>
 
       <section className="calendar-guides" aria-label="Deine Tages-Guides">
         <GuideCard
-          eyebrow="Tageslage"
+          eyebrow="Tag"
           title={
             conflicts
               ? "Überschneidungen klären"
@@ -1310,7 +1306,7 @@ export function CalendarView({
           </dl>
         </GuideCard>
         <GuideCard
-          eyebrow="Fokus-Guide"
+          eyebrow="Fokus"
           title={freeWindow.duration >= 60 ? "Raum für Konzentration" : "Pausen bewusst schützen"}
           tone="blue"
           value={formatDuration(Math.max(0, freeWindow.duration))}
@@ -1324,7 +1320,7 @@ export function CalendarView({
           </button>
         </GuideCard>
         <GuideCard
-          eyebrow="Fristen-Guide"
+          eyebrow="Fristen"
           title={upcomingCosts.length ? "Zahlungen rechtzeitig sehen" : "Keine offene Zahlungsfrist"}
           tone="amber"
           value={`${upcomingCosts.length}`}
@@ -1392,7 +1388,7 @@ export function CalendarView({
             <section className="calendar-source-picker" aria-labelledby="calendar-source-title">
               <header>
                 <div>
-                  <span className="eyebrow">Sichtbarkeit</span>
+                  <span className="eyebrow">Auswahl</span>
                   <h3 id="calendar-source-title">Meine Kalender</h3>
                 </div>
                 <button aria-label="Neuen Kalender anlegen" onClick={() => setCreateOpen(true)} type="button">
@@ -1442,7 +1438,7 @@ export function CalendarView({
               </button>
             </section>
             <section className="calendar-connection-card">
-              <span className="eyebrow">Private Verbindung</span>
+              <span className="eyebrow">Verbindung</span>
               <strong>
                 {managementReady
                   ? `${selectedCalendarIds.length} von ${calendars.length} sichtbar`
@@ -1450,11 +1446,7 @@ export function CalendarView({
                     ? "Termine verbunden"
                     : "Google verbinden"}
               </strong>
-              <p>
-                Auswahl und Ansicht bleiben auf diesem Gerät. Eindeutige Gerris-Daten
-                werden im sicheren Modus automatisch gepflegt; unklare Änderungen
-                bleiben Entscheidungskarten.
-              </p>
+              <p>Auswahl und Ansicht bleiben auf diesem Gerät. Unklare Änderungen entscheidest du.</p>
               {calendarError ? <small role="alert">{calendarError}</small> : null}
               <div>
                 {connectUrl || (!managementReady && workspaceStatus?.capabilities.calendar.connectUrl) ? (
@@ -1509,7 +1501,7 @@ export function CalendarView({
         <div>
           <span aria-hidden="true">P</span>
           <p>
-            <strong>Privater Kalenderraum</strong>
+            <strong>Privat</strong>
             Termintitel werden nur für deine Ansicht geladen. Zahlungsbeträge bleiben
             im Kompass und werden nicht an Google übertragen.
           </p>

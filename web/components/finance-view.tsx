@@ -169,13 +169,9 @@ export function FinanceView({
     <div className="view-stack finance-view">
       <header className="finance-intro">
         <div>
-          <span className="eyebrow">Dein Geld auf einen Blick</span>
-          <h1 tabIndex={-1}>Erst verstehen. Dann ins Detail gehen.</h1>
-          <p>
-            Einnahmen, laufende Kosten und Kontostände bleiben auf der ersten
-            Ebene bewusst ruhig. Alle Einzelbeträge findest du erst dort, wo du
-            sie wirklich brauchst.
-          </p>
+          <span className="eyebrow">Finanzen</span>
+          <h1 tabIndex={-1}>Geld im Blick</h1>
+          <p>Kontostände, Einnahmen und Ausgaben.</p>
         </div>
         <div className="button-group">
           <button
@@ -199,7 +195,7 @@ export function FinanceView({
         <div className="money-comparison">
           <div className="finance-section-heading">
             <div>
-              <span className="eyebrow">Monatliche Sicht</span>
+              <span className="eyebrow">Dieser Monat</span>
               <h2 id="finance-overview-title">Einnahmen und Ausgaben</h2>
             </div>
             <strong
@@ -272,7 +268,7 @@ export function FinanceView({
         <div className="account-overview">
           <div className="finance-section-heading">
             <div>
-              <span className="eyebrow">Direkt verfügbar</span>
+              <span className="eyebrow">Konten</span>
               <h2>Kontostände</h2>
             </div>
             <button onClick={openBalanceEditor} type="button">
@@ -340,10 +336,7 @@ export function FinanceView({
               </div>
             </form>
           ) : (
-            <p className="account-note">
-              Die Kontostände werden manuell und privat in deinem Kompass
-              gespeichert.
-            </p>
+            <p className="account-note">Manuell gepflegt und privat gespeichert.</p>
           )}
         </div>
       </section>
@@ -362,7 +355,7 @@ export function FinanceView({
           </strong>
           <p>
             {runningCosts.length
-              ? `${runningCosts.length} aktive ${runningCosts.length === 1 ? "Position" : "Positionen"} · wiederkehrende Beträge auf einen Monat umgerechnet`
+              ? `${runningCosts.length} aktive ${runningCosts.length === 1 ? "Position" : "Positionen"} · auf den Monat gerechnet`
               : "Noch keine laufenden Kosten erfasst"}
           </p>
           <button
@@ -434,10 +427,7 @@ export function FinanceView({
             ) : (
               <div className="finance-empty">
                 <strong>Noch keine laufenden Kosten</strong>
-                <p>
-                  Nutze eine der 48 Vorlagen aus deiner Kostentabelle, um mit
-                  dem ersten Posten zu beginnen.
-                </p>
+                <p>Starte mit einer der 48 Vorlagen.</p>
                 <button
                   className="button button-primary"
                   onClick={onNewCost}
@@ -454,7 +444,7 @@ export function FinanceView({
       <section className="panel other-expenses-panel">
         <div className="finance-section-heading">
           <div>
-            <span className="eyebrow">Zusätzlich in diesem Monat</span>
+            <span className="eyebrow">Diesen Monat</span>
             <h2>Weitere Ausgaben</h2>
           </div>
           <strong title={formatCurrency(otherTotal)}>
@@ -486,7 +476,7 @@ export function FinanceView({
         <div className="table-toolbar">
           <div>
             <span className="eyebrow">Kostenbuch</span>
-            <h2>Alle Posten im Detail</h2>
+            <h2>Alle Posten</h2>
           </div>
           <label className="search-field">
             <span className="visually-hidden">Kosten durchsuchen</span>

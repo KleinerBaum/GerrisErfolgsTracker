@@ -113,12 +113,14 @@ test("normalisiert Generierungsfilter und verwirft unbekannte Werte", () => {
     researchScopes: ["company", "projects", "invalid"],
     selectedResearchClaimIds: ["claim-1"],
     desiredSalaryAnnual: 58_000,
+    cvLength: "detailed",
   });
 
   assert.equal(preferences.formality, "formal");
   assert.deepEqual(preferences.outputKinds, ["tailored-cv"]);
   assert.deepEqual(preferences.researchScopes, ["company", "projects"]);
   assert.equal(preferences.desiredSalaryAnnual, 58_000);
+  assert.equal(preferences.cvLength, "detailed");
 });
 
 test("ordnet den Gehaltswunsch gegen eine veröffentlichte Spanne ein", () => {

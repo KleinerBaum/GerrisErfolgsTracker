@@ -138,7 +138,7 @@ const NAV_ITEMS: Array<{
   short: string;
   mark: string;
 }> = [
-  { key: "today", label: "Heute", short: "Heute", mark: "H" },
+  { key: "today", label: "Zentrale", short: "Zentrale", mark: "Z" },
   { key: "tasks", label: "Aufgaben", short: "Aufgaben", mark: "A" },
   { key: "calendar", label: "Kalender", short: "Kalender", mark: "K" },
   { key: "finance", label: "Finanzen", short: "Kosten", mark: "€" },
@@ -154,14 +154,14 @@ const NAV_ITEMS: Array<{
 ];
 
 const VIEW_TITLES: Record<ViewKey, string> = {
-  today: "Heute im Blick",
-  tasks: "Aufgaben & Fokus",
-  calendar: "Kalender & Erinnerungen",
-  finance: "Kosten im Überblick",
-  documents: "Wichtige Unterlagen",
-  applications: "Bewerbungen & nächste Schritte",
-  contacts: "Kontakte & Verbindungen",
-  journal: "Tagebuch & Tagesabschluss",
+  today: "Zentrale",
+  tasks: "Aufgaben",
+  calendar: "Kalender",
+  finance: "Finanzen",
+  documents: "Unterlagen",
+  applications: "Bewerbungen",
+  contacts: "Kontakte",
+  journal: "Tagebuch",
 };
 
 const XP_GOAL_FIELDS: Array<{
@@ -653,7 +653,7 @@ export function LifeOsApp({
       setRewardTaskId("");
       setNotice(
         profile
-          ? "In Google Tasks erledigt · Reward nachvollziehbar im Ledger gespeichert"
+          ? "In Google Tasks erledigt · Belohnung gespeichert"
           : "In Google Tasks erledigt · bewusst ohne Belohnung",
       );
     } catch (caught) {
@@ -1029,7 +1029,7 @@ export function LifeOsApp({
       await refreshPlanning("journal-analysis");
       return result.mode === "ai"
         ? `${result.analysis.summary} Vorschläge warten auf deine Bestätigung.`
-        : `${result.analysis.summary} Deterministischer Fallback ohne KI-Mutation.`;
+        : `${result.analysis.summary} Vorschläge wurden lokal erstellt.`;
     } catch (caught) {
       return caught instanceof Error
         ? `Analysehinweis: ${caught.message}`
@@ -2051,7 +2051,7 @@ function TasksView({
     ? `${status.googleEmail || "Google-Konto"} · ${status.taskList?.title || "Gerris Kompass"}`
     : status?.configured
       ? "Google-Konto noch nicht für Aufgaben freigegeben"
-      : "OAuth-Laufzeitwerte in Sites fehlen noch";
+      : "Google Tasks ist noch nicht eingerichtet";
 
   return (
     <div className="view-stack">
@@ -2071,9 +2071,9 @@ function TasksView({
             Aufgabe erfassen
           </button>
         }
-        eyebrow="Gerri Coach"
-        title="Was ist der sinnvollste nächste Schritt?"
-        copy="Google Tasks ist die führende Aufgabenquelle. Der Kompass ergänzt Eisenhower-Bereich, Lebensbereich, Aufwand und Fortschritt privat."
+        eyebrow="Aufgaben"
+        title="Was ist als Nächstes dran?"
+        copy="Google Tasks verwaltet deine Aufgaben. Priorität, Lebensbereich, Aufwand und Fortschritt bleiben im Kompass."
       />
 
       <section
@@ -2081,7 +2081,7 @@ function TasksView({
         aria-label="Google-Tasks-Verbindung"
       >
         <div>
-          <span className="eyebrow">Aufgabenquelle</span>
+          <span className="eyebrow">Google Tasks</span>
           <h2>{status?.authorized ? "Google Tasks ist verbunden" : "Google Tasks verbinden"}</h2>
           <p>{sourceCopy}</p>
         </div>
@@ -2110,8 +2110,8 @@ function TasksView({
               {pendingLegacyCount} bisherige Kompass-Aufgaben gefunden
             </strong>
             <p>
-              Übernimm sie einmalig und idempotent in die Liste „Gerris Kompass“.
-              Danach ist Google Tasks die einzige Aufgabenquelle.
+              Übernimm sie einmalig in die Liste „Gerris Kompass“. Danach liegen
+              deine Aufgaben in Google Tasks.
             </p>
           </div>
           <button
@@ -2255,10 +2255,7 @@ function TasksView({
           eyebrow="Fortschritt"
           title={`${state.tasks.filter((task) => task.completed).length} erledigte Aufgaben`}
         />
-        <p>
-          Erledigte Aufgaben bleiben im Verlauf erhalten. Als Tagesanker geplante
-          Aufgaben fließen zusätzlich in deinen 14-Tage-Rhythmus ein.
-        </p>
+        <p>Erledigte Aufgaben bleiben sichtbar; Tagesanker zählen zum 14-Tage-Rhythmus.</p>
         {completed.length ? (
           <div className="completed-task-list">
             {completed.slice(0, 20).map((task) => (
@@ -2351,9 +2348,9 @@ function DocumentsView({
   return (
     <div className="view-stack">
       <PageIntro
-        eyebrow="Google Drive · Live-Ablage · Private Uploads"
-        title="Wichtige Unterlagen – lesbar, sortiert, griffbereit."
-        copy="Durchsuche deine Drive-Ordner live, öffne Dateien direkt unter der Liste oder lege zusätzliche Dateien geschützt im privaten Sites-Speicher ab."
+        eyebrow="Unterlagen"
+        title="Alles griffbereit"
+        copy="Durchsuche Google Drive oder lege private Dateien direkt im Kompass ab."
         action={
           <div className="button-group">
             <a
@@ -2387,7 +2384,7 @@ function DocumentsView({
         <div>
           <span className="integration-initial">S</span>
           <p>
-            <strong>Zusätzliche private Sites-Dateien</strong>
+            <strong>Private Kompass-Dateien</strong>
             <small>Getrennt von Google Drive · nur für dich</small>
           </p>
           <button onClick={onUpload} type="button">Hochladen</button>
@@ -2406,8 +2403,8 @@ function DocumentsView({
 
       <div className="section-heading compact-section-heading">
         <div>
-          <span className="eyebrow">Separater privater Speicher</span>
-          <h2>Sites-Dateien</h2>
+          <span className="eyebrow">Kompass</span>
+          <h2>Private Dateien</h2>
         </div>
         <span>{visible.length} Dateien</span>
       </div>
@@ -2499,8 +2496,8 @@ function DocumentsView({
       {!visible.length ? (
         <div className="drive-empty private-upload-empty">
           <span>PRIVAT</span>
-          <h3>Noch keine zusätzlichen Sites-Dateien abgelegt.</h3>
-          <p>Google-Drive-Dateien werden oben automatisch und getrennt angezeigt.</p>
+          <h3>Noch keine privaten Dateien.</h3>
+          <p>Google-Drive-Dateien erscheinen getrennt darüber.</p>
         </div>
       ) : null}
 
@@ -2612,13 +2609,13 @@ function CaptureDialog({
       ? "Google Drive"
       : kind === "journal"
         ? "Kurze Notiz"
-        : "Einmal auswählen · passend erfassen";
+        : "Neu";
   const captureTitle =
     kind === "document"
       ? "Unterlage verknüpfen"
       : kind === "journal"
         ? "Was möchtest du im Tagebuch festhalten?"
-        : "Was möchtest du hinzufügen?";
+        : "Eintrag hinzufügen";
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -2748,10 +2745,6 @@ function CaptureDialog({
         </header>
         {isPrimaryEntry ? (
           <>
-            <p className="capture-choice-intro">
-              Wähle zuerst den Typ. Danach siehst du ausschließlich die dafür
-              passenden Angaben.
-            </p>
             <div className="capture-tabs primary-entry-tabs" role="tablist">
               {(
                 [
@@ -2923,9 +2916,8 @@ function CaptureDialog({
                 ) : null}
                 {reminderMode !== "none" ? (
                   <p className="form-trust">
-                    Die Aufgabe landet in Google Tasks. Zum gewählten Zeitpunkt
-                    erinnert dich Google Kalender per Benachrichtigung und
-                    E-Mail an dein verbundenes Gmail-Konto.
+                    Aufgabe in Google Tasks; Google Kalender erinnert per
+                    Benachrichtigung und E-Mail.
                     {!calendarReminderGranted && calendarConnectUrl ? (
                       <>
                         {" "}
@@ -3090,9 +3082,7 @@ function CaptureDialog({
                 />
               </label>
               <p className="form-trust">
-                Die 48 Vorlagen und 15 Kategorien stammen aus deiner
-                Kostentabelle. Beträge werden nicht vorausgefüllt und bleiben
-                privat.
+                48 Vorlagen aus deiner Kostentabelle; Beträge bleiben leer und privat.
               </p>
             </>
           ) : null}
@@ -3146,8 +3136,7 @@ function CaptureDialog({
                 </label>
               </div>
               <p className="form-trust">
-                Einnahmen werden manuell erfasst und nur für deine monatliche
-                Übersicht verwendet.
+                Nur für deine monatliche Übersicht.
               </p>
             </>
           ) : null}
@@ -3171,7 +3160,7 @@ function CaptureDialog({
                 />
               </label>
               <div className="form-trust">
-                <strong>So funktioniert es:</strong> Öffne{" "}
+                Öffne{" "}
                 <a
                   href={integrations.driveFolderUrl}
                   rel="noreferrer"
@@ -3179,8 +3168,7 @@ function CaptureDialog({
                 >
                   deinen Drive-Ordner
                 </a>
-                , wähle eine Datei und kopiere ihren Link. Die Datei selbst wird
-                nicht in den Kompass geladen.
+                , wähle eine Datei und kopiere ihren Link. Die Datei bleibt in Drive.
               </div>
             </>
           ) : null}
@@ -3298,11 +3286,11 @@ function DocumentViewer({
           ) : (
             <div className="viewer-empty">
               <span>DIN A4</span>
-              <h3>Noch keine einzelne Drive-Datei verknüpft</h3>
+              <h3>Keine Dateivorschau</h3>
               <p>
                 {isUpload
-                  ? "Für dieses Dateiformat ist keine direkte Vorschau verfügbar. Der sichere Download bleibt jederzeit möglich."
-                  : "Dieser Eintrag verweist aktuell auf den Ordner. Verknüpfe über „Unterlage verknüpfen“ den genauen Dateilink, um Vorschau und direkten Download zu aktivieren."}
+                  ? "Für dieses Format gibt es keine Vorschau. Der Download ist möglich."
+                  : "Der Eintrag verweist auf einen Ordner. Verknüpfe den Dateilink für Vorschau und Download."}
               </p>
               <a
                 className="button button-primary"
@@ -3395,7 +3383,7 @@ function SettingsDialog({
     {
       key: "tasks",
       label: "Google Tasks",
-      detail: "Führende Quelle für alle Aufgaben",
+      detail: "Aufgaben lesen und ändern",
     },
     {
       key: "calendar",
@@ -3405,12 +3393,12 @@ function SettingsDialog({
     {
       key: "drive",
       label: "Google Drive",
-      detail: "Stammordner schreibgeschützt öffnen",
+      detail: "Stammordner nur lesen",
     },
     {
       key: "gmail",
       label: "Gmail",
-      detail: "Nur bearbeitbare Entwürfe erstellen, nie senden",
+      detail: "Entwürfe erstellen, nie senden",
     },
   ];
 
@@ -3453,8 +3441,8 @@ function SettingsDialog({
       >
         <header className="dialog-heading">
           <div>
-            <span className="eyebrow">Einstellungen & Datenschutz</span>
-            <h2 id="settings-title">Dein privater Kompass</h2>
+            <span className="eyebrow">Einstellungen</span>
+            <h2 id="settings-title">Kompass anpassen</h2>
           </div>
           <button aria-label="Schließen" onClick={onClose} type="button">
             Schließen
@@ -3465,21 +3453,16 @@ function SettingsDialog({
           <div>
             <strong>Nur für dich freigegeben</strong>
             <p>
-              {syncCopy}. Aufgaben werden in Google Tasks geführt; Eisenhower-
-              Metadaten, Kosten und Tagebuch bleiben im privaten Sites-Speicher.
-              Noch nicht übernommene Altaufgaben bleiben bis zur Migration lokal.
-              Drive-Dateien verbleiben bei Google.
+              {syncCopy}. Aufgaben liegen in Google Tasks; Prioritäten, Finanzen und
+              Tagebuch im privaten Kompass. Drive-Dateien bleiben bei Google.
             </p>
           </div>
         </div>
         <div className="settings-section dashboard-settings-section">
-          <span className="eyebrow">Master-Dashboard</span>
-          <h3>Lege fest, woran du Fortschritt erkennst</h3>
-          <p>
-            Wähle die Kennzahlen für deine Zentrale und setze eigene Zielwerte.
-            Änderungen werden direkt im privaten Kompass gespeichert.
-          </p>
-          <div className="dashboard-kpi-settings" aria-label="KPI-Ziele konfigurieren">
+          <span className="eyebrow">Zentrale</span>
+          <h3>Kennzahlen auswählen</h3>
+          <p>Wähle, was du in der Zentrale sehen und erreichen willst.</p>
+          <div className="dashboard-kpi-settings" aria-label="Ziele konfigurieren">
             {DASHBOARD_KPI_DEFINITIONS.map((definition) => {
               const setting = dashboardSettings.kpis.find(
                 (candidate) => candidate.key === definition.key,
@@ -3536,11 +3519,8 @@ function SettingsDialog({
         </div>
         <div className="settings-section application-kpi-settings-section">
           <span className="eyebrow">Bewerbungsziele</span>
-          <h3>Lege fest, welche Pipeline-Kennzahlen dich steuern</h3>
-          <p>
-            Aktiviere nur die Kennzahlen, die in „Bewerbungen“ erscheinen sollen,
-            und setze getrennte Ziele für Tag, Woche und Monat.
-          </p>
+          <h3>Kennzahlen auswählen</h3>
+          <p>Aktiviere passende Ziele für Tag, Woche oder Monat.</p>
           <div
             aria-label="Bewerbungsziele konfigurieren"
             className="application-kpi-settings"
@@ -3607,11 +3587,8 @@ function SettingsDialog({
         </div>
         <div className="settings-section reward-settings-section">
           <span className="eyebrow">Belohnungssystem</span>
-          <h3>Wähle die Darstellung, die dich gerade trägt</h3>
-          <p>
-            Alle Welten nutzen denselben Fortschritt. Beim Wechsel gehen weder XP,
-            Klarpunkte noch Ressourcen verloren.
-          </p>
+          <h3>Belohnungswelt wählen</h3>
+          <p>XP, Klarpunkte und Ressourcen bleiben beim Wechsel erhalten.</p>
           <div className="reward-settings-balance" aria-label="Gemeinsamer Fortschritt">
             <div>
               <span>Gemeinsamer Fortschritt</span>
@@ -3845,12 +3822,9 @@ function SettingsDialog({
           </div>
         </div>
         <div className="settings-section">
-          <span className="eyebrow">Deine Quellen & Integrationen</span>
-          <h3>Verbindungen und führende Datenquellen</h3>
-          <p>
-            Hier steuerst du, welche privaten Google-Dienste der Kompass lesen oder
-            für ausdrücklich gewählte Aktionen verwenden darf.
-          </p>
+          <span className="eyebrow">Verbindungen</span>
+          <h3>Google-Dienste</h3>
+          <p>Bestimme, was der Kompass lesen oder für deine Aktionen nutzen darf.</p>
           <div className="google-account-summary">
             <div>
               <strong>
@@ -3858,11 +3832,10 @@ function SettingsDialog({
                   ? workspaceStatus.googleEmail || "Google-Konto verbunden"
                   : workspaceStatus?.configured
                     ? "Google-Konto noch nicht verbunden"
-                    : "Google OAuth in Sites noch nicht eingerichtet"}
+                    : "Google-Verbindung noch nicht eingerichtet"}
               </strong>
               <p>
-                Berechtigungen werden schrittweise nur für die gewählte Funktion
-                angefragt.
+                Berechtigungen werden nur bei Bedarf angefragt.
               </p>
             </div>
             <button
@@ -3893,7 +3866,7 @@ function SettingsDialog({
                     {capability.granted ? "Neu erlauben" : "Verbinden"}
                   </a>
                 ) : (
-                  <span className="integration-disabled">Sites prüfen</span>
+                  <span className="integration-disabled">Einrichtung prüfen</span>
                 )}
               </article>
             );
@@ -3934,12 +3907,8 @@ function SettingsDialog({
         </div>
         <div className="settings-section">
           <span className="eyebrow">Datensicherung</span>
-          <h3>Deine Daten mitnehmen</h3>
-          <p>
-            Exportiere jederzeit ein lesbares JSON-Backup. Google Tasks bleibt
-            führend; das Backup enthält nur den letzten Aufgabenstand und die
-            privaten Kompass-Zusatzdaten.
-          </p>
+          <h3>Backup</h3>
+          <p>Exportiere oder importiere deine privaten Kompass-Daten.</p>
           <div className="button-group">
             <button className="button button-soft" onClick={onExport} type="button">
               Backup exportieren

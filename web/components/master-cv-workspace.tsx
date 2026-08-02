@@ -240,31 +240,23 @@ export function MasterCvWorkspace({
           CV
         </div>
         <div className="master-cv-copy">
-          <span className="eyebrow">Private Orientierungsgrundlage</span>
+          <span className="eyebrow">Bewerbungsbasis</span>
           <h2>Master-CV</h2>
           {masterCvContent ? (
             <p>
               <strong>{masterCvContent.headline || masterCvContent.name}</strong>
               <br />
               {masterCvContent.sections.length} Abschnitte ·{" "}
-              {masterCvContent.passport.evidence.length} belegte Textbausteine · Sprache{" "}
+              {masterCvContent.passport.evidence.length} belegte Inhalte ·{" "}
               {masterCvContent.language.toLowerCase().startsWith("de")
                 ? "Deutsch"
                 : masterCvContent.language.toUpperCase()} · gespeichert{" "}
               {formatRelativeDate(masterCvContent.updatedAt)}
             </p>
           ) : masterCvDocument ? (
-            <p>
-              <strong>{masterCvDocument.name}</strong> ist als Datei hinterlegt.
-              Importiere die DOCX-Datei erneut, um den Inhalt hier bearbeiten zu
-              können.
-            </p>
+            <p><strong>{masterCvDocument.name}</strong> erneut importieren, um den Inhalt zu bearbeiten.</p>
           ) : (
-            <p>
-              Importiere den vollständigen DOCX-Master-CV. Das Original bleibt
-              unverändert; die Arbeitsfassung und ihre belegten Textbausteine werden
-              separat und privat bearbeitbar gespeichert.
-            </p>
+            <p>Importiere deinen DOCX-Master-CV. Das Original bleibt unverändert.</p>
           )}
         </div>
         <div className="master-cv-actions">
@@ -300,11 +292,8 @@ export function MasterCvWorkspace({
       {showImport ? (
         <div className="master-cv-import" aria-label="Master-CV importieren">
           <div className="master-cv-import-copy">
-            <strong>DOCX-Master-CV einlesen</strong>
-            <small>
-              Die Datei wird geprüft und ausschließlich in deiner privaten Ablage
-              gespeichert. Belegte Textbausteine entstehen direkt aus dem CV.
-            </small>
+            <strong>DOCX einlesen</strong>
+            <small>Die Datei bleibt privat. Daraus entsteht eine bearbeitbare Fassung mit Belegen.</small>
           </div>
           <input
             accept=".docx"
@@ -322,7 +311,7 @@ export function MasterCvWorkspace({
             <div>
               <strong>{cvFile?.name || "Master-CV auswählen"}</strong>
               <small>
-                {cvFile ? formatBytes(cvFile.size) : "Word-Datei · höchstens 8 MB"}
+                {cvFile ? formatBytes(cvFile.size) : "Word-Datei · höchstens 16 MB"}
               </small>
             </div>
           </button>
@@ -341,12 +330,11 @@ export function MasterCvWorkspace({
         <div className="master-cv-editor">
           <header>
             <div>
-              <span className="eyebrow">Bearbeitbare Arbeitsfassung</span>
-              <h3>Inhalte des Master-CV</h3>
+              <span className="eyebrow">Bearbeitung</span>
+              <h3>Inhalte</h3>
             </div>
             <small>
-              Änderungen wirken auf künftige Bewerbungspakete. Das DOCX-Original
-              und die Evidenzen bleiben unverändert.
+              Gilt für künftige Bewerbungspakete. Original und Belege bleiben unverändert.
             </small>
           </header>
           <div className="master-cv-profile-fields">
@@ -472,7 +460,7 @@ export function MasterCvWorkspace({
               onClick={saveDraft}
               type="button"
             >
-              Arbeitsfassung speichern
+              Fassung speichern
             </button>
           </div>
         </div>
@@ -482,15 +470,11 @@ export function MasterCvWorkspace({
         <div className="master-cv-evidence-grid">
           <details className="master-cv-evidence">
             <summary>
-              Belegte Textbausteine ansehen ·{" "}
+              Belege ansehen ·{" "}
               {masterCvContent.passport.evidence.length} Einträge
             </summary>
             <div className="master-cv-evidence-body">
-              <p>
-                Die beim Import übernommenen Textbausteine bleiben als sichere
-                Referenz schreibgeschützt. Änderungen an der Arbeitsfassung verändern
-                diese Grundlage nicht automatisch.
-              </p>
+              <p>Importierte Belege bleiben schreibgeschützt und ändern sich nicht mit der Fassung.</p>
               <div className="master-cv-targets">
                 {masterCvContent.passport.targetDirections.map((target) => (
                   <span key={target}>{target}</span>
@@ -522,7 +506,7 @@ export function MasterCvWorkspace({
             onClick={() => downloadEditedVersion(masterCvContent)}
             type="button"
           >
-            Bearbeitete Fassung herunterladen
+            Fassung herunterladen
           </button>
         </div>
       ) : null}

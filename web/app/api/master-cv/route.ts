@@ -6,7 +6,7 @@ import type { DocumentRef, MasterCvContent } from "../../../lib/types";
 
 export const dynamic = "force-dynamic";
 
-const MAX_CV_BYTES = 8 * 1024 * 1024;
+const MAX_CV_BYTES = 16 * 1024 * 1024;
 const CV_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     }
     if (cv.size > MAX_CV_BYTES) {
       return Response.json(
-        { error: "Der Master-CV darf höchstens 8 MB groß sein." },
+        { error: "Der Master-CV darf höchstens 16 MB groß sein." },
         { status: 413 },
       );
     }

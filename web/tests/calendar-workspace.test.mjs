@@ -28,10 +28,10 @@ test("liefert die informative Kalenderzentrale mit vier Ansichten", async () => 
   for (const label of ["Tag", "Woche", "Monat", "Agenda"]) {
     assert.match(view, new RegExp(`label: "${label}"`));
   }
-  assert.match(view, /Heute zentral/);
-  assert.match(view, /Tageslage/);
-  assert.match(view, /Fokus-Guide/);
-  assert.match(view, /Fristen-Guide/);
+  assert.match(view, /Planungscheck/);
+  assert.match(view, /eyebrow="Tag"/);
+  assert.match(view, /eyebrow="Fokus"/);
+  assert.match(view, /eyebrow="Fristen"/);
   assert.match(view, /Meine Kalender/);
   assert.match(view, /Google-Kalender anlegen/);
   assert.match(view, /MAX_SELECTED_CALENDARS = 12/);
@@ -59,7 +59,7 @@ test("liefert die informative Kalenderzentrale mit vier Ansichten", async () => 
   assert.match(eventForm, /Geburtsdatum/);
   assert.match(eventForm, /recurrence: isBirthday \? "yearly" : "none"/);
   assert.match(eventForm, /availability: isBirthday \? "free" : "busy"/);
-  assert.match(eventForm, /kein Zeitfenster reserviert/);
+  assert.match(eventForm, /Keine Einladung, kein Zeitblock/);
   assert.match(styles, /\.event-duration-field/);
   assert.match(styles, /\.event-switch-track/);
   assert.match(types, /export type GoogleCalendar/);

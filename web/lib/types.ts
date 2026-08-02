@@ -805,7 +805,7 @@ export type ApplicationGenerationPreferences = {
   formality: ApplicationFormality;
   addressStyle: "auto" | "sie" | "du";
   language: "Deutsch" | "Englisch";
-  cvLength: "compact" | "two_pages";
+  cvLength: "compact" | "two_pages" | "detailed";
   focusThemes: string[];
   customFocus: string;
   outputKinds: ApplicationOutputKind[];

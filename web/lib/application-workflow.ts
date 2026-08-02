@@ -219,7 +219,11 @@ export function normalizeApplicationGenerationPreferences(
       ? (candidate.addressStyle as ApplicationGenerationPreferences["addressStyle"])
       : DEFAULT_APPLICATION_GENERATION_PREFERENCES.addressStyle,
     language: candidate.language === "Englisch" ? "Englisch" : "Deutsch",
-    cvLength: candidate.cvLength === "compact" ? "compact" : "two_pages",
+    cvLength: ["compact", "two_pages", "detailed"].includes(
+      candidate.cvLength ?? "",
+    )
+      ? (candidate.cvLength as ApplicationGenerationPreferences["cvLength"])
+      : DEFAULT_APPLICATION_GENERATION_PREFERENCES.cvLength,
     focusThemes: stringList(candidate.focusThemes, 12, 160),
     customFocus:
       typeof candidate.customFocus === "string"

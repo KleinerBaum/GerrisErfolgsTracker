@@ -271,7 +271,7 @@ export function JobResearchPanel({
     }
     setBusy(true);
     setError("");
-    setProgress("Recherche wird sicher im Hintergrund gestartet …");
+    setProgress("Recherche startet …");
     try {
       let response = await fetch("/api/job-research", {
         method: "POST",
@@ -306,7 +306,7 @@ export function JobResearchPanel({
           );
         }
         setProgress(
-          "Recherche läuft im Hintergrund – Quellen, Aktualität und Widersprüche werden geprüft …",
+          "Quellen und Widersprüche werden geprüft …",
         );
         const retryAfter = Number(response.headers.get("retry-after"));
         const delay = Number.isFinite(retryAfter)
@@ -361,12 +361,9 @@ export function JobResearchPanel({
     <>
       <div className="research-panel-heading">
         <div>
-          <span className="eyebrow">Quellengebundene Vakanzrecherche</span>
-          <h3>Erst prüfen, dann für Bewerbung und Gespräch verwenden</h3>
-          <p>
-            Die Websuche verarbeitet nur öffentliche Stellendaten. Dein CV,
-            persönliche Antworten und private Notizen bleiben in diesem Schritt außen vor.
-          </p>
+          <span className="eyebrow">Vakanzrecherche</span>
+          <h3>Öffentliche Fakten prüfen</h3>
+          <p>CV, persönliche Antworten und Notizen werden dabei nicht verwendet.</p>
         </div>
         <button
           className="button button-primary"
@@ -395,7 +392,7 @@ export function JobResearchPanel({
         </label>
       </details>
       <div className="research-scope-summary" aria-label="Gewählter Rechercheumfang">
-        <span>Websuche nutzt:</span>
+        <span>Recherche:</span>
         {APPLICATION_RESEARCH_SCOPE_DEFINITIONS.filter((definition) =>
           researchScopes.includes(definition.key),
         ).map((definition) => (
@@ -415,7 +412,7 @@ export function JobResearchPanel({
         <div className="research-results">
           <div className="research-status-grid">
             <article>
-              <span>Abruf</span>
+              <span>Stellenanzeige</span>
               <strong>{RETRIEVAL_LABELS[research.retrievalStatus]}</strong>
             </article>
             <article>
@@ -448,8 +445,8 @@ export function JobResearchPanel({
           {research.adFacts.length ? (
             <section className="research-claim-group">
               <header>
-                <span className="eyebrow">Anzeige</span>
-                <h4>Vakanzfakten zur Prüfung</h4>
+                <span className="eyebrow">Stellenanzeige</span>
+                <h4>Fakten prüfen</h4>
               </header>
               <div className="research-claim-list">
                 {research.adFacts.map((claim) => (
@@ -485,8 +482,8 @@ export function JobResearchPanel({
           {research.gaps.length ? (
             <section className="research-gaps">
               <header>
-                <span className="eyebrow">Interview und Entscheidung</span>
-                <h4>Offene Punkte gezielt klären</h4>
+                <span className="eyebrow">Offene Fragen</span>
+                <h4>Im Gespräch klären</h4>
               </header>
               <div>
                 {research.gaps.map((gap, index) => (
@@ -527,9 +524,8 @@ export function JobResearchPanel({
             </details>
           ) : null}
           <p className="research-audit-copy">
-            Recherchiert am {new Date(research.researchedAt).toLocaleString("de-DE")} ·
-            Modell {research.model} · Quellen bleiben anklickbar. Nur bestätigte oder
-            bearbeitet bestätigte Aussagen fließen in die Dokumenterstellung ein.
+            Stand {new Date(research.researchedAt).toLocaleString("de-DE")} · Nur
+            bestätigte Aussagen fließen in Unterlagen ein.
           </p>
         </div>
       ) : null}

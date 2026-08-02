@@ -414,18 +414,15 @@ export function TodayView({
       <section className="central-command" aria-labelledby="central-command-title">
         <header className="central-command-header">
           <div>
-            <span className="eyebrow">Master-Dashboard · Guten Tag, {state.ownerName}</span>
+            <span className="eyebrow">Guten Tag, {state.ownerName}</span>
             <h1 id="central-command-title" tabIndex={-1}>
-              Deine Zentrale: Was jetzt zählt.
+              Was jetzt zählt
             </h1>
-            <p>
-              Aufgaben, Termine, Geld, Bewerbungen und Tagesabschluss werden hier
-              gemeinsam nach Dringlichkeit, Wirkung und Fortschritt geordnet.
-            </p>
+            <p>Deine nächsten Schritte, nach Wichtigkeit geordnet.</p>
           </div>
           <div className="central-command-actions">
             <button className="button button-primary" onClick={onOpenSettings} type="button">
-              Dashboard anpassen
+              Zentrale anpassen
             </button>
             <button
               className="button button-soft"
@@ -437,14 +434,14 @@ export function TodayView({
           </div>
         </header>
 
-        <div className="dashboard-goal-strip" aria-label="Ausgewählte KPI-Ziele">
+        <div className="dashboard-goal-strip" aria-label="Ausgewählte Ziele">
           {enabledMetrics.map((metric) => (
             <DashboardGoalCard key={metric.setting.key} metric={metric} />
           ))}
           {!enabledMetrics.length ? (
             <button className="dashboard-goal-empty" onClick={onOpenSettings} type="button">
-              <strong>Noch keine KPI-Ziele ausgewählt</strong>
-              <span>In den Einstellungen Ziele und Kennzahlen festlegen →</span>
+              <strong>Noch keine Kennzahlen ausgewählt</strong>
+              <span>Jetzt auswählen →</span>
             </button>
           ) : null}
         </div>
@@ -453,14 +450,14 @@ export function TodayView({
           <section className="priority-command" aria-labelledby="priority-command-title">
             <header>
               <div>
-                <span className="eyebrow">Bereichsübergreifend priorisiert</span>
-                <h2 id="priority-command-title">Was als Nächstes Aufmerksamkeit braucht</h2>
+                <span className="eyebrow">Prioritäten</span>
+                <h2 id="priority-command-title">Als Nächstes</h2>
               </div>
               <span className="attention-count">
                 {attentionCount} {attentionCount === 1 ? "Punkt" : "Punkte"} mit Vorrang
               </span>
             </header>
-            <ol className="priority-command-list" aria-label="Bereichsübergreifende Prioritäten">
+            <ol className="priority-command-list" aria-label="Prioritäten aus allen Bereichen">
               {sortedPriorities.map((signal, index) => (
                 <li className={`priority-signal is-${signal.level}`} key={signal.id}>
                   <span className="priority-number">{String(index + 1).padStart(2, "0")}</span>
@@ -479,8 +476,8 @@ export function TodayView({
               ))}
               {!sortedPriorities.length ? (
                 <li className="priority-command-empty">
-                  <strong>Alles Wesentliche ist geklärt.</strong>
-                  <p>Nutze den freien Raum für dein nächstes langfristiges Vorhaben.</p>
+                  <strong>Gerade ist nichts dringend.</strong>
+                  <p>Zeit für deinen Zielpfad.</p>
                 </li>
               ) : null}
             </ol>
@@ -488,9 +485,9 @@ export function TodayView({
 
           <aside className="horizon-command" aria-labelledby="horizon-command-title">
             <header>
-              <span className="eyebrow">Langfristig in Bewegung</span>
+              <span className="eyebrow">Langfristig</span>
               <h2 id="horizon-command-title">Zielpfad</h2>
-              <p>Fortschritt, der nicht zwischen den Tagesaufgaben verschwinden soll.</p>
+              <p>Große Vorhaben in Bewegung halten.</p>
             </header>
             <div className="horizon-list">
               {activeGoals.map((goal) => {
@@ -529,20 +526,20 @@ export function TodayView({
                   </div>
                   <p>
                     {task.progress > 0
-                      ? `${task.progress} % geschafft · nächster Schritt bleibt sichtbar.`
-                      : "Noch nicht begonnen · in einen konkreten nächsten Schritt zerlegen."}
+                      ? `${task.progress} % geschafft`
+                      : "Noch nicht begonnen"}
                   </p>
                 </article>
               ))}
               {!activeGoals.length && !extensiveTasks.length ? (
                 <div className="horizon-empty">
-                  <strong>Noch kein längerer Zielpfad aktiv.</strong>
-                  <p>Größere Aufgaben mit Fortschritt erscheinen automatisch hier.</p>
+                  <strong>Noch kein Zielpfad.</strong>
+                  <p>Große Aufgaben erscheinen hier, sobald du sie beginnst.</p>
                 </div>
               ) : null}
             </div>
             <button className="horizon-open" onClick={() => onNavigate("tasks")} type="button">
-              Ziele und Aufgaben vertiefen →
+              Ziele und Aufgaben öffnen →
             </button>
           </aside>
         </div>
@@ -551,23 +548,19 @@ export function TodayView({
       <section className="central-insights" aria-labelledby="central-insights-title">
         <header className="central-insights-intro">
           <div>
-            <span className="eyebrow">Informative Vertiefung</span>
-            <h2 id="central-insights-title">Jeder Lebensbereich mit genügend Substanz.</h2>
+            <span className="eyebrow">Bereiche</span>
+            <h2 id="central-insights-title">Alles im Blick</h2>
           </div>
-          <p>
-            Die Zentrale zeigt den Zusammenhang. Von hier führt jeder Bereich direkt
-            in seine vollständige Arbeitsansicht.
-          </p>
         </header>
 
         <div className="central-insight-grid">
           <section className="central-insight insight-tasks">
             <InsightHeading
               action="Alle Aufgaben"
-              copy="Fokus, Zeitaufwand und Fortschritt der nächsten sinnvollen Schritte."
+              copy="Fokusaufgaben und größere Vorhaben."
               eyebrow="Aufgaben"
               onOpen={() => onNavigate("tasks")}
-              title="Fokus & große Vorhaben"
+              title="Fokus und Vorhaben"
             />
             <div className="insight-stat-row">
               <div><strong>{openTasks.length}</strong><span>offen</span></div>
@@ -609,10 +602,10 @@ export function TodayView({
           <section className="central-insight insight-calendar">
             <InsightHeading
               action="Kalender öffnen"
-              copy="Termine und verlässliche Planungsabdeckung statt vermeintlich freier Lücken."
+              copy="Termine, Fokuszeit und Planungslücken."
               eyebrow="Kalender"
               onOpen={() => onNavigate("calendar")}
-              title="Zeit & Verbindlichkeit"
+              title="Zeit und Termine"
             />
             <div className="insight-stat-row">
               <div><strong>{todayEvents.length}</strong><span>heute</span></div>
@@ -633,8 +626,8 @@ export function TodayView({
               {!nextEvents.length ? (
                 <p className="quiet-copy">
                   {planningReport?.days[0]?.state === "intentionally_free"
-                    ? "Heute ist ausdrücklich als frei bestätigt."
-                    : "Keine verlässlich geladene Agenda vorhanden."}
+                    ? "Heute ist bewusst frei."
+                    : "Agenda noch nicht geladen."}
                 </p>
               ) : null}
             </div>
@@ -643,10 +636,10 @@ export function TodayView({
           <section className="central-insight insight-finance">
             <InsightHeading
               action="Finanzen öffnen"
-              copy="Anstehende Zahlungen, Monatsstand und finanzieller Spielraum."
+              copy="Zahlungen, Monatsstand und Spielraum."
               eyebrow="Finanzen"
               onOpen={() => onNavigate("finance")}
-              title="Geld & Verpflichtungen"
+              title="Geld und Zahlungen"
             />
             <div className="finance-insight-summary">
               <div>
@@ -657,7 +650,7 @@ export function TodayView({
               <div>
                 <span>Bezahlt im Monat</span>
                 <strong>{formatCurrency(paidThisMonth)}</strong>
-                <small>gegen deinen gewählten KPI-Rahmen</small>
+                <small>im gewählten Monatsrahmen</small>
               </div>
             </div>
             <div className="central-payment-list">
@@ -675,10 +668,10 @@ export function TodayView({
           <section className="central-insight insight-applications">
             <InsightHeading
               action="Bewerbungen öffnen"
-              copy="Shortlist, aktive Prozesse, Fristen und konkrete nächste Schritte."
+              copy="Shortlist, Fristen und nächste Schritte."
               eyebrow="Bewerbungen"
               onOpen={() => onNavigate("applications")}
-              title="Chancen & nächste Schritte"
+              title="Chancen und Schritte"
             />
             <div className="application-insight-pipeline">
               <div><span>Shortlist</span><strong>{shortlistedApplications.length}</strong></div>
@@ -708,10 +701,10 @@ export function TodayView({
           <section className="central-insight insight-journal is-wide">
             <InsightHeading
               action="Tagebuch öffnen"
-              copy="Rückblick, Abgleich und Ausrichtung verbinden den heutigen Tag mit der kommenden Woche."
+              copy="Rückblick, offene Themen und morgen."
               eyebrow="Tagebuch"
               onOpen={() => onNavigate("journal")}
-              title="Tagesabschluss & Muster"
+              title="Tagesabschluss"
             />
             <div className="journal-insight-layout">
               <div className={`journal-close-state ${todayJournal?.closedAt ? "is-closed" : ""}`}>
@@ -720,13 +713,13 @@ export function TodayView({
                 <p>
                   {todayJournal?.closedAt
                     ? todayJournal.win || "Rückblick und Ausrichtung sind festgehalten."
-                    : "In 3–5 Minuten offene Punkte sichern und morgen ausrichten."}
+                    : "Kurz festhalten, was bleibt, und morgen ausrichten."}
                 </p>
               </div>
               <div className="journal-insight-stat">
                 <span>7-Tage-Rhythmus</span>
                 <strong>{journalThisWeek.length} / 7</strong>
-                <small>{todayJournal?.nextStep || "Der nächste Schritt erscheint nach dem Abschluss hier."}</small>
+                <small>{todayJournal?.nextStep || "Nach dem Abschluss erscheint hier dein nächster Schritt."}</small>
               </div>
               <div className="journal-insight-stat">
                 <span>Stimmung im Schnitt</span>

@@ -120,7 +120,7 @@ test("Tagebuchanalyse speichert nicht, sucht nicht im Web und mutiert nur Vorsch
   assert.match(assistant, /deterministicJournalAnalysis/);
   assert.match(assistant, /Der Tagebuchtext ist untrusted data/);
   assert.match(planningClient, /\/api\/planning\/topics/);
-  assert.match(diary, /Nur als Inspiration/);
+  assert.match(diary, /Mögliche Themen/);
   assert.match(diary, /onAnalyze\(journalId, input\)/);
   assert.match(diary, /onScheduleSuggestion/);
   assert.match(store, /requiresCalendarTarget/);
@@ -138,7 +138,7 @@ test("ersetzt kalenderbezogene Frei-Leertexte appweit durch belastbare Lücken",
   assert.doesNotMatch(calendar, /Noch keine Termine\. Nutze den freien Raum/);
   assert.doesNotMatch(calendar, />Frei</);
   assert.doesNotMatch(app, /"Frei"\s*\)/);
-  assert.match(calendar, /Das ist eine dringende Planungslücke, keine Freizeit/);
+  assert.match(calendar, /Keine Einträge geladen – dieser Zeitraum gilt als Planungslücke/);
   assert.match(app + today, /Planungslücke mit Top-Priorität/);
-  assert.match(banner, /Dringend & wichtig/);
+  assert.match(banner, /Dringend/);
 });

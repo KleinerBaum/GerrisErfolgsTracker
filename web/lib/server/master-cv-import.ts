@@ -36,11 +36,18 @@ function decodeXmlEntities(value: string): string {
 }
 
 function paragraphText(xml: string): string {
-  const prepared = xml
-    .replace(/<w:tab\b[^>]*\/?\s*>/g, "\t")
-    .replace(/<w:(?:br|cr)\b[^>]*\/?\s*>/g, "\n");
-  return [...prepared.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)]
-    .map((match) => decodeXmlEntities(match[1]))
+  return [
+    ...xml.matchAll(
+      /<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:tab\b[^>]*\/?\s*>|<w:(br|cr)\b[^>]*\/?\s*>/g,
+    ),
+  ]
+    .map((match) =>
+      typeof match[1] === "string"
+        ? decodeXmlEntities(match[1])
+        : match[2]
+          ? "\n"
+          : "\t",
+    )
     .join("")
     .replace(/\u0000/g, "")
     .trim();
@@ -83,32 +90,54 @@ function extractDocx(bytes: Uint8Array) {
     throw new Error("Die DOCX-Datei enthält keinen auswählbaren Text.");
   }
 
-  const byStyle = (style: string) =>
-    paragraphs.find((paragraph) => paragraph.style === style)?.value ?? "";
+  const styleKey = (style: string) =>
+    style.replace(/[^a-z0-9]+/gi, "").toLocaleLowerCase("en-US");
+  const byStyle = (...styles: string[]) => {
+    const accepted = new Set(styles.map(styleKey));
+    return (
+      paragraphs.find((paragraph) => accepted.has(styleKey(paragraph.style)))
+        ?.value ?? ""
+    );
+  };
+  const isSectionStyle = (style: string) =>
+    ["cvsection", "heading1"].includes(styleKey(style));
+  const isBulletStyle = (style: string) =>
+    ["cvbullet", "listbullet", "listparagraph"].includes(styleKey(style));
   const firstSection = paragraphs.findIndex(
-    (paragraph) => paragraph.style === "CvSection",
+    (paragraph) => isSectionStyle(paragraph.style),
   );
   const profileParagraphs = paragraphs.slice(0, firstSection < 0 ? 4 : firstSection);
-  const name = byStyle("CvName") || profileParagraphs[0]?.value || "";
-  const headline = byStyle("CvHeadline") || profileParagraphs[1]?.value || "";
-  const subheadline = byStyle("CvSubheadline") || profileParagraphs[2]?.value || "";
-  const contactLine = byStyle("CvContact") || profileParagraphs[3]?.value || "";
+  const name = byStyle("CvName", "Title") || profileParagraphs[0]?.value || "";
+  const headline =
+    byStyle("CvHeadline", "Subtitle") || profileParagraphs[1]?.value || "";
+  const subheadline =
+    byStyle("CvSubheadline", "CvTagline") || profileParagraphs[2]?.value || "";
+  const contactLine =
+    byStyle("CvContact") || profileParagraphs[3]?.value || "";
 
   const sectionDrafts: Array<{ heading: string; lines: string[] }> = [];
   let current: { heading: string; lines: string[] } | null = null;
   for (const paragraph of paragraphs) {
+    const headingLetters = paragraph.value.match(/[A-ZÄÖÜ]/g)?.length ?? 0;
+    const headingWordCount = paragraph.value.split(/\s+/).length;
     const conventionalHeading =
       !paragraph.style &&
+      /^[A-ZÄÖÜ]/.test(paragraph.value) &&
+      headingLetters >= 5 &&
       paragraph.value === paragraph.value.toUpperCase() &&
-      paragraph.value.split(/\s+/).length <= 8;
-    if (paragraph.style === "CvSection" || conventionalHeading) {
+      headingWordCount <= 8 &&
+      (headingWordCount > 1 ||
+        /^(?:PROFIL|KURZPROFIL|BERUFSERFAHRUNG|AUSBILDUNG|WEITERBILDUNG|QUALIFIKATIONEN|KOMPETENZEN|PROJEKTE|SPRACHEN)$/i.test(
+          paragraph.value,
+        ));
+    if (isSectionStyle(paragraph.style) || conventionalHeading) {
       current = { heading: paragraph.value, lines: [] };
       sectionDrafts.push(current);
       continue;
     }
     if (!current) continue;
     const value =
-      paragraph.style === "CvBullet" && !paragraph.value.startsWith("•")
+      isBulletStyle(paragraph.style) && !paragraph.value.startsWith("•")
         ? `• ${paragraph.value}`
         : paragraph.value;
     current.lines.push(value);
