@@ -14,6 +14,32 @@ export const userStates = sqliteTable("user_states", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const applicationGenerationJobs = sqliteTable(
+  "application_generation_jobs",
+  {
+    jobId: text("job_id").primaryKey(),
+    ownerHash: text("owner_hash").notNull(),
+    stage: text("stage").notNull(),
+    responseId: text("response_id").notNull(),
+    requestJson: text("request_json").notNull(),
+    draftJson: text("draft_json"),
+    issuesJson: text("issues_json").notNull().default("[]"),
+    usageJson: text("usage_json").notNull().default("[]"),
+    resultJson: text("result_json"),
+    terminalErrorJson: text("terminal_error_json"),
+    completedAt: text("completed_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+  },
+  (table) => [
+    index("application_generation_jobs_owner_expiry_idx").on(
+      table.ownerHash,
+      table.expiresAt,
+    ),
+  ],
+);
+
 export const googleDriveConnections = sqliteTable("google_drive_connections", {
   ownerEmail: text("owner_email").primaryKey(),
   googleSubject: text("google_subject"),

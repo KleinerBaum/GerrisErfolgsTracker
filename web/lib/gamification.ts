@@ -142,6 +142,30 @@ const verificationValues = new Set<VerificationType>([
   "ARTIFACT",
   "GOOGLE_TASK",
 ]);
+const ledgerKindValues = new Set<RewardLedgerEntry["kind"]>([
+  "OPENING_BALANCE",
+  "TASK_REWARD",
+  "COST_REWARD",
+  "DAY_CLOSE_REWARD",
+  "BOSS_REWARD",
+  "REWARD_REDEMPTION",
+  "WORLD_BUILD",
+]);
+const worldDistrictValues = new Set<WorldDistrictKey>([
+  "ARCHIVE",
+  "TREASURY",
+  "WORKSHOP",
+  "LIBRARY",
+  "HEARTH",
+  "GARDEN",
+]);
+const worldUpgradeValues = new Set<WorldUpgradeKind>([
+  "DECORATION",
+  "ROOM",
+  "BUILDING",
+  "LANDMARK",
+  "REGION",
+]);
 
 const finite = (value: unknown, fallback = 0): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -339,10 +363,49 @@ function validLedgerEntry(value: unknown): value is RewardLedgerEntry {
   const entry = value as Partial<RewardLedgerEntry>;
   return (
     typeof entry.id === "string" &&
+    Boolean(entry.id.trim()) &&
     typeof entry.idempotencyKey === "string" &&
+    Boolean(entry.idempotencyKey.trim()) &&
     typeof entry.createdAt === "string" &&
-    typeof entry.kind === "string"
+    Boolean(entry.createdAt.trim()) &&
+    Number.isFinite(Date.parse(entry.createdAt)) &&
+    entry.kind !== undefined &&
+    ledgerKindValues.has(entry.kind)
   );
+}
+
+function normalizeRewardCatalog(value: unknown): PersonalReward[] {
+  if (!Array.isArray(value)) {
+    return DEFAULT_REWARD_CATALOG.map((item) => ({ ...item }));
+  }
+  const seen = new Set<string>();
+  const normalized: PersonalReward[] = [];
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const reward = candidate as Partial<PersonalReward>;
+    const id = typeof reward.id === "string" ? reward.id.trim() : "";
+    const title = typeof reward.title === "string" ? reward.title.trim() : "";
+    if (
+      !id ||
+      !title ||
+      seen.has(id) ||
+      !Number.isFinite(reward.cost) ||
+      Number(reward.cost) <= 0 ||
+      Number(reward.cost) > 1_000_000
+    ) {
+      continue;
+    }
+    seen.add(id);
+    normalized.push({
+      id,
+      title,
+      cost: Math.max(1, Math.round(Number(reward.cost))),
+      active: reward.active !== false,
+    });
+  }
+  return normalized.length
+    ? normalized
+    : DEFAULT_REWARD_CATALOG.map((item) => ({ ...item }));
 }
 
 function normalizeAdaptiveWeights(value: unknown): AdaptiveRewardWeights {
@@ -368,11 +431,39 @@ export function normalizeGamificationState(
   if (!value || value.schemaVersion !== 1) {
     return createDefaultGamification(legacyPoints, createdAt);
   }
+  const seenLedgerIds = new Set<string>();
+  const seenIdempotencyKeys = new Set<string>();
   const ledger = Array.isArray(value.ledger)
-    ? value.ledger.filter(validLedgerEntry).map((entry, index) => ({
+    ? value.ledger
+      .filter(validLedgerEntry)
+      .filter((entry) => {
+        if (
+          seenLedgerIds.has(entry.id) ||
+          seenIdempotencyKeys.has(entry.idempotencyKey)
+        ) {
+          return false;
+        }
+        seenLedgerIds.add(entry.id);
+        seenIdempotencyKeys.add(entry.idempotencyKey);
+        return true;
+      })
+      .map((entry, index) => ({
         ...entry,
         sequence: index + 1,
         engineVersion: GAMIFICATION_ENGINE_VERSION,
+        difficultyBand:
+          entry.difficultyBand && difficultyValues.has(entry.difficultyBand)
+            ? entry.difficultyBand
+            : null,
+        verificationType:
+          entry.verificationType && verificationValues.has(entry.verificationType)
+            ? entry.verificationType
+            : null,
+        district:
+          entry.district && worldDistrictValues.has(entry.district)
+            ? entry.district
+            : null,
+        bonusPercent: clamp(Math.round(finite(entry.bonusPercent)), 0, 25),
         xpDelta: Math.round(finite(entry.xpDelta)),
         energyDelta: Math.round(finite(entry.energyDelta)),
         runeDelta: Math.round(finite(entry.runeDelta)),
@@ -381,7 +472,7 @@ export function normalizeGamificationState(
         courageEmberDelta: Math.round(finite(entry.courageEmberDelta)),
       }))
     : [];
-  const profiles = Array.isArray(value.profiles)
+  const normalizedProfiles = Array.isArray(value.profiles)
     ? value.profiles.filter(validProfile).map((profile) => {
         const fallback = localComplexityAssessment({
           estimateMinutes: 20,
@@ -409,6 +500,11 @@ export function normalizeGamificationState(
         } satisfies TaskGamificationProfile;
       })
     : [];
+  const profiles = [
+    ...new Map(
+      normalizedProfiles.map((profile) => [profile.taskId, profile] as const),
+    ).values(),
+  ];
   const approvedMessages = Array.isArray(value.approvedMessages)
     ? value.approvedMessages.filter(
         (message) =>
@@ -453,10 +549,7 @@ export function normalizeGamificationState(
     },
     approvedMessages,
     feedback: Array.isArray(value.feedback) ? value.feedback : [],
-    rewardCatalog:
-      Array.isArray(value.rewardCatalog) && value.rewardCatalog.length
-        ? value.rewardCatalog
-        : DEFAULT_REWARD_CATALOG.map((item) => ({ ...item })),
+    rewardCatalog: normalizeRewardCatalog(value.rewardCatalog),
     goals: Array.isArray(value.goals) ? value.goals : [],
     anchorDays: Array.isArray(value.anchorDays) ? value.anchorDays : [],
     adaptiveWeights: normalizeAdaptiveWeights(value.adaptiveWeights),
@@ -902,12 +995,17 @@ export function redeemPersonalReward(
   createdAt: string,
 ): { gamification: GamificationState; entry: RewardLedgerEntry | null; error: string | null } {
   const reward = gamification.rewardCatalog.find((item) => item.id === rewardId && item.active);
-  if (!reward) return { gamification, entry: null, error: "Diese Belohnung ist nicht verfügbar." };
+  if (!reward || !Number.isFinite(reward.cost) || reward.cost <= 0) {
+    return { gamification, entry: null, error: "Diese Belohnung ist nicht verfügbar." };
+  }
+  const idempotencyKey = `redeem:${reward.id}:${createdAt}`;
+  if (gamification.ledger.some((entry) => entry.idempotencyKey === idempotencyKey)) {
+    return { gamification, entry: null, error: null };
+  }
   const totals = ledgerTotals(gamification.ledger);
   if (totals.balanceXp < reward.cost) {
     return { gamification, entry: null, error: "Dafür sind noch nicht genügend Klarpunkte verfügbar." };
   }
-  const idempotencyKey = `redeem:${reward.id}:${createdAt}`;
   const entry = makeEntry(gamification, {
     idempotencyKey,
     createdAt,
@@ -939,7 +1037,14 @@ export function buildWorldUpgrade(
   kind: WorldUpgradeKind,
   createdAt: string,
 ): { gamification: GamificationState; entry: RewardLedgerEntry | null; error: string | null } {
+  if (!worldDistrictValues.has(district) || !worldUpgradeValues.has(kind)) {
+    return { gamification, entry: null, error: "Dieser Ausbau ist nicht verfügbar." };
+  }
   const cost = WORLD_UPGRADE_COSTS[kind];
+  const idempotencyKey = `world:${district}:${kind}:${createdAt}`;
+  if (gamification.ledger.some((entry) => entry.idempotencyKey === idempotencyKey)) {
+    return { gamification, entry: null, error: null };
+  }
   const totals = ledgerTotals(gamification.ledger);
   if (
     totals.energy < cost.energy ||
@@ -949,7 +1054,6 @@ export function buildWorldUpgrade(
   ) {
     return { gamification, entry: null, error: "Für diesen Ausbau fehlen noch Ressourcen." };
   }
-  const idempotencyKey = `world:${district}:${kind}:${createdAt}`;
   const entry = makeEntry(gamification, {
     idempotencyKey,
     createdAt,

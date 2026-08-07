@@ -17,6 +17,7 @@ import {
   type IntegrationConfig,
 } from "../lib/types";
 import { formatCurrency, formatDate } from "../lib/format";
+import { parseEuroInput } from "../lib/finance-data";
 import { gmailComposeUrl } from "../lib/google-links";
 
 const MONTHLY_FACTORS: Record<CostCadence, number> = {
@@ -74,6 +75,10 @@ export function FinanceView({
   const [balancesOpen, setBalancesOpen] = useState(false);
   const [paypalInput, setPaypalInput] = useState("");
   const [revolutInput, setRevolutInput] = useState("");
+  const [balanceErrors, setBalanceErrors] = useState({
+    paypal: "",
+    revolut: "",
+  });
   const [planningCostId, setPlanningCostId] = useState("");
 
   const incomes = state.incomes ?? [];
@@ -140,19 +145,23 @@ export function FinanceView({
         ? ""
         : String(balances.revolut).replace(".", ","),
     );
+    setBalanceErrors({ paypal: "", revolut: "" });
     setBalancesOpen(true);
   };
 
   const saveBalances = (event: FormEvent) => {
     event.preventDefault();
-    const parseBalance = (value: string): number | null => {
-      if (!value.trim()) return null;
-      const parsed = Number.parseFloat(value.replace(",", "."));
-      return Number.isFinite(parsed) ? parsed : null;
+    const paypal = parseEuroInput(paypalInput);
+    const revolut = parseEuroInput(revolutInput);
+    const nextErrors = {
+      paypal: paypal.valid ? "" : "Bitte einen gültigen Eurobetrag eingeben.",
+      revolut: revolut.valid ? "" : "Bitte einen gültigen Eurobetrag eingeben.",
     };
+    setBalanceErrors(nextErrors);
+    if (!paypal.valid || !revolut.valid) return;
     onUpdateBalances({
-      paypal: parseBalance(paypalInput),
-      revolut: parseBalance(revolutInput),
+      paypal: paypal.value,
+      revolut: revolut.value,
       updatedAt: new Date().toISOString(),
     });
     setBalancesOpen(false);
@@ -307,20 +316,44 @@ export function FinanceView({
               <label>
                 PayPal in Euro
                 <input
+                  aria-describedby={balanceErrors.paypal ? "paypal-balance-error" : undefined}
+                  aria-invalid={Boolean(balanceErrors.paypal)}
                   inputMode="decimal"
-                  onChange={(event) => setPaypalInput(event.target.value)}
+                  onChange={(event) => {
+                    setPaypalInput(event.target.value);
+                    if (balanceErrors.paypal) {
+                      setBalanceErrors((current) => ({ ...current, paypal: "" }));
+                    }
+                  }}
                   placeholder="z. B. 125,50"
                   value={paypalInput}
                 />
+                {balanceErrors.paypal ? (
+                  <small className="field-error" id="paypal-balance-error" role="alert">
+                    {balanceErrors.paypal}
+                  </small>
+                ) : null}
               </label>
               <label>
                 Revolut in Euro
                 <input
+                  aria-describedby={balanceErrors.revolut ? "revolut-balance-error" : undefined}
+                  aria-invalid={Boolean(balanceErrors.revolut)}
                   inputMode="decimal"
-                  onChange={(event) => setRevolutInput(event.target.value)}
+                  onChange={(event) => {
+                    setRevolutInput(event.target.value);
+                    if (balanceErrors.revolut) {
+                      setBalanceErrors((current) => ({ ...current, revolut: "" }));
+                    }
+                  }}
                   placeholder="z. B. 420,00"
                   value={revolutInput}
                 />
+                {balanceErrors.revolut ? (
+                  <small className="field-error" id="revolut-balance-error" role="alert">
+                    {balanceErrors.revolut}
+                  </small>
+                ) : null}
               </label>
               <div>
                 <button

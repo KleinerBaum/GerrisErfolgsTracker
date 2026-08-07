@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { suggestTaskComplexity } from "../lib/gamification-client";
+import { useModalDialog } from "../lib/use-modal-dialog";
 import {
   BASE_XP,
   DIFFICULTY_LABELS,
@@ -54,6 +55,7 @@ export function RewardAssessmentDialog({
   onConfirm,
   onCompleteWithoutReward,
 }: RewardAssessmentDialogProps) {
+  const dialogRef = useModalDialog<HTMLElement>(onClose);
   const initial = existingProfile?.assessment ?? localComplexityAssessment(task);
   const [assessment, setAssessment] = useState<ComplexityAssessment>(initial);
   const [difficultyBand, setDifficultyBand] = useState<DifficultyBand>(
@@ -137,14 +139,16 @@ export function RewardAssessmentDialog({
         aria-modal="true"
         className="reward-assessment-dialog"
         onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
       >
         <header className="dialog-heading">
           <div>
             <span className="eyebrow">Belohnung</span>
             <h2 id="reward-assessment-title">Wie anspruchsvoll war diese Aufgabe?</h2>
           </div>
-          <button aria-label="Schließen" disabled={busy} onClick={onClose} type="button">
+          <button aria-label="Schließen" disabled={busy || loadingAi} onClick={onClose} type="button">
             Schließen
           </button>
         </header>
@@ -267,7 +271,7 @@ export function RewardAssessmentDialog({
         <div className="assessment-actions">
           <button
             className="button button-ghost"
-            disabled={busy}
+            disabled={busy || loadingAi}
             onClick={onCompleteWithoutReward}
             type="button"
           >
@@ -275,11 +279,15 @@ export function RewardAssessmentDialog({
           </button>
           <button
             className="button button-primary"
-            disabled={busy}
+            disabled={busy || loadingAi}
             onClick={confirm}
             type="button"
           >
-            {busy ? "Wird abgeschlossen …" : "Bestätigen & abschließen"}
+            {busy
+              ? "Wird abgeschlossen …"
+              : loadingAi
+                ? "Vorschlag wird geladen …"
+                : "Bestätigen & abschließen"}
           </button>
         </div>
       </section>

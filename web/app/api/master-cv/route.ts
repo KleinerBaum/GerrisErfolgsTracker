@@ -1,7 +1,10 @@
 import { env } from "cloudflare:workers";
 
 import { ownerEmail, ownerHash, sameOrigin } from "../../../lib/server-auth";
-import { parseMasterCvDocument } from "../../../lib/server/master-cv-import";
+import {
+  parseMasterCvDocument,
+  type ParsedMasterCvDocument,
+} from "../../../lib/server/master-cv-import";
 import type { DocumentRef, MasterCvContent } from "../../../lib/types";
 
 export const dynamic = "force-dynamic";
@@ -94,9 +97,9 @@ export async function POST(request: Request) {
     }
     const cvBytes = new Uint8Array(await cv.arrayBuffer());
     const importedAt = new Date().toISOString();
-    let parsed: ReturnType<typeof parseMasterCvDocument>;
+    let parsed: ParsedMasterCvDocument;
     try {
-      parsed = parseMasterCvDocument(cvBytes, importedAt);
+      parsed = await parseMasterCvDocument(cvBytes, importedAt);
     } catch (error) {
       return Response.json(
         {
@@ -143,7 +146,7 @@ export async function POST(request: Request) {
       modifiedAt: importedAt,
     });
     const masterCvContent: MasterCvContent = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       sourceDocumentId: cvDocument.id,
       passportDocumentId: null,
       name: parsed.name,
@@ -152,6 +155,9 @@ export async function POST(request: Request) {
       contactLine: parsed.contactLine,
       language: parsed.language,
       sections: parsed.sections,
+      links: parsed.links,
+      sourceFingerprint: parsed.sourceFingerprint,
+      coverage: parsed.coverage,
       passport: parsed.passport,
       importedAt,
       updatedAt: importedAt,

@@ -1,10 +1,9 @@
 import {
-  JOB_RESEARCH_INSTRUCTIONS,
-  JOB_RESEARCH_PROMPT_VERSION,
-  JOB_RESEARCH_SCHEMA,
   canonicalizeResearchUrl,
   normalizeJobResearchPayload,
   publicJobUrl,
+  researchOpenAIRequest,
+  validResearchJobSource,
 } from "../../../lib/job-research";
 import { ownerEmail, ownerHash, sameOrigin } from "../../../lib/server-auth";
 import type {
@@ -66,6 +65,11 @@ type OpenAIResearchPayload = {
       }>;
     }>;
   }>;
+  usage?: {
+    input_tokens?: unknown;
+    output_tokens?: unknown;
+    total_tokens?: unknown;
+  };
 };
 
 type ResearchJobState = {
@@ -323,19 +327,16 @@ async function verifyJobToken(
     );
     if (!parsed || typeof parsed !== "object") return null;
     const state = parsed as Partial<ResearchJobState>;
-    const requestedUrl = publicJobUrl(state.requestedUrl);
     if (
       state.version !== 1 ||
       typeof state.responseId !== "string" ||
       !/^resp_[a-z0-9_-]+$/i.test(state.responseId) ||
       state.owner !== expectedOwner ||
-      !requestedUrl ||
-      requestedUrl !== state.requestedUrl ||
+      !validResearchJobSource(state.requestedUrl, state.providedAdText) ||
       typeof state.researchedAt !== "string" ||
       !Number.isFinite(Date.parse(state.researchedAt)) ||
       typeof state.model !== "string" ||
       !state.model ||
-      typeof state.providedAdText !== "boolean" ||
       typeof state.expiresAt !== "number" ||
       state.expiresAt < Date.now()
     ) {
@@ -398,7 +399,15 @@ function completedResearch(
       503,
     );
   }
-  return normalizeJobResearchPayload(parsed, {
+  const inputTokens =
+    typeof payload.usage?.input_tokens === "number"
+      ? payload.usage.input_tokens
+      : 0;
+  const outputTokens =
+    typeof payload.usage?.output_tokens === "number"
+      ? payload.usage.output_tokens
+      : 0;
+  const result = normalizeJobResearchPayload(parsed, {
     requestedUrl: state.requestedUrl,
     sources: researchSources(payload),
     researchedAt: state.researchedAt,
@@ -408,7 +417,28 @@ function completedResearch(
         : state.model,
     responseId: state.responseId,
     providedAdText: state.providedAdText,
+    usage: {
+      inputTokens,
+      outputTokens,
+      totalTokens:
+        typeof payload.usage?.total_tokens === "number"
+          ? payload.usage.total_tokens
+          : inputTokens + outputTokens,
+      webSearchCalls: (payload.output ?? []).filter(
+        (item) => item.type === "web_search_call",
+      ).length,
+    },
   });
+  if (
+    !state.providedAdText &&
+    result.retrievalStatus !== "exact_page_accessed"
+  ) {
+    throw new ResearchRequestError(
+      "Die Stellenanzeige war nicht zuverlässig auffindbar. Bitte füge den vollständigen Anzeigentext ein.",
+      422,
+    );
+  }
+  return result;
 }
 
 function terminalFailureMessage(payload: OpenAIResearchPayload): string {
@@ -538,10 +568,15 @@ export async function POST(request: Request) {
     if (candidate.job) {
       return await pollResearchJob(candidate, owner, apiKey);
     }
+    const companyName = clipped(candidate.companyName, 300);
+    const roleTitle = clipped(candidate.roleTitle, 300);
+    const jobPostingText = redactObviousCredentials(
+      clipped(candidate.jobPostingText, 30_000),
+    );
     const requestedUrl = publicJobUrl(candidate.url);
-    if (!requestedUrl) {
+    if (!requestedUrl && !jobPostingText) {
       throw new ResearchRequestError(
-        "Bitte eine öffentliche HTTP(S)-Stellen-URL angeben.",
+        "Bitte eine öffentliche Stellen-URL angeben oder den vollständigen Anzeigentext einfügen.",
         400,
       );
     }
@@ -552,11 +587,6 @@ export async function POST(request: Request) {
         { status: 429, headers: { "retry-after": String(retryAfter) } },
       );
     }
-    const companyName = clipped(candidate.companyName, 300);
-    const roleTitle = clipped(candidate.roleTitle, 300);
-    const jobPostingText = redactObviousCredentials(
-      clipped(candidate.jobPostingText, 30_000),
-    );
     const researchScopes = Array.isArray(candidate.researchScopes)
       ? candidate.researchScopes
           .filter(
@@ -565,13 +595,13 @@ export async function POST(request: Request) {
               RESEARCH_SCOPES.has(scope as ApplicationResearchScope),
           )
           .slice(0, RESEARCH_SCOPES.size)
-      : ["job_posting", "company", "salary"] satisfies ApplicationResearchScope[];
+      : ["job_posting", "company"] satisfies ApplicationResearchScope[];
     const researchedAt = new Date().toISOString();
     const model =
-      process.env.OPENAI_RESEARCH_MODEL?.trim() || "gpt-5.6";
+      process.env.OPENAI_RESEARCH_MODEL?.trim() || "gpt-5.6-luna";
     const prompt = [
       `Recherchezeitpunkt: ${researchedAt}`,
-      `Exakte Stellen-URL: ${requestedUrl}`,
+      `Exakte Stellen-URL: ${requestedUrl || "nicht angegeben"}`,
       `Vom Nutzer eingegebener Arbeitgeberhinweis, noch nicht verifiziert: ${companyName || "nicht angegeben"}`,
       `Vom Nutzer eingegebener Rollenhinweis, noch nicht verifiziert: ${roleTitle || "nicht angegeben"}`,
       "Zielmarkt: Deutschland",
@@ -583,41 +613,20 @@ export async function POST(request: Request) {
       jobPostingText
         ? `Vom Nutzer als öffentlich gekennzeichneter Ausschreibungstext:\n<job_posting_text>\n${jobPostingText}\n</job_posting_text>`
         : "Kein zusätzlicher Ausschreibungstext bereitgestellt.",
+      jobPostingText
+        ? "Nutze keine Websuche für Anzeigenfakten; recherchiere nur knappe offizielle Unternehmensfakten."
+        : "Verwende höchstens eine Suche für die konkrete Anzeige, eine für die offizielle Unternehmensquelle und nur bei Bedarf eine dritte Fallback-Suche.",
     ].join("\n\n");
 
     const response = await fetchResearchStart(
-      JSON.stringify({
-        model,
-        background: true,
-        reasoning: { effort: "high" },
-        instructions: JOB_RESEARCH_INSTRUCTIONS,
-        input: prompt,
-        tools: [
-          {
-            type: "web_search",
-            search_context_size: "high",
-            external_web_access: true,
-          },
-        ],
-        tool_choice: "required",
-        include: ["web_search_call.action.sources"],
-        max_output_tokens: 32_000,
-        store: false,
-        safety_identifier: owner,
-        metadata: {
-          workflow: "gerris_vacancy_research",
-          prompt_version: JOB_RESEARCH_PROMPT_VERSION,
-        },
-        text: {
-          verbosity: "medium",
-          format: {
-            type: "json_schema",
-            name: "vacancy_research_v1",
-            strict: true,
-            schema: JOB_RESEARCH_SCHEMA,
-          },
-        },
-      }),
+      JSON.stringify(
+        researchOpenAIRequest({
+          model,
+          owner,
+          prompt,
+          providedAdText: Boolean(jobPostingText),
+        }),
+      ),
       apiKey,
     );
     if (!response.ok) {
@@ -637,7 +646,7 @@ export async function POST(request: Request) {
       version: 1,
       responseId: payload.id,
       owner,
-      requestedUrl,
+      requestedUrl: requestedUrl ?? "",
       researchedAt,
       model:
         typeof payload.model === "string" && payload.model

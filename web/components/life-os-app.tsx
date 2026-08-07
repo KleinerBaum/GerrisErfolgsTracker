@@ -37,20 +37,25 @@ import {
   APPLICATION_KPI_DEFINITIONS,
 } from "../lib/application-workflow";
 import { COST_TEMPLATES } from "../lib/finance-catalog";
+import { parseEuroInput } from "../lib/finance-data";
 import { diaryRhythmDays, upsertDiaryEntry } from "../lib/diary";
 import type { DiaryPlanningSuggestion } from "../lib/diary-planning";
 import {
   applyCostPaymentReward,
   applyDayCloseReward,
   applyTaskCompletionReward,
+  buildWorldUpgrade,
   completionMessage,
   createDefaultGamification,
   ledgerTotals,
   levelForXp,
   markTaskCompletionForRhythm,
+  redeemPersonalReward,
   REWARD_MODE_LABELS,
   upsertTaskProfile,
   withGamification,
+  WORLD_DISTRICT_LABELS,
+  WORLD_UPGRADE_COSTS,
   XP_GOAL_LIMITS,
   xpProgressByPeriod,
   type XpGoalProgress,
@@ -63,13 +68,24 @@ import {
   formatRelativeDate,
   formatTime,
   isoDateInput,
+  zonedDateTimeInput,
+  zonedDateTimeToIso,
 } from "../lib/format";
 import {
   driveDownloadUrl,
   drivePreviewUrl,
   extractDriveFileId,
   inferDocumentKind,
+  safeGoogleDriveUrl,
 } from "../lib/google-links";
+import {
+  documentFolderOptions,
+  documentSource,
+  privateFileDownloadUrl,
+  safePrivateFileUrl,
+  visibleDocuments,
+} from "../lib/document-library";
+import { responsePayload } from "../lib/http-response";
 import {
   bootstrapGoogleTasks,
   createGoogleTask,
@@ -121,8 +137,11 @@ import {
   type MasterCvImportBundle,
   type Task,
   type RewardMode,
+  type SyncStatus,
   type TaskGamificationProfile,
   type TaskQuadrant,
+  type WorldDistrictKey,
+  type WorldUpgradeKind,
   type DayIntentKind,
   type DashboardKpiKey,
   type DashboardSettings,
@@ -131,6 +150,9 @@ import {
   type XpGoals,
 } from "../lib/types";
 import { useGerriState } from "../lib/use-gerri-state";
+import { useModalDialog } from "../lib/use-modal-dialog";
+import { orderCompletedTasks, orderOpenTasks } from "../lib/task-order";
+import { urlForView, viewFromUrl } from "../lib/view-navigation";
 
 const NAV_ITEMS: Array<{
   key: ViewKey;
@@ -152,6 +174,27 @@ const NAV_ITEMS: Array<{
   { key: "contacts", label: "Kontakte", short: "Kontakte", mark: "P" },
   { key: "journal", label: "Tagebuch", short: "Tagebuch", mark: "T" },
 ];
+
+const MOBILE_PRIMARY_NAV_KEYS: ViewKey[] = [
+  "today",
+  "tasks",
+  "calendar",
+  "applications",
+];
+const SIDEBAR_PREFERENCE_KEY = "gerris-kompass-sidebar-v1";
+const WORLD_DISTRICTS = Object.keys(WORLD_DISTRICT_LABELS) as WorldDistrictKey[];
+const WORLD_UPGRADE_KINDS = Object.keys(WORLD_UPGRADE_COSTS) as WorldUpgradeKind[];
+
+function mobileNavigationItems(view: ViewKey) {
+  const primary = MOBILE_PRIMARY_NAV_KEYS.map(
+    (key) => NAV_ITEMS.find((item) => item.key === key)!,
+  );
+  if (MOBILE_PRIMARY_NAV_KEYS.includes(view)) return primary;
+  return [
+    ...primary.slice(0, primary.length - 1),
+    NAV_ITEMS.find((item) => item.key === view)!,
+  ];
+}
 
 const VIEW_TITLES: Record<ViewKey, string> = {
   today: "Zentrale",
@@ -197,14 +240,11 @@ const XP_GOAL_FIELDS: Array<{
 const uid = (prefix: string): string =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-const dateAtNine = (value: string): string =>
-  new Date(`${value}T09:00:00`).toISOString();
+const dateAtNine = (value: string): string | null =>
+  zonedDateTimeToIso(value, "09:00");
 
 const localDateTimeInput = (minutesFromNow = 60): string => {
-  const date = new Date(Date.now() + minutesFromNow * 60_000);
-  date.setSeconds(0, 0);
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
+  return zonedDateTimeInput(Date.now() + minutesFromNow * 60_000);
 };
 
 const daysFromNow = (value: string): number => calendarDayDifference(value);
@@ -239,9 +279,11 @@ function reconcileCompletedTaskRewards(
 }
 
 const formatFileSize = (bytes: number): string =>
-  bytes < 1_048_576
-    ? `${Math.max(1, Math.round(bytes / 1_024))} KB`
-    : `${(bytes / 1_048_576).toFixed(1).replace(".", ",")} MB`;
+  bytes === 0
+    ? "0 KB"
+    : bytes < 1_048_576
+      ? `${Math.max(1, Math.round(bytes / 1_024))} KB`
+      : `${(bytes / 1_048_576).toFixed(1).replace(".", ",")} MB`;
 
 function XpGoalMeter({
   className,
@@ -297,6 +339,59 @@ function XpGoalMeter({
   );
 }
 
+function MilestoneCelebrationDialog({
+  celebration,
+  gamification,
+  onClose,
+}: {
+  celebration: { title: string; detail: string; reachedXp: number };
+  gamification: GamificationState;
+  onClose: () => void;
+}) {
+  const dialogRef = useModalDialog<HTMLElement>(onClose);
+  return (
+    <div
+      className="milestone-celebration-backdrop"
+      onMouseDown={onClose}
+      role="presentation"
+    >
+      <section
+        aria-labelledby="milestone-celebration-title"
+        aria-modal="true"
+        className={`milestone-celebration mode-${gamification.rewardMode.toLowerCase()}`}
+        onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
+        role="dialog"
+        tabIndex={-1}
+      >
+        <div className="celebration-burst" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+        <span className="eyebrow">Fortschrittsetappe erreicht</span>
+        <strong className="celebration-score">
+          {celebration.reachedXp.toLocaleString("de-DE")} XP
+        </strong>
+        <h2 id="milestone-celebration-title">{celebration.title}</h2>
+        <p>{celebration.detail}</p>
+        <small>
+          {REWARD_MODE_LABELS[gamification.rewardMode]} · dein gemeinsamer
+          Fortschritt bleibt erhalten
+        </small>
+        <button
+          className="button button-primary"
+          data-dialog-initial-focus
+          onClick={onClose}
+          type="button"
+        >
+          Weiter im Flow
+        </button>
+      </section>
+    </div>
+  );
+}
+
 type LifeOsAppProps = {
   initialState: AppState;
   integrations: IntegrationConfig;
@@ -306,11 +401,23 @@ export function LifeOsApp({
   initialState,
   integrations,
 }: LifeOsAppProps) {
-  const [view, setView] = useState<ViewKey>("today");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [view, setView] = useState<ViewKey>(() =>
+    typeof window === "undefined" ? "today" : viewFromUrl(window.location.href),
+  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return (
+        window.localStorage.getItem(SIDEBAR_PREFERENCE_KEY) === "collapsed"
+      );
+    } catch {
+      return false;
+    }
+  });
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [captureKind, setCaptureKind] = useState<CaptureKind>("task");
+  const [taskDraft, setTaskDraft] = useState<Task | null>(null);
   const [quickAction, setQuickAction] = useState<QuickActionKind | null>(null);
   const [applicationDraft, setApplicationDraft] =
     useState<ApplicationProcess | null>(null);
@@ -334,12 +441,13 @@ export function LifeOsApp({
   const [taskLists, setTaskLists] = useState<GoogleTaskList[]>([]);
   const [workspaceStatus, setWorkspaceStatus] =
     useState<GoogleWorkspaceStatus | null>(null);
+  const [workspaceStatusError, setWorkspaceStatusError] = useState("");
   const [taskSyncing, setTaskSyncing] = useState(false);
   const [taskError, setTaskError] = useState("");
   const [taskConnectUrl, setTaskConnectUrl] = useState("");
   const [taskActionId, setTaskActionId] = useState("");
   const [rewardTaskId, setRewardTaskId] = useState("");
-  const [xpProgressNow, setXpProgressNow] = useState(initialState.updatedAt);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
   const taskInitialLoadStarted = useRef(false);
   const planningInitialLoadStarted = useRef(false);
   const planningRequestActive = useRef(false);
@@ -353,14 +461,34 @@ export function LifeOsApp({
     updateState,
     exportBackup,
     importBackup,
+    acceptRemoteState,
   } = useGerriState(initialState);
   const pendingLegacyTasks = state.pendingTaskImports ?? [];
 
   useEffect(() => {
-    const refreshProgressTime = () => setXpProgressNow(new Date().toISOString());
-    refreshProgressTime();
-    const timer = window.setInterval(refreshProgressTime, 60_000);
-    return () => window.clearInterval(timer);
+    const syncViewFromHistory = () => setView(viewFromUrl(window.location.href));
+    window.addEventListener("popstate", syncViewFromHistory);
+    return () => window.removeEventListener("popstate", syncViewFromHistory);
+  }, []);
+
+  useEffect(() => {
+    document.title = `${VIEW_TITLES[view]} – Gerris Kompass`;
+  }, [view]);
+
+  useEffect(() => {
+    const refreshCurrentTime = () => setCurrentTime(Date.now());
+    const refreshVisibleTime = () => {
+      if (document.visibilityState === "visible") refreshCurrentTime();
+    };
+    refreshCurrentTime();
+    const timer = window.setInterval(refreshCurrentTime, 60_000);
+    window.addEventListener("focus", refreshCurrentTime);
+    document.addEventListener("visibilitychange", refreshVisibleTime);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshCurrentTime);
+      document.removeEventListener("visibilitychange", refreshVisibleTime);
+    };
   }, []);
 
   const refreshPlanning = useCallback(
@@ -439,10 +567,15 @@ export function LifeOsApp({
   );
 
   const refreshWorkspaceStatus = useCallback(async () => {
+    setWorkspaceStatusError("");
     try {
       setWorkspaceStatus(await getGoogleWorkspaceStatus());
-    } catch {
-      setWorkspaceStatus(null);
+    } catch (caught) {
+      setWorkspaceStatusError(
+        caught instanceof Error
+          ? caught.message
+          : "Der Google-Status konnte nicht geladen werden.",
+      );
     }
   }, []);
 
@@ -485,12 +618,27 @@ export function LifeOsApp({
           tasks.findIndex((candidate) => candidate.id === task.id) === index,
       );
       try {
-        const [loadedTaskStatus, nextWorkspaceStatus] = await Promise.all([
+        const [taskStatusResult, workspaceStatusResult] = await Promise.allSettled([
           getGoogleTasksStatus(),
-          getGoogleWorkspaceStatus().catch(() => null),
+          getGoogleWorkspaceStatus(),
         ]);
+        if (taskStatusResult.status === "rejected") {
+          throw taskStatusResult.reason;
+        }
+        const loadedTaskStatus = taskStatusResult.value;
+        const nextWorkspaceStatus =
+          workspaceStatusResult.status === "fulfilled"
+            ? workspaceStatusResult.value
+            : null;
         let nextStatus = loadedTaskStatus;
         if (!active) return;
+        setWorkspaceStatusError(
+          workspaceStatusResult.status === "rejected"
+            ? workspaceStatusResult.reason instanceof Error
+              ? workspaceStatusResult.reason.message
+              : "Der Google-Status konnte nicht geladen werden."
+            : "",
+        );
         if (nextStatus.authorized) {
           const provisioned = await provisionGoogleTasks();
           nextStatus = { ...nextStatus, taskList: provisioned.taskList };
@@ -549,10 +697,14 @@ export function LifeOsApp({
     const loadCalendar = async () => {
       try {
         const response = await fetch("/api/calendar");
-        const payload = (await response.json()) as {
+        const payload = await responsePayload<{
           events?: CalendarEvent[];
           source?: string;
-        };
+          error?: string;
+        }>(response);
+        if (!response.ok || !Array.isArray(payload.events)) {
+          throw new Error(payload.error || "Der Kalender konnte nicht geladen werden.");
+        }
         if (!active) return;
         setExternalEvents(Array.isArray(payload.events) ? payload.events : []);
         setCalendarLive(
@@ -573,6 +725,7 @@ export function LifeOsApp({
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setCaptureOpen(false);
+      setTaskDraft(null);
       setQuickAction(null);
       setApplicationDraft(null);
       setSettingsOpen(false);
@@ -587,6 +740,13 @@ export function LifeOsApp({
   }, [clearSelectedDriveFile]);
 
   const navigate = (next: ViewKey) => {
+    if (next !== view) {
+      window.history.pushState(
+        { gerrisView: next },
+        "",
+        urlForView(window.location.href, next),
+      );
+    }
     setView(next);
     setMobileSidebarOpen(false);
     window.setTimeout(
@@ -595,9 +755,32 @@ export function LifeOsApp({
     );
   };
 
+  const toggleSidebar = () => {
+    setSidebarCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(
+          SIDEBAR_PREFERENCE_KEY,
+          next ? "collapsed" : "expanded",
+        );
+      } catch {
+        // Die App bleibt ohne lokale Darstellungspräferenz vollständig nutzbar.
+      }
+      return next;
+    });
+  };
+
   const openCapture = (kind: CaptureKind) => {
     setQuickAction(null);
+    setTaskDraft(null);
     setCaptureKind(kind);
+    setCaptureOpen(true);
+  };
+
+  const openTaskEditor = (task: Task) => {
+    setQuickAction(null);
+    setTaskDraft(task);
+    setCaptureKind("task");
     setCaptureOpen(true);
   };
 
@@ -700,7 +883,7 @@ export function LifeOsApp({
           candidate.id === taskId ? updated : candidate,
         ),
       }));
-      setNotice("Aufgabe in Google Tasks wieder geöffnet · Fortschritt bleibt erhalten");
+      setNotice("Aufgabe in Google Tasks wieder geöffnet · Fortschritt auf 0 % gesetzt");
     } catch (caught) {
       rememberGoogleError(caught, "Die Aufgabe konnte nicht geöffnet werden.");
     } finally {
@@ -780,6 +963,37 @@ export function LifeOsApp({
     }
   };
 
+  const saveTaskChanges = async (task: Task): Promise<boolean> => {
+    const existing = state.tasks.find((candidate) => candidate.id === task.id);
+    if (!existing || taskActionId) return false;
+    setTaskActionId(task.id);
+    setTaskError("");
+    try {
+      const updated = await updateGoogleTask(existing, {
+        title: task.title,
+        dueAt: task.dueAt,
+        quadrant: task.quadrant,
+        estimateMinutes: task.estimateMinutes,
+      });
+      updateState((current) => ({
+        ...current,
+        tasks: current.tasks.map((candidate) =>
+          candidate.id === updated.id ? updated : candidate,
+        ),
+      }));
+      setNotice("Aufgabe in Google Tasks aktualisiert");
+      return true;
+    } catch (caught) {
+      rememberGoogleError(
+        caught,
+        "Die Aufgabe konnte nicht in Google Tasks aktualisiert werden.",
+      );
+      return false;
+    } finally {
+      setTaskActionId("");
+    }
+  };
+
   const migrateLegacyTasks = async () => {
     if (!pendingLegacyTasks.length || taskActionId) return;
     setTaskActionId("migration");
@@ -850,12 +1064,17 @@ export function LifeOsApp({
   };
 
   const planCostInGoogleCalendar = async (cost: Cost) => {
-    const start = new Date(cost.dueAt);
-    start.setHours(9, 0, 0, 0);
+    const date = isoDateInput(cost.dueAt);
+    const startAt = zonedDateTimeToIso(date, "09:00");
+    if (!startAt) {
+      setNotice("Die Zahlungserinnerung hat kein gültiges Berliner Datum.");
+      return;
+    }
+    const start = new Date(startAt);
     const event: CalendarEvent = {
       id: uid("event"),
       title: `Zahlung erinnern: ${cost.title}`,
-      startAt: start.toISOString(),
+      startAt,
       endAt: new Date(start.getTime() + 15 * 60_000).toISOString(),
       source: "kompass",
       kind: "payment",
@@ -869,10 +1088,10 @@ export function LifeOsApp({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(event),
       });
-      const payload = (await response.json()) as {
+      const payload = await responsePayload<{
         event?: CalendarEvent;
         error?: string;
-      };
+      }>(response);
       if (!response.ok || !payload.event) {
         throw new Error(
           payload.error || "Die Erinnerung konnte nicht gespeichert werden.",
@@ -1092,6 +1311,7 @@ export function LifeOsApp({
     if (suggestion.sourceKind === "task" && !existingTask) return false;
     const actionId = existingTask?.id || suggestion.sourceId;
     const dueAt = dateAtNine(date);
+    if (!dueAt) return false;
     setTaskActionId(actionId);
     setTaskError("");
     try {
@@ -1255,6 +1475,68 @@ export function LifeOsApp({
     });
   };
 
+  const redeemReward = (rewardId: string) => {
+    const reward = currentGamification.rewardCatalog.find(
+      (candidate) => candidate.id === rewardId && candidate.active,
+    );
+    if (!reward) {
+      setNotice("Diese persönliche Belohnung ist nicht verfügbar");
+      return;
+    }
+    if (
+      !window.confirm(
+        `„${reward.title}“ für ${reward.cost.toLocaleString("de-DE")} Klarpunkte einlösen?`,
+      )
+    ) {
+      return;
+    }
+    const result = redeemPersonalReward(
+      currentGamification,
+      rewardId,
+      new Date().toISOString(),
+    );
+    if (result.error) {
+      setNotice(result.error);
+      return;
+    }
+    if (!result.entry) {
+      setNotice("Diese Einlösung wurde bereits verarbeitet");
+      return;
+    }
+    updateState((current) => withGamification(current, result.gamification));
+    setNotice(`Persönliche Belohnung eingelöst · ${reward.title}`);
+  };
+
+  const buildRewardWorld = (
+    district: WorldDistrictKey,
+    kind: WorldUpgradeKind,
+  ) => {
+    const cost = WORLD_UPGRADE_COSTS[kind];
+    if (
+      !window.confirm(
+        `${WORLD_DISTRICT_LABELS[district]} mit „${cost.label}“ ausbauen und die angezeigten Ressourcen einsetzen?`,
+      )
+    ) {
+      return;
+    }
+    const result = buildWorldUpgrade(
+      currentGamification,
+      district,
+      kind,
+      new Date().toISOString(),
+    );
+    if (result.error) {
+      setNotice(result.error);
+      return;
+    }
+    if (!result.entry) {
+      setNotice("Dieser Ausbau wurde bereits verarbeitet");
+      return;
+    }
+    updateState((current) => withGamification(current, result.gamification));
+    setNotice(`${WORLD_DISTRICT_LABELS[district]} ausgebaut · ${cost.label}`);
+  };
+
   const changeSurprises = (enabled: boolean) => {
     updateState((current) => {
       const gamification =
@@ -1358,9 +1640,9 @@ export function LifeOsApp({
       xpProgressByPeriod(
         currentGamification.ledger,
         currentGamification.xpGoals,
-        xpProgressNow,
+        new Date(currentTime).toISOString(),
       ),
-    [currentGamification.ledger, currentGamification.xpGoals, xpProgressNow],
+    [currentGamification.ledger, currentGamification.xpGoals, currentTime],
   );
   const celebrationCopy = completionMessage("CELEBRATE", currentGamification);
   const previousEarnedXp = useRef(progressTotals.earnedXp);
@@ -1392,10 +1674,41 @@ export function LifeOsApp({
     progressTotals.earnedXp,
   ]);
 
+  const compactNavigation = mobileNavigationItems(view);
+
+  if (!ready) {
+    return (
+      <main
+        aria-busy="true"
+        aria-labelledby="app-loading-title"
+        className="app-loading-screen"
+      >
+        <div className="app-loading-card">
+          <span aria-hidden="true" className="app-loading-mark">
+            G
+          </span>
+          <span className="eyebrow">Privater Arbeitsbereich</span>
+          <h1 id="app-loading-title">Gerris Kompass wird vorbereitet</h1>
+          <p>
+            Dein persönlicher Stand wird sicher geladen. Erst danach werden
+            Aufgaben, Termine und Unterlagen angezeigt.
+          </p>
+          <div aria-hidden="true" className="app-loading-progress">
+            <span />
+          </div>
+          <small>Daten werden geladen …</small>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <div
       className={`app-shell ${sidebarCollapsed ? "sidebar-is-collapsed" : ""}`}
     >
+      <a className="skip-link" href="#main-content">
+        Zum Inhalt springen
+      </a>
       {mobileSidebarOpen ? (
         <button
           aria-label="Navigation schließen"
@@ -1415,7 +1728,7 @@ export function LifeOsApp({
               sidebarCollapsed ? "Seitenleiste ausklappen" : "Seitenleiste einklappen"
             }
             className="brand-button"
-            onClick={() => setSidebarCollapsed((current) => !current)}
+            onClick={toggleSidebar}
             type="button"
           >
             <span className="brand-glyph">G</span>
@@ -1570,10 +1883,16 @@ export function LifeOsApp({
             </div>
           </div>
           <div className="topbar-actions">
-            <span className={`sync-state sync-${syncStatus}`}>
+            <button
+              aria-live="polite"
+              className={`sync-state sync-${syncStatus}`}
+              onClick={() => setSettingsOpen(true)}
+              title="Synchronisierung und Datensicherung öffnen"
+              type="button"
+            >
               <span aria-hidden="true" />
               {syncCopy}
-            </span>
+            </button>
             <button
               aria-label="Einstellungen öffnen"
               className="avatar-button"
@@ -1595,14 +1914,17 @@ export function LifeOsApp({
           />
         ) : null}
 
-        <main id="main-content">
+        <main id="main-content" tabIndex={-1}>
           {view === "today" ? (
             <TodayView
+              now={currentTime}
               externalEvents={externalEvents}
               onCompleteTask={completeTask}
               onNavigate={navigate}
               onOpenSettings={() => setSettingsOpen(true)}
               planningReport={planningReport}
+              planningLoading={planningLoading}
+              planningError={planningError}
               state={state}
               taskStatus={taskStatus}
             />
@@ -1616,6 +1938,7 @@ export function LifeOsApp({
               onCompleteTask={completeTask}
               onMigrate={() => void migrateLegacyTasks()}
               onNew={() => openCapture("task")}
+              onEditTask={openTaskEditor}
               onRefresh={() => void refreshTasks()}
               onReopenTask={reopenTask}
               pendingLegacyCount={pendingLegacyTasks.length}
@@ -1629,6 +1952,7 @@ export function LifeOsApp({
               calendarLive={calendarLive}
               externalEvents={externalEvents}
               integrations={integrations}
+              now={currentTime}
               onEventsChange={setExternalEvents}
               onNewEvent={() => openCapture("event")}
               onPlanCost={planCostInGoogleCalendar}
@@ -1736,7 +2060,7 @@ export function LifeOsApp({
       </button>
 
       <nav className="mobile-nav" aria-label="Mobile Hauptnavigation">
-        {NAV_ITEMS.map((item) => (
+        {compactNavigation.map((item) => (
           <button
             aria-current={view === item.key ? "page" : undefined}
             className={view === item.key ? "active" : ""}
@@ -1748,6 +2072,14 @@ export function LifeOsApp({
             {item.short}
           </button>
         ))}
+        <button
+          aria-expanded={mobileSidebarOpen}
+          onClick={() => setMobileSidebarOpen(true)}
+          type="button"
+        >
+          <span aria-hidden="true">•••</span>
+          Mehr
+        </button>
       </nav>
 
       {captureOpen ? (
@@ -1759,14 +2091,19 @@ export function LifeOsApp({
             workspaceStatus?.capabilities.calendar.granted,
           )}
           initialKind={captureKind}
+          initialTask={taskDraft}
           integrations={integrations}
-          onClose={() => setCaptureOpen(false)}
+          onClose={() => {
+            setCaptureOpen(false);
+            setTaskDraft(null);
+          }}
           onSaveCost={saveCost}
           onSaveDocument={saveDocument}
           onSaveEvent={saveEvent}
           onSaveIncome={saveIncome}
           onSaveJournal={saveCompactDiary}
           onSaveTask={saveTask}
+          onUpdateTask={saveTaskChanges}
           taskLists={taskLists}
           toast={setNotice}
         />
@@ -1777,8 +2114,6 @@ export function LifeOsApp({
           documents={state.documents}
           integrations={integrations}
           kind={quickAction}
-          masterCvDocumentId={state.masterCvDocumentId}
-          masterCvContent={state.masterCvContent}
           applicationDraft={applicationDraft}
           onClose={() => {
             setQuickAction(null);
@@ -1802,6 +2137,7 @@ export function LifeOsApp({
           onDrRossChange={changeDrRoss}
           onDashboardKpiChange={changeDashboardKpi}
           onApplicationKpiChange={changeApplicationKpi}
+          onAcceptRemoteState={acceptRemoteState}
           onExport={exportBackup}
           onImport={(raw) => {
             try {
@@ -1827,51 +2163,24 @@ export function LifeOsApp({
           onMilestoneStepChange={changeMilestoneStep}
           onXpGoalChange={changeXpGoal}
           onRewardCatalogToggle={toggleRewardCatalogItem}
+          onRedeemReward={redeemReward}
           onRewardModeChange={changeRewardMode}
+          onBuildWorldUpgrade={buildRewardWorld}
           onSurprisesChange={changeSurprises}
           syncCopy={syncCopy}
+          syncStatus={syncStatus}
           workspaceStatus={workspaceStatus}
+          workspaceStatusError={workspaceStatusError}
           xpProgress={xpProgress}
         />
       ) : null}
 
       {milestoneCelebration ? (
-        <div
-          className="milestone-celebration-backdrop"
-          onMouseDown={() => setMilestoneCelebration(null)}
-          role="presentation"
-        >
-          <section
-            aria-labelledby="milestone-celebration-title"
-            aria-modal="true"
-            className={`milestone-celebration mode-${currentGamification.rewardMode.toLowerCase()}`}
-            onMouseDown={(event) => event.stopPropagation()}
-            role="dialog"
-          >
-            <div className="celebration-burst" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
-            <span className="eyebrow">Fortschrittsetappe erreicht</span>
-            <strong className="celebration-score">
-              {milestoneCelebration.reachedXp.toLocaleString("de-DE")} XP
-            </strong>
-            <h2 id="milestone-celebration-title">{milestoneCelebration.title}</h2>
-            <p>{milestoneCelebration.detail}</p>
-            <small>
-              {REWARD_MODE_LABELS[currentGamification.rewardMode]} · dein gemeinsamer
-              Fortschritt bleibt erhalten
-            </small>
-            <button
-              className="button button-primary"
-              onClick={() => setMilestoneCelebration(null)}
-              type="button"
-            >
-              Weiter im Flow
-            </button>
-          </section>
-        </div>
+        <MilestoneCelebrationDialog
+          celebration={milestoneCelebration}
+          gamification={currentGamification}
+          onClose={() => setMilestoneCelebration(null)}
+        />
       ) : null}
 
       {rewardTask ? (
@@ -2027,6 +2336,7 @@ function TasksView({
   onRefresh,
   onMigrate,
   onNew,
+  onEditTask,
 }: {
   state: AppState;
   status: GoogleTasksStatus | null;
@@ -2041,12 +2351,17 @@ function TasksView({
   onRefresh: () => void;
   onMigrate: () => void;
   onNew: () => void;
+  onEditTask: (task: Task) => void;
 }) {
   const [filter, setFilter] = useState<TaskQuadrant | "all">("all");
-  const visible = state.tasks.filter(
-    (task) => !task.completed && (filter === "all" || task.quadrant === filter),
+  const visible = orderOpenTasks(
+    state.tasks.filter(
+      (task) => !task.completed && (filter === "all" || task.quadrant === filter),
+    ),
   );
-  const completed = state.tasks.filter((task) => task.completed);
+  const completed = orderCompletedTasks(
+    state.tasks.filter((task) => task.completed),
+  );
   const sourceCopy = status?.authorized
     ? `${status.googleEmail || "Google-Konto"} · ${status.taskList?.title || "Gerris Kompass"}`
     : status?.configured
@@ -2208,6 +2523,14 @@ function TasksView({
                     </div>
                     <div className="task-card-actions">
                       <button
+                        className="button button-ghost"
+                        disabled={Boolean(actionId) || !status?.authorized}
+                        onClick={() => onEditTask(task)}
+                        type="button"
+                      >
+                        Bearbeiten
+                      </button>
+                      <button
                         className="button button-soft"
                         disabled={Boolean(actionId) || !status?.authorized}
                         onClick={() => void onCompleteTask(task.id)}
@@ -2317,24 +2640,15 @@ function DocumentsView({
 }) {
   const [query, setQuery] = useState("");
   const [folder, setFolder] = useState("Alle");
-  const privateDocuments = state.documents.filter(
-    (document) => document.storage === "upload" && document.kind !== "folder",
+  const libraryDocuments = state.documents.filter(
+    (document) => document.kind !== "folder",
   );
-  const folderNames = [
-    "Alle",
-    ...new Set(
-      privateDocuments
-        .map((document) => document.folderPath.split("/").slice(1, 3).join(" / ")),
-    ),
-  ];
-  const visible = privateDocuments.filter((document) => {
-    const matchesQuery = `${document.name} ${document.folderPath} ${document.tags.join(" ")}`
-      .toLowerCase()
-      .includes(query.toLowerCase());
-    const matchesFolder =
-      folder === "Alle" || document.folderPath.includes(folder);
-    return matchesQuery && matchesFolder;
-  });
+  const folderNames = documentFolderOptions(libraryDocuments);
+  const selectedFolder = folderNames.includes(folder) ? folder : "Alle";
+  const visible = visibleDocuments(libraryDocuments, query, selectedFolder);
+  const driveRootUrl = safeGoogleDriveUrl(
+    driveController.status?.root?.webViewLink || integrations.driveFolderUrl,
+  );
 
   const copyPath = async () => {
     try {
@@ -2353,17 +2667,16 @@ function DocumentsView({
         copy="Durchsuche Google Drive oder lege private Dateien direkt im Kompass ab."
         action={
           <div className="button-group">
-            <a
-              className="button button-soft"
-              href={
-                driveController.status?.root?.webViewLink ||
-                integrations.driveFolderUrl
-              }
-              rel="noreferrer"
-              target="_blank"
-            >
-              Drive-Ordner öffnen
-            </a>
+            {driveRootUrl ? (
+              <a
+                className="button button-soft"
+                href={driveRootUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Drive-Ordner öffnen
+              </a>
+            ) : null}
             <button
               className="button button-soft"
               onClick={onLinkDocument}
@@ -2404,7 +2717,7 @@ function DocumentsView({
       <div className="section-heading compact-section-heading">
         <div>
           <span className="eyebrow">Kompass</span>
-          <h2>Private Dateien</h2>
+          <h2>Gespeicherte und verknüpfte Dateien</h2>
         </div>
         <span>{visible.length} Dateien</span>
       </div>
@@ -2422,7 +2735,7 @@ function DocumentsView({
         <select
           aria-label="Ordner auswählen"
           onChange={(event) => setFolder(event.target.value)}
-          value={folder}
+          value={selectedFolder}
         >
           {folderNames.map((name) => (
             <option key={name}>{name}</option>
@@ -2432,15 +2745,19 @@ function DocumentsView({
 
       <section className="document-grid" aria-label="Unterlagen">
         {visible.map((document) => {
-          const isUpload = document.storage === "upload";
+          const isUpload = documentSource(document) === "upload";
+          const privateFileUrl = safePrivateFileUrl(
+            document.downloadUrl ?? document.driveUrl,
+          );
+          const safeDriveUrl = safeGoogleDriveUrl(document.driveUrl);
           const preview = isUpload
             ? document.contentType === "application/pdf" ||
               document.contentType?.startsWith("image/")
-              ? document.downloadUrl
+              ? privateFileUrl
               : null
             : drivePreviewUrl(document.driveUrl, document.fileId);
           const downloadUrl = isUpload
-            ? `${document.downloadUrl ?? document.driveUrl}?download=1`
+            ? privateFileDownloadUrl(document.downloadUrl ?? document.driveUrl)
             : driveDownloadUrl(document.driveUrl, document.fileId);
           return (
             <article className="document-card" key={document.id}>
@@ -2462,31 +2779,33 @@ function DocumentsView({
                 <h3>{document.name}</h3>
                 <p>
                   Geändert {formatRelativeDate(document.modifiedAt)} ·{" "}
-                  {document.sizeBytes ? `${formatFileSize(document.sizeBytes)} · ` : ""}
+                  {document.sizeBytes !== undefined
+                    ? `${formatFileSize(document.sizeBytes)} · `
+                    : ""}
                   {document.tags.join(" · ")}
                 </p>
               </div>
-              <span className="private-chip">Privat</span>
+              <span className="private-chip">
+                {isUpload ? "Kompass-Datei" : "Drive-Link"}
+              </span>
               <div className="document-actions">
                 <button onClick={() => onOpen(document)} type="button">
                   {preview ? "A4-Ansicht" : "Details"}
                 </button>
-                {!isUpload ? (
+                {!isUpload && safeDriveUrl ? (
                   <a
-                    href={document.driveUrl}
+                    href={safeDriveUrl}
                     rel="noreferrer"
                     target="_blank"
                   >
                     In Drive
                   </a>
                 ) : null}
-                <a
-                  href={downloadUrl}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  Download
-                </a>
+                {downloadUrl ? (
+                  <a href={downloadUrl} rel="noreferrer" target="_blank">
+                    Download
+                  </a>
+                ) : null}
               </div>
             </article>
           );
@@ -2496,8 +2815,8 @@ function DocumentsView({
       {!visible.length ? (
         <div className="drive-empty private-upload-empty">
           <span>PRIVAT</span>
-          <h3>Noch keine privaten Dateien.</h3>
-          <p>Google-Drive-Dateien erscheinen getrennt darüber.</p>
+          <h3>Keine passende Datei gefunden.</h3>
+          <p>Ändere Suche oder Ordnerfilter – oder füge eine Datei hinzu.</p>
         </div>
       ) : null}
 
@@ -2536,12 +2855,14 @@ function PageIntro({
 
 type CaptureDialogProps = {
   initialKind: CaptureKind;
+  initialTask: Task | null;
   integrations: IntegrationConfig;
   taskLists: GoogleTaskList[];
   calendarReminderGranted: boolean;
   calendarConnectUrl: string;
   onClose: () => void;
   onSaveTask: (task: Task) => Promise<boolean>;
+  onUpdateTask: (task: Task) => Promise<boolean>;
   onSaveEvent: (event: CalendarEvent) => void;
   onSaveCost: (cost: Cost) => void;
   onSaveIncome: (income: Income) => void;
@@ -2557,12 +2878,14 @@ type CaptureDialogProps = {
 
 function CaptureDialog({
   initialKind,
+  initialTask,
   integrations,
   taskLists,
   calendarReminderGranted,
   calendarConnectUrl,
   onClose,
   onSaveTask,
+  onUpdateTask,
   onSaveEvent,
   onSaveCost,
   onSaveIncome,
@@ -2570,13 +2893,20 @@ function CaptureDialog({
   onSaveJournal,
   toast,
 }: CaptureDialogProps) {
+  const dialogRef = useModalDialog<HTMLElement>(onClose);
   const [kind, setKind] = useState<CaptureKind>(initialKind);
-  const [title, setTitle] = useState("");
-  const [date, setDate] = useState(isoDateInput());
-  const [taskId] = useState(() => uid("task"));
-  const [taskListId, setTaskListId] = useState(taskLists[0]?.id || "");
-  const [quadrant, setQuadrant] = useState<TaskQuadrant>("do");
-  const [minutes, setMinutes] = useState(20);
+  const [title, setTitle] = useState(initialTask?.title ?? "");
+  const [date, setDate] = useState(
+    initialTask?.dueAt ? isoDateInput(initialTask.dueAt) : isoDateInput(),
+  );
+  const [taskId] = useState(() => initialTask?.id ?? uid("task"));
+  const [taskListId, setTaskListId] = useState(
+    initialTask?.taskListId ?? taskLists[0]?.id ?? "",
+  );
+  const [quadrant, setQuadrant] = useState<TaskQuadrant>(
+    initialTask?.quadrant ?? "do",
+  );
+  const [minutes, setMinutes] = useState(initialTask?.estimateMinutes ?? 20);
   const [reminderMode, setReminderMode] = useState<"none" | "at" | "minutes">(
     "none",
   );
@@ -2602,16 +2932,22 @@ function CaptureDialog({
   const [submitError, setSubmitError] = useState("");
   const selectedTaskListId = taskLists.some((list) => list.id === taskListId)
     ? taskListId
-    : taskLists[0]?.id || "";
-  const isPrimaryEntry = !["document", "journal"].includes(kind);
+    : initialTask?.taskListId || taskLists[0]?.id || "";
+  const editingTask = kind === "task" && Boolean(initialTask);
+  const isPrimaryEntry =
+    !initialTask && !["document", "journal"].includes(kind);
   const captureEyebrow =
-    kind === "document"
+    editingTask
+      ? "Google Tasks"
+      : kind === "document"
       ? "Google Drive"
       : kind === "journal"
         ? "Kurze Notiz"
         : "Neu";
   const captureTitle =
-    kind === "document"
+    editingTask
+      ? "Aufgabe bearbeiten"
+      : kind === "document"
       ? "Unterlage verknüpfen"
       : kind === "journal"
         ? "Was möchtest du im Tagebuch festhalten?"
@@ -2627,60 +2963,101 @@ function CaptureDialog({
         );
         return;
       }
-      if (reminderMode !== "none" && !calendarReminderGranted) {
+      if (!editingTask && reminderMode !== "none" && !calendarReminderGranted) {
         setSubmitError(
           "Für E-Mail-Erinnerungen muss Google Kalender einmalig freigegeben werden.",
         );
         return;
       }
+      if (!Number.isFinite(minutes) || minutes < 5 || minutes > 1_440) {
+        setSubmitError("Bitte gib einen Zeitbedarf zwischen 5 und 1.440 Minuten an.");
+        return;
+      }
+      if (
+        !editingTask &&
+        reminderMode === "minutes" &&
+        (!Number.isFinite(reminderMinutes) ||
+          reminderMinutes < 1 ||
+          reminderMinutes > 525_600)
+      ) {
+        setSubmitError("Bitte wähle eine Erinnerung zwischen einer Minute und einem Jahr.");
+        return;
+      }
       const reminderAt =
-        reminderMode === "at"
-          ? new Date(reminderDateTime)
+        editingTask
+          ? initialTask?.reminderAt ?? null
+          : reminderMode === "at"
+          ? (() => {
+              const [reminderDate = "", reminderTime = ""] =
+                reminderDateTime.split("T");
+              return zonedDateTimeToIso(reminderDate, reminderTime);
+            })()
           : reminderMode === "minutes"
-            ? new Date(Date.now() + reminderMinutes * 60_000)
+            ? new Date(Date.now() + reminderMinutes * 60_000).toISOString()
             : null;
       if (
-        reminderAt &&
-        (Number.isNaN(reminderAt.getTime()) || reminderAt.getTime() < Date.now())
+        !editingTask &&
+        reminderMode !== "none" &&
+        (!reminderAt || new Date(reminderAt).getTime() < Date.now())
       ) {
-        setSubmitError("Bitte wähle einen Erinnerungszeitpunkt in der Zukunft.");
+        setSubmitError(
+          "Bitte wähle einen gültigen Erinnerungszeitpunkt in Berliner Zeit und in der Zukunft.",
+        );
         return;
       }
       setSaving(true);
       setSubmitError("");
-      const saved = await onSaveTask({
+      const nextTask: Task = {
+        ...initialTask,
         id: taskId,
         taskListId: selectedTaskListId,
         title: title.trim(),
         area: "persoenlich",
         quadrant,
         dueAt: date ? dateAtNine(date) : null,
-        reminderAt: reminderAt?.toISOString() || null,
+        reminderAt,
         estimateMinutes: minutes,
         progress: 0,
         completed: false,
         confidential: true,
-      });
+      };
+      const saved = editingTask
+        ? await onUpdateTask(nextTask)
+        : await onSaveTask(nextTask);
       setSaving(false);
       if (!saved) {
         setSubmitError(
-          "Bitte verbinde Google Tasks oder erneuere die Berechtigung. Es wurde keine lokale Aufgabenkopie angelegt.",
+          editingTask
+            ? "Die Aufgabe konnte nicht aktualisiert werden. Bitte gleiche Google Tasks ab und versuche es erneut."
+            : "Bitte verbinde Google Tasks oder erneuere die Berechtigung. Es wurde keine lokale Aufgabenkopie angelegt.",
         );
         return;
       }
       onClose();
       return;
     } else if (kind === "cost") {
-      const numericAmount = Number.parseFloat(amount.replace(",", "."));
-      if (!title.trim() || !Number.isFinite(numericAmount)) return;
+      const parsedAmount = parseEuroInput(amount);
+      const dueAt = dateAtNine(date);
+      if (!title.trim()) {
+        setSubmitError("Bitte gib eine Bezeichnung für die Ausgabe an.");
+        return;
+      }
+      if (!parsedAmount.valid || parsedAmount.value === null || parsedAmount.value <= 0) {
+        setSubmitError("Bitte gib einen gültigen Betrag größer als 0 Euro an.");
+        return;
+      }
+      if (!dueAt) {
+        setSubmitError("Bitte wähle ein gültiges Fälligkeitsdatum.");
+        return;
+      }
       onSaveCost({
         id: uid("cost"),
         title: title.trim(),
         category,
-        amount: numericAmount,
-        dueAt: dateAtNine(date),
+        amount: parsedAmount.value,
+        dueAt,
         cadence,
-        status: daysFromNow(dateAtNine(date)) <= 3 ? "due" : "planned",
+        status: daysFromNow(dueAt) <= 3 ? "due" : "planned",
         payee: payee.trim(),
         contactEmail: contactEmail.trim(),
         note: "Über die gemeinsame Erfassung angelegt",
@@ -2692,30 +3069,57 @@ function CaptureDialog({
         subcategory,
       });
     } else if (kind === "income") {
-      const numericAmount = Number.parseFloat(amount.replace(",", "."));
-      if (!title.trim() || !Number.isFinite(numericAmount)) return;
+      const parsedAmount = parseEuroInput(amount);
+      const receivedAt = dateAtNine(date);
+      if (!title.trim()) {
+        setSubmitError("Bitte gib eine Bezeichnung für die Einnahme an.");
+        return;
+      }
+      if (!parsedAmount.valid || parsedAmount.value === null || parsedAmount.value <= 0) {
+        setSubmitError("Bitte gib einen gültigen Betrag größer als 0 Euro an.");
+        return;
+      }
+      if (!receivedAt) {
+        setSubmitError("Bitte wähle ein gültiges Eingangsdatum.");
+        return;
+      }
       onSaveIncome({
         id: uid("income"),
         title: title.trim(),
-        amount: numericAmount,
-        receivedAt: dateAtNine(date),
+        amount: parsedAmount.value,
+        receivedAt,
         cadence,
         source: payee.trim(),
         note: "Manuell im Finanzbereich erfasst",
       });
     } else if (kind === "document") {
-      if (!title.trim() || !driveUrl.trim()) return;
-      const fileId = extractDriveFileId(driveUrl.trim());
+      const normalizedDriveUrl = safeGoogleDriveUrl(driveUrl);
+      if (!title.trim()) {
+        setSubmitError("Bitte gib einen Namen für die Unterlage an.");
+        return;
+      }
+      if (!normalizedDriveUrl) {
+        setSubmitError(
+          "Bitte verwende einen HTTPS-Dateilink von drive.google.com oder docs.google.com.",
+        );
+        return;
+      }
+      const fileId = extractDriveFileId(normalizedDriveUrl);
+      if (!fileId || normalizedDriveUrl.includes("/folders/")) {
+        setSubmitError("Bitte verknüpfe eine einzelne Google-Drive-Datei.");
+        return;
+      }
       onSaveDocument({
         id: uid("doc"),
         name: title.trim(),
         folderPath: folderPath.trim() || "Persönlich/Wichtige Unterlagen",
-        kind: inferDocumentKind(driveUrl.trim()),
-        driveUrl: driveUrl.trim(),
+        kind: inferDocumentKind(normalizedDriveUrl),
+        driveUrl: normalizedDriveUrl,
         fileId,
         modifiedAt: new Date().toISOString(),
         tags: ["Google Drive"],
         confidential: true,
+        storage: "drive",
       });
     } else {
       if (!title.trim() && !win.trim()) return;
@@ -2731,7 +3135,9 @@ function CaptureDialog({
         aria-modal="true"
         className={`capture-dialog${isPrimaryEntry ? " unified-entry-dialog" : ""}`}
         onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
       >
         <div className="dialog-handle" />
         <header className="dialog-heading">
@@ -2777,7 +3183,14 @@ function CaptureDialog({
         {kind === "event" ? (
           <CalendarEventForm onClose={onClose} onSave={onSaveEvent} toast={toast} />
         ) : (
-        <form className="capture-form" onSubmit={submit}>
+        <form
+          aria-describedby={submitError ? "capture-submit-error" : undefined}
+          className="capture-form"
+          onChange={() => {
+            if (submitError) setSubmitError("");
+          }}
+          onSubmit={submit}
+        >
           <label>
             {kind === "journal"
               ? "Was ist heute passiert?"
@@ -2807,6 +3220,7 @@ function CaptureDialog({
                         ? "z. B. Gehalt oder Erstattung"
                       : "z. B. Versicherungsunterlagen prüfen"
                 }
+                required
                 value={title}
               />
             )}
@@ -2818,10 +3232,19 @@ function CaptureDialog({
                 <label>
                   Bereich
                   <select
-                    disabled={!taskLists.length}
+                    disabled={editingTask || !taskLists.length}
                     onChange={(event) => setTaskListId(event.target.value)}
                     value={selectedTaskListId}
                   >
+                    {editingTask &&
+                    initialTask?.taskListId &&
+                    !taskLists.some(
+                      (list) => list.id === initialTask.taskListId,
+                    ) ? (
+                      <option value={initialTask.taskListId}>
+                        {initialTask.taskListTitle || "Aktuelle Google-Tasks-Liste"}
+                      </option>
+                    ) : null}
                     {!taskLists.length ? (
                       <option value="">Listen werden geladen …</option>
                     ) : null}
@@ -2862,14 +3285,26 @@ function CaptureDialog({
                 <label>
                   Zeitbedarf in Minuten
                   <input
+                    max="1440"
                     min="5"
                     onChange={(event) => setMinutes(Number(event.target.value))}
                     step="5"
+                    required
                     type="number"
                     value={minutes}
                   />
                 </label>
               </div>
+              {editingTask ? (
+                <p className="form-trust">
+                  {initialTask?.reminderAt
+                    ? `Die bestehende Kalender-Erinnerung am ${formatDate(
+                        initialTask.reminderAt,
+                      )} um ${formatTime(initialTask.reminderAt)} Uhr bleibt unverändert.`
+                    : "Für diese Aufgabe ist keine Kalender-Erinnerung verknüpft."}
+                  {" "}Erinnerungen verwaltest du sicher im verknüpften Google-Kalender.
+                </p>
+              ) : (
               <fieldset className="task-reminder-fieldset">
                 <legend>Erinnerung</legend>
                 <label>
@@ -2903,6 +3338,7 @@ function CaptureDialog({
                   <label>
                     In wie vielen Minuten?
                     <input
+                      max="525600"
                       min="1"
                       onChange={(event) =>
                         setReminderMinutes(Number(event.target.value))
@@ -2927,6 +3363,7 @@ function CaptureDialog({
                   </p>
                 ) : null}
               </fieldset>
+              )}
             </>
           ) : null}
 
@@ -2964,6 +3401,7 @@ function CaptureDialog({
                     inputMode="decimal"
                     onChange={(event) => setAmount(event.target.value)}
                     placeholder="0,00"
+                    required
                     value={amount}
                   />
                 </label>
@@ -2971,6 +3409,7 @@ function CaptureDialog({
                   Fälligkeit
                   <input
                     onChange={(event) => setDate(event.target.value)}
+                    required
                     type="date"
                     value={date}
                   />
@@ -3096,6 +3535,7 @@ function CaptureDialog({
                     inputMode="decimal"
                     onChange={(event) => setAmount(event.target.value)}
                     placeholder="0,00"
+                    required
                     value={amount}
                   />
                 </label>
@@ -3103,6 +3543,7 @@ function CaptureDialog({
                   Eingegangen am
                   <input
                     onChange={(event) => setDate(event.target.value)}
+                    required
                     type="date"
                     value={date}
                   />
@@ -3146,8 +3587,14 @@ function CaptureDialog({
               <label>
                 Google-Drive-Dateilink
                 <input
-                  onChange={(event) => setDriveUrl(event.target.value)}
+                  aria-describedby={submitError ? "capture-submit-error" : undefined}
+                  aria-invalid={Boolean(submitError) || undefined}
+                  onChange={(event) => {
+                    setDriveUrl(event.target.value);
+                    if (submitError) setSubmitError("");
+                  }}
                   placeholder="https://drive.google.com/file/d/…"
+                  required
                   type="url"
                   value={driveUrl}
                 />
@@ -3209,7 +3656,9 @@ function CaptureDialog({
           ) : null}
 
           {submitError ? (
-          <p className="form-error" role="alert">{submitError}</p>
+          <p className="form-error" id="capture-submit-error" role="alert">
+            {submitError}
+          </p>
           ) : null}
           <div className="dialog-actions">
             <button className="button button-ghost" onClick={onClose} type="button">
@@ -3237,15 +3686,19 @@ function DocumentViewer({
   document: DocumentRef;
   onClose: () => void;
 }) {
-  const isUpload = document.storage === "upload";
+  const isUpload = documentSource(document) === "upload";
+  const privateFileUrl = safePrivateFileUrl(
+    document.downloadUrl ?? document.driveUrl,
+  );
+  const safeDriveUrl = safeGoogleDriveUrl(document.driveUrl);
   const preview = isUpload
     ? document.contentType === "application/pdf" ||
       document.contentType?.startsWith("image/")
-      ? document.downloadUrl ?? null
+      ? privateFileUrl
       : null
     : drivePreviewUrl(document.driveUrl, document.fileId);
   const downloadUrl = isUpload
-    ? `${document.downloadUrl ?? document.driveUrl}?download=1`
+    ? privateFileDownloadUrl(document.downloadUrl ?? document.driveUrl)
     : driveDownloadUrl(document.driveUrl, document.fileId);
   return (
       <section
@@ -3261,14 +3714,16 @@ function DocumentViewer({
             <p>{document.folderPath}</p>
           </div>
           <div>
-            <a
-              className="button button-soft"
-              href={downloadUrl}
-              rel="noreferrer"
-              target="_blank"
-            >
-              Herunterladen
-            </a>
+            {downloadUrl ? (
+              <a
+                className="button button-soft"
+                href={downloadUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Herunterladen
+              </a>
+            ) : null}
             <button className="button button-ghost" onClick={onClose} type="button">
               Schließen
             </button>
@@ -3279,6 +3734,7 @@ function DocumentViewer({
             <div className="a4-page">
               <iframe
                 loading="lazy"
+                referrerPolicy="no-referrer"
                 src={preview}
                 title={`Vorschau von ${document.name}`}
               />
@@ -3292,14 +3748,27 @@ function DocumentViewer({
                   ? "Für dieses Format gibt es keine Vorschau. Der Download ist möglich."
                   : "Der Eintrag verweist auf einen Ordner. Verknüpfe den Dateilink für Vorschau und Download."}
               </p>
-              <a
-                className="button button-primary"
-                href={isUpload ? downloadUrl : document.driveUrl}
-                rel="noreferrer"
-                target="_blank"
-              >
-                {isUpload ? "Datei herunterladen" : "In Google Drive öffnen"}
-              </a>
+              {isUpload ? (
+                downloadUrl ? (
+                  <a
+                    className="button button-primary"
+                    href={downloadUrl}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Datei herunterladen
+                  </a>
+                ) : null
+              ) : safeDriveUrl ? (
+                <a
+                  className="button button-primary"
+                  href={safeDriveUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  In Google Drive öffnen
+                </a>
+              ) : null}
             </div>
           )}
         </div>
@@ -3313,8 +3782,11 @@ function SettingsDialog({
   gamification,
   integrations,
   syncCopy,
+  syncStatus,
   workspaceStatus,
+  workspaceStatusError,
   onAdaptiveFocusChange,
+  onAcceptRemoteState,
   onApplicationKpiChange,
   onCelebrationsChange,
   onClose,
@@ -3326,7 +3798,9 @@ function SettingsDialog({
   onReset,
   onRefreshGoogle,
   onRewardCatalogToggle,
+  onRedeemReward,
   onRewardModeChange,
+  onBuildWorldUpgrade,
   onSurprisesChange,
   onXpGoalChange,
   xpProgress,
@@ -3336,8 +3810,11 @@ function SettingsDialog({
   gamification: GamificationState;
   integrations: IntegrationConfig;
   syncCopy: string;
+  syncStatus: SyncStatus;
   workspaceStatus: GoogleWorkspaceStatus | null;
+  workspaceStatusError: string;
   onAdaptiveFocusChange: (points: number) => void;
+  onAcceptRemoteState: () => Promise<void>;
   onApplicationKpiChange: (
     key: ApplicationKpiKey,
     changes: {
@@ -3360,14 +3837,41 @@ function SettingsDialog({
   onReset: () => void;
   onRefreshGoogle: () => void;
   onRewardCatalogToggle: (rewardId: string, active: boolean) => void;
+  onRedeemReward: (rewardId: string) => void;
   onRewardModeChange: (mode: RewardMode) => void;
+  onBuildWorldUpgrade: (
+    district: WorldDistrictKey,
+    kind: WorldUpgradeKind,
+  ) => void;
   onSurprisesChange: (enabled: boolean) => void;
   xpProgress: XpProgressByPeriod;
 }) {
+  const dialogRef = useModalDialog<HTMLElement>(onClose);
   const importRef = useRef<HTMLInputElement>(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const [googleError, setGoogleError] = useState("");
+  const [conflictBusy, setConflictBusy] = useState(false);
+  const [conflictError, setConflictError] = useState("");
+  const [worldDistrict, setWorldDistrict] = useState<WorldDistrictKey>("WORKSHOP");
+  const [worldUpgradeKind, setWorldUpgradeKind] =
+    useState<WorldUpgradeKind>("DECORATION");
   const rewardTotals = ledgerTotals(gamification.ledger);
+  const worldUpgradeCost = WORLD_UPGRADE_COSTS[worldUpgradeKind];
+  const canBuildWorldUpgrade =
+    rewardTotals.energy >= worldUpgradeCost.energy &&
+    rewardTotals.runes >= worldUpgradeCost.runes &&
+    rewardTotals.blueprints >= worldUpgradeCost.blueprints &&
+    rewardTotals.bossKeys >= worldUpgradeCost.bossKeys;
+  const worldUpgradeCostLabel = [
+    worldUpgradeCost.energy ? `${worldUpgradeCost.energy} Energie` : "",
+    worldUpgradeCost.runes ? `${worldUpgradeCost.runes} Runen` : "",
+    worldUpgradeCost.blueprints
+      ? `${worldUpgradeCost.blueprints} Bauplan${worldUpgradeCost.blueprints === 1 ? "" : "e"}`
+      : "",
+    worldUpgradeCost.bossKeys
+      ? `${worldUpgradeCost.bossKeys} Boss-Schlüssel`
+      : "",
+  ].filter(Boolean).join(" · ");
   const approvedNamedMessages = gamification.approvedMessages.filter(
     (message) =>
       message.active &&
@@ -3415,7 +3919,7 @@ function SettingsDialog({
     setGoogleError("");
     try {
       const response = await fetch("/api/google/disconnect", { method: "POST" });
-      const payload = (await response.json()) as { error?: string };
+      const payload = await responsePayload<{ error?: string }>(response);
       if (!response.ok) {
         throw new Error(payload.error || "Google konnte nicht getrennt werden.");
       }
@@ -3430,6 +3934,31 @@ function SettingsDialog({
     }
   };
 
+  const resolveStateConflict = async () => {
+    if (
+      conflictBusy ||
+      !window.confirm(
+        "Vor dem Laden des privaten Serverstands wird deine lokale Fassung automatisch als Backup gespeichert. Danach ersetzt der Serverstand die lokale Ansicht. Fortfahren?",
+      )
+    ) {
+      return;
+    }
+    onExport();
+    setConflictBusy(true);
+    setConflictError("");
+    try {
+      await onAcceptRemoteState();
+    } catch (caught) {
+      setConflictError(
+        caught instanceof Error
+          ? caught.message
+          : "Der private Serverstand konnte nicht geladen werden.",
+      );
+    } finally {
+      setConflictBusy(false);
+    }
+  };
+
   return (
     <div className="dialog-backdrop" onMouseDown={onClose} role="presentation">
       <section
@@ -3437,7 +3966,9 @@ function SettingsDialog({
         aria-modal="true"
         className="settings-dialog"
         onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
       >
         <header className="dialog-heading">
           <div>
@@ -3458,6 +3989,45 @@ function SettingsDialog({
             </p>
           </div>
         </div>
+        {syncStatus === "konflikt" ? (
+          <div
+            aria-labelledby="state-conflict-title"
+            className="settings-section state-conflict-panel"
+            role="alert"
+          >
+            <div>
+              <span className="eyebrow">Datenschutz und Datenintegrität</span>
+              <h3 id="state-conflict-title">Zwei unterschiedliche Stände erkannt</h3>
+              <p>
+                Der Kompass überschreibt keinen Stand automatisch. Sichere die
+                lokale Fassung und lade anschließend bewusst den aktuellen
+                privaten Serverstand.
+              </p>
+            </div>
+            <div className="button-group">
+              <button
+                className="button button-soft"
+                onClick={onExport}
+                type="button"
+              >
+                Lokale Fassung sichern
+              </button>
+              <button
+                className="button button-primary"
+                disabled={conflictBusy}
+                onClick={() => void resolveStateConflict()}
+                type="button"
+              >
+                {conflictBusy ? "Serverstand wird geladen …" : "Serverstand laden"}
+              </button>
+            </div>
+            {conflictError ? (
+              <p className="form-error" role="alert">
+                {conflictError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <div className="settings-section dashboard-settings-section">
           <span className="eyebrow">Zentrale</span>
           <h3>Kennzahlen auswählen</h3>
@@ -3719,19 +4289,37 @@ function SettingsDialog({
                 </div>
                 <div className="reward-catalog-settings">
                   {gamification.rewardCatalog.map((reward) => (
-                    <label key={reward.id}>
-                      <span>
-                        <strong>{reward.title}</strong>
-                        <small>{reward.cost} Klarpunkte</small>
-                      </span>
-                      <input
-                        checked={reward.active}
-                        onChange={(event) =>
-                          onRewardCatalogToggle(reward.id, event.target.checked)
+                    <article className="reward-catalog-item" key={reward.id}>
+                      <label>
+                        <span>
+                          <strong>{reward.title}</strong>
+                          <small>{reward.cost.toLocaleString("de-DE")} Klarpunkte</small>
+                        </span>
+                        <input
+                          aria-label={`${reward.title} im Katalog aktivieren`}
+                          checked={reward.active}
+                          onChange={(event) =>
+                            onRewardCatalogToggle(reward.id, event.target.checked)
+                          }
+                          type="checkbox"
+                        />
+                      </label>
+                      <button
+                        className="button button-soft"
+                        disabled={!reward.active || rewardTotals.balanceXp < reward.cost}
+                        onClick={() => onRedeemReward(reward.id)}
+                        title={
+                          !reward.active
+                            ? "Diese Belohnung ist deaktiviert"
+                            : rewardTotals.balanceXp < reward.cost
+                              ? "Noch nicht genügend Klarpunkte"
+                              : "Nach Bestätigung einlösen"
                         }
-                        type="checkbox"
-                      />
-                    </label>
+                        type="button"
+                      >
+                        Einlösen
+                      </button>
+                    </article>
                   ))}
                 </div>
               </div>
@@ -3742,7 +4330,58 @@ function SettingsDialog({
                 <div className="fantasy-resource-summary">
                   <span><b>{rewardTotals.energy}</b> Energie</span>
                   <span><b>{rewardTotals.runes}</b> Runen</span>
+                  <span><b>{rewardTotals.blueprints}</b> Baupläne</span>
+                  <span><b>{rewardTotals.bossKeys}</b> Boss-Schlüssel</span>
                   <span><b>{gamification.world.upgrades.length}</b> Ausbauten</span>
+                </div>
+                <div className="world-build-controls" aria-label="Chronik ausbauen">
+                  <label>
+                    <span>Bezirk</span>
+                    <select
+                      onChange={(event) =>
+                        setWorldDistrict(event.target.value as WorldDistrictKey)
+                      }
+                      value={worldDistrict}
+                    >
+                      {WORLD_DISTRICTS.map((district) => (
+                        <option key={district} value={district}>
+                          {WORLD_DISTRICT_LABELS[district]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Ausbau</span>
+                    <select
+                      onChange={(event) =>
+                        setWorldUpgradeKind(event.target.value as WorldUpgradeKind)
+                      }
+                      value={worldUpgradeKind}
+                    >
+                      {WORLD_UPGRADE_KINDS.map((kind) => (
+                        <option key={kind} value={kind}>
+                          {WORLD_UPGRADE_COSTS[kind].label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div>
+                    <span>Kosten</span>
+                    <small>{worldUpgradeCostLabel}</small>
+                  </div>
+                  <button
+                    className="button button-soft"
+                    disabled={!canBuildWorldUpgrade}
+                    onClick={() => onBuildWorldUpgrade(worldDistrict, worldUpgradeKind)}
+                    title={
+                      canBuildWorldUpgrade
+                        ? "Nach Bestätigung ausbauen"
+                        : "Für diesen Ausbau fehlen noch Ressourcen"
+                    }
+                    type="button"
+                  >
+                    Ausbau errichten
+                  </button>
                 </div>
                 <label className="reward-setting-row">
                   <span>
@@ -3828,11 +4467,15 @@ function SettingsDialog({
           <div className="google-account-summary">
             <div>
               <strong>
-                {workspaceStatus?.connected
+                {workspaceStatusError
+                  ? "Google-Status derzeit unbekannt"
+                  : workspaceStatus?.connected
                   ? workspaceStatus.googleEmail || "Google-Konto verbunden"
                   : workspaceStatus?.configured
                     ? "Google-Konto noch nicht verbunden"
-                    : "Google-Verbindung noch nicht eingerichtet"}
+                    : workspaceStatus
+                      ? "Google-Verbindung noch nicht eingerichtet"
+                      : "Google-Status wird geprüft"}
               </strong>
               <p>
                 Berechtigungen werden nur bei Bedarf angefragt.
@@ -3846,13 +4489,20 @@ function SettingsDialog({
               Status prüfen
             </button>
           </div>
+          {workspaceStatusError ? (
+            <p className="form-error" role="alert">{workspaceStatusError}</p>
+          ) : null}
           {capabilityRows.map((row) => {
             const capability = workspaceStatus?.capabilities[row.key];
-            const status = capability?.granted
+            const status = workspaceStatusError
+              ? "Status unbekannt"
+              : capability?.granted
               ? "Verbunden"
               : workspaceStatus?.configured
                 ? "Berechtigung fehlt"
-                : "Konfiguration fehlt";
+                : workspaceStatus
+                  ? "Konfiguration fehlt"
+                  : "Wird geprüft";
             return (
               <article className="integration-row" key={row.key}>
                 <span className="integration-initial">{row.label.slice(0, 1)}</span>

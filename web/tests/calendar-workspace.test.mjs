@@ -36,6 +36,12 @@ test("liefert die informative Kalenderzentrale mit vier Ansichten", async () => 
   assert.match(view, /Google-Kalender anlegen/);
   assert.match(view, /MAX_SELECTED_CALENDARS = 12/);
   assert.match(view, /gerri-calendar-selection-v1/);
+  assert.match(view, /zonedDateTimeToIso\(key, "00:00"\)/);
+  assert.match(view, /zonedDateTimeInput\(now\)/);
+  assert.doesNotMatch(
+    view,
+    /\.getHours\(|\.getMinutes\(|\.getFullYear\(|\.getMonth\(|\.getDate\(|\.getDay\(/,
+  );
   assert.match(styles, /\.calendar-day-focus/);
   assert.match(styles, /\.calendar-month/);
   assert.match(styles, /\.calendar-week-body/);

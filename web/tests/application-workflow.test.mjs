@@ -3,11 +3,43 @@ import test from "node:test";
 
 import {
   addApplicationActivity,
+  activeUploadedMasterCv,
   applicationKpiProgress,
   assessSalaryPreference,
+  normalizeApplicationDocumentDesign,
   normalizeApplicationGenerationPreferences,
   normalizeApplicationKpiSettings,
 } from "../lib/application-workflow.ts";
+
+function documentRef(id, storage, name) {
+  return {
+    id,
+    name,
+    folderPath: "Bewerbungsunterlagen",
+    kind: "cv",
+    driveUrl: "",
+    fileId: null,
+    modifiedAt: "2026-08-06T08:00:00.000Z",
+    tags: [],
+    confidential: true,
+    storage,
+    downloadUrl: `/api/files/${id}`,
+  };
+}
+
+test("verwendet bei mehreren CV-Fassungen genau den aktiven hochgeladenen Master-CV", () => {
+  const documents = [
+    documentRef("cv-alt-1", "upload", "Master-CV alt.docx"),
+    documentRef("cv-aktiv", "upload", "Master-CV aktiv.docx"),
+    documentRef("cv-alt-2", "drive", "Master-CV Entwurf.docx"),
+  ];
+
+  const selected = activeUploadedMasterCv(documents, "cv-aktiv");
+
+  assert.equal(selected?.id, "cv-aktiv");
+  assert.equal(selected?.name, "Master-CV aktiv.docx");
+  assert.equal(activeUploadedMasterCv(documents, "cv-alt-2"), null);
+});
 
 function application(overrides = {}) {
   return {
@@ -120,7 +152,53 @@ test("normalisiert Generierungsfilter und verwirft unbekannte Werte", () => {
   assert.deepEqual(preferences.outputKinds, ["tailored-cv"]);
   assert.deepEqual(preferences.researchScopes, ["company", "projects"]);
   assert.equal(preferences.desiredSalaryAnnual, 58_000);
-  assert.equal(preferences.cvLength, "detailed");
+  assert.equal(
+    preferences.cvLength,
+    "two_pages",
+    "alte Längenvarianten werden auf den versandfertigen Zwei-Seiten-Vertrag migriert",
+  );
+});
+
+test("ergänzt alte Bewerbungszustände abwärtskompatibel um das Dokumentdesign", () => {
+  assert.deepEqual(normalizeApplicationDocumentDesign(undefined), {
+    templateDocumentIds: {
+      "tailored-cv": null,
+      "cover-letter": null,
+      "company-brief": null,
+      "interview-prep": null,
+    },
+    visualizations: [],
+  });
+});
+
+test("normalisiert Vorlagenauswahl und Visualisierungsziele je Dokumenttyp", () => {
+  const design = normalizeApplicationDocumentDesign({
+    templateDocumentIds: {
+      "tailored-cv": " template-1 ",
+      "cover-letter": "template-2",
+      unknown: "ignored",
+    },
+    visualizations: [
+      {
+        id: "visual-1",
+        sourceDocumentId: "image-1",
+        title: "Technische Skills",
+        altText: "Horizontales Balkendiagramm technischer Kompetenzen",
+        targetKinds: ["tailored-cv", "interview-prep", "unknown"],
+        placement: "after-skills",
+        confirmedAt: "2026-08-06T10:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.equal(design.templateDocumentIds["tailored-cv"], "template-1");
+  assert.equal(design.templateDocumentIds["company-brief"], null);
+  assert.deepEqual(design.visualizations[0].targetKinds, [
+    "tailored-cv",
+    "interview-prep",
+  ]);
+  assert.equal(design.visualizations[0].placement, "after-skills");
+  assert.equal(design.visualizations[0].confirmedAt, "2026-08-06T10:00:00.000Z");
 });
 
 test("ordnet den Gehaltswunsch gegen eine veröffentlichte Spanne ein", () => {

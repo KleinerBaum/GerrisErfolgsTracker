@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 import {
   DASHBOARD_KPI_DEFINITIONS,
   type DashboardKpiDefinition,
@@ -13,6 +11,7 @@ import {
   formatTime,
   isoDateInput,
   isSameCalendarMonth,
+  zonedDateTimeToIso,
 } from "../lib/format";
 import { createDefaultGamification } from "../lib/gamification";
 import {
@@ -28,10 +27,13 @@ import {
 import type { GoogleTasksStatus } from "../lib/google-tasks-client";
 
 type TodayViewProps = {
+  now: number;
   state: AppState;
   externalEvents: CalendarEvent[];
   taskStatus: GoogleTasksStatus | null;
   planningReport: PlanningHealthReport | null;
+  planningLoading: boolean;
+  planningError: string;
   onCompleteTask: (taskId: string) => Promise<void>;
   onNavigate: (view: ViewKey) => void;
   onOpenSettings: () => void;
@@ -166,15 +168,17 @@ function InsightHeading({
 }
 
 export function TodayView({
+  now,
   state,
   externalEvents,
   taskStatus,
   planningReport,
+  planningLoading,
+  planningError,
   onCompleteTask,
   onNavigate,
   onOpenSettings,
 }: TodayViewProps) {
-  const [now] = useState(() => Date.now());
   const today = isoDateInput(new Date(now).toISOString());
   const dayDifference = (value: string) => calendarDayDifference(value, now);
   const openTasks = state.tasks.filter((task) => !task.completed);
@@ -277,9 +281,10 @@ export function TodayView({
         )
         .slice(0, 4);
 
-  const journalThisWeek = state.journal.filter((entry) =>
-    occurredWithin(`${entry.date}T12:00:00`, now, 7),
-  );
+  const journalThisWeek = state.journal.filter((entry) => {
+    const entryTime = zonedDateTimeToIso(entry.date, "12:00");
+    return occurredWithin(entryTime, now, 7);
+  });
   const todayJournal = state.journal.find((entry) => entry.date === today);
   const averageMood = journalThisWeek.length
     ? journalThisWeek.reduce((sum, entry) => sum + entry.mood, 0) /
@@ -308,16 +313,22 @@ export function TodayView({
 
   const prioritySignals: PrioritySignal[] = [];
   if (planningNeedsAttention) {
+    const awaitingPlanning = planningLoading && !planningReport;
     prioritySignals.push({
       id: "planning-health",
       area: "calendar",
       areaLabel: "Planung",
-      title: planningReport?.title || "Planungslücke mit Top-Priorität klären",
+      title: awaitingPlanning
+        ? "Planungsstand wird geprüft"
+        : planningReport?.title || "Planungsstand klären",
       detail:
+        planningError ||
         planningReport?.message ||
-        "Ein leerer oder ungeprüfter Kalender wird nicht als freie Zeit gewertet.",
-      when: "Jetzt klären",
-      level: "critical",
+        (awaitingPlanning
+          ? "Kalender, Aufgaben und offene Planungspunkte werden abgeglichen."
+          : "Planungslücke mit Top-Priorität: Ein leerer oder ungeprüfter Kalender wird nicht als freie Zeit gewertet."),
+      when: awaitingPlanning ? "Wird geprüft" : "Jetzt klären",
+      level: awaitingPlanning ? "progress" : "critical",
       sortAt: 0,
       action: "Planung öffnen",
     });

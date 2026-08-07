@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 
 import { ownerEmail, ownerHash, sameOrigin } from "../../../lib/server-auth";
+import { validateUploadedBytes } from "../../../lib/upload-security";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ const ALLOWED_EXTENSIONS = new Set([
   "jpg",
   "jpeg",
   "png",
+  "svg",
   "webp",
   "heic",
 ]);
@@ -38,6 +40,7 @@ function inferredContentType(file: File, extension: string): string {
     jpg: "image/jpeg",
     jpeg: "image/jpeg",
     png: "image/png",
+    svg: "image/svg+xml",
     webp: "image/webp",
   };
   return known[extension] ?? "application/octet-stream";
@@ -82,11 +85,22 @@ export async function POST(request: Request) {
       );
     }
 
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const validation = await validateUploadedBytes(
+      originalName,
+      file.type,
+      bytes,
+    );
+    if (!validation.ok) {
+      return Response.json({ error: validation.error }, { status: 415 });
+    }
+
     const fileId = crypto.randomUUID();
     const hash = await ownerHash(email);
-    const contentType = inferredContentType(file, extension);
+    const contentType =
+      validation.contentType || inferredContentType(file, extension);
     const destination = value(form.get("destination"), 400) || "Persönlich/Fotos & Dokumente";
-    await env.FILES.put(`${hash}/${fileId}`, file.stream(), {
+    await env.FILES.put(`${hash}/${fileId}`, bytes, {
       httpMetadata: { contentType },
       customMetadata: {
         owner: hash,

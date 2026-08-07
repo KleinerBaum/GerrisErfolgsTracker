@@ -1,12 +1,180 @@
-import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
+import { strToU8, zipSync } from "fflate";
+
+import type { DocxTemplateProfile } from "./docx-template-profile";
+import type {
+  ApplicationDocumentKind,
+  ApplicationVisualizationPlacement,
+  MasterCvLink,
+} from "./types";
 
 const CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const NAVY = "142A3A";
 const TEAL = "17605E";
+const GOLD = "C29A4A";
 const TEXT = "26343E";
 const MUTED = "60717C";
-const GOLD = "C29A4A";
+const SOFT = "EAF1F2";
+
+// Gerris Application Line v1: bewusstes, benutzerdefiniertes A4-Preset.
+// Schriftgrößen sind OOXML-Halbpunktwerte, Abstände und Ränder Twips.
+
+export type DocxArtifactKind = ApplicationDocumentKind;
+
+export type DocxEmbeddedMedia = {
+  id: string;
+  title: string;
+  altText: string;
+  placement: ApplicationVisualizationPlacement;
+  pngBytes: Uint8Array;
+  svgBytes?: Uint8Array;
+  width: number;
+  height: number;
+};
+
+export type DocxExportOptions = {
+  templateProfile?: DocxTemplateProfile | null;
+  media?: DocxEmbeddedMedia[];
+};
+
+export type VisualizationPlacementReport = {
+  id: string;
+  requestedPlacement: ApplicationVisualizationPlacement;
+  resolvedPlacement: ApplicationVisualizationPlacement | "end-fallback";
+  insertBeforeLine: number;
+  warning: string | null;
+};
+
+type ArtifactConfig = {
+  label: string;
+  bodySize: number;
+  bodyLine: number;
+  bodyAfter: number;
+  titleSize: number;
+  heading1Size: number;
+  heading2Size: number;
+  margins: { top: number; right: number; bottom: number; left: number };
+};
+
+type ResolvedArtifactConfig = ArtifactConfig & {
+  page: { width: number; height: number };
+  fonts: { body: string; title: string; heading: string };
+  colors: {
+    title: string;
+    heading: string;
+    accent: string;
+    rule: string;
+    text: string;
+    muted: string;
+    soft: string;
+  };
+  headingBefore: number;
+  headingAfter: number;
+};
+
+const CONFIG: Record<DocxArtifactKind, ArtifactConfig> = {
+  "tailored-cv": {
+    label: "FOKUSSIERTER LEBENSLAUF",
+    bodySize: 18,
+    bodyLine: 216,
+    bodyAfter: 30,
+    titleSize: 42,
+    heading1Size: 22,
+    heading2Size: 20,
+    margins: { top: 650, right: 820, bottom: 650, left: 820 },
+  },
+  "cover-letter": {
+    label: "ANSCHREIBEN",
+    bodySize: 20,
+    bodyLine: 240,
+    bodyAfter: 90,
+    titleSize: 22,
+    heading1Size: 22,
+    heading2Size: 20,
+    margins: { top: 850, right: 1_134, bottom: 1_134, left: 1_417 },
+  },
+  "company-brief": {
+    label: "ROLLENBRIEFING",
+    bodySize: 18,
+    bodyLine: 216,
+    bodyAfter: 40,
+    titleSize: 36,
+    heading1Size: 21,
+    heading2Size: 19,
+    margins: { top: 650, right: 820, bottom: 650, left: 820 },
+  },
+  "interview-prep": {
+    label: "INTERVIEWMAPPE",
+    bodySize: 20,
+    bodyLine: 246,
+    bodyAfter: 70,
+    titleSize: 38,
+    heading1Size: 23,
+    heading2Size: 20,
+    margins: { top: 760, right: 900, bottom: 760, left: 900 },
+  },
+};
+
+function artifactConfig(
+  content: string,
+  kind: DocxArtifactKind,
+  templateProfile?: DocxTemplateProfile | null,
+): ResolvedArtifactConfig {
+  const base = CONFIG[kind];
+  let sized = base;
+  if (kind === "tailored-cv") {
+    const words = content.trim().split(/\s+/).filter(Boolean).length;
+    sized = words <= 850
+      ? { ...base, bodySize: 20, bodyLine: 240, bodyAfter: 40 }
+      : words <= 1_000
+        ? { ...base, bodySize: 19, bodyLine: 228, bodyAfter: 34 }
+        : { ...base, bodySize: 18, bodyLine: 216, bodyAfter: 28 };
+  }
+  if (!templateProfile) {
+    return {
+      ...sized,
+      page: { width: 11_906, height: 16_838 },
+      fonts: { body: "Carlito", title: "Caladea", heading: "Caladea" },
+      colors: {
+        title: NAVY,
+        heading: NAVY,
+        accent: TEAL,
+        rule: GOLD,
+        text: TEXT,
+        muted: MUTED,
+        soft: SOFT,
+      },
+      headingBefore: 150,
+      headingAfter: 64,
+    };
+  }
+  return {
+    ...sized,
+    bodySize: Math.max(18, templateProfile.sizes.body),
+    bodyLine: templateProfile.spacing.bodyLine,
+    bodyAfter: templateProfile.spacing.bodyAfter,
+    titleSize: templateProfile.sizes.title,
+    heading1Size: templateProfile.sizes.heading1,
+    heading2Size: templateProfile.sizes.heading2,
+    margins: { ...templateProfile.page.margins },
+    page: {
+      width: templateProfile.page.width,
+      height: templateProfile.page.height,
+    },
+    fonts: { ...templateProfile.fonts },
+    colors: {
+      title: templateProfile.colors.accent,
+      heading: templateProfile.colors.accent,
+      accent: templateProfile.colors.accent,
+      rule: templateProfile.colors.accent,
+      text: templateProfile.colors.text,
+      muted: templateProfile.colors.muted,
+      soft: templateProfile.colors.soft,
+    },
+    headingBefore: templateProfile.spacing.headingBefore,
+    headingAfter: templateProfile.spacing.headingAfter,
+  };
+}
 
 function xml(value: string): string {
   return value
@@ -19,54 +187,126 @@ function xml(value: string): string {
 
 function stripMarkdown(value: string): string {
   return value
-    .replace(/^\*\*(.+)\*\*$/, "$1")
-    .replace(/^\*(.+)\*$/, "$1")
+    .replace(/\[([^\]]+)\]\((?:https?:\/\/|mailto:|tel:)[^)]+\)/gi, "$1")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/\*([^*]+)\*/g, "$1")
     .trim();
 }
 
-function categoryColor(value: string): string {
-  if (/^(?:DIGITAL & SYSTEME|AI & DATA|PRODUCT|ORGANISATION)/i.test(value)) {
-    return "1A7F79";
+function safeExternalUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:", "mailto:", "tel:"].includes(url.protocol)
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
   }
-  if (/^(?:PROJEKT & PROZESS|DELIVERY|STEUERN|PERSÖNLICHE STEUERUNG)/i.test(value)) {
-    return "486E86";
+}
+
+class DocumentRelationships {
+  private readonly byUrl = new Map<string, string>();
+  private readonly mediaRelationships: string[] = [];
+  private nextId = 7;
+
+  idFor(rawUrl: string): string | null {
+    const url = safeExternalUrl(rawUrl);
+    if (!url) return null;
+    const existing = this.byUrl.get(url);
+    if (existing) return existing;
+    const id = "rId" + this.nextId++;
+    this.byUrl.set(url, id);
+    return id;
   }
-  if (/^(?:PEOPLE & ENABLEMENT|TRAINING|VERMITTELN|ENABLEMENT)/i.test(value)) {
-    return "A67019";
+
+  mediaFor(index: number, hasSvg: boolean): { pngId: string; svgId: string | null } {
+    const pngId = "rId" + this.nextId++;
+    this.mediaRelationships.push(
+      `<Relationship Id="${pngId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/visual-${index + 1}.png"/>`,
+    );
+    let svgId: string | null = null;
+    if (hasSvg) {
+      svgId = "rId" + this.nextId++;
+      this.mediaRelationships.push(
+        `<Relationship Id="${svgId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/visual-${index + 1}.svg"/>`,
+      );
+    }
+    return { pngId, svgId };
   }
-  if (/^(?:SALES & CONSULTING|BUSINESS|ABSCHLIESSEN|CONTENT)/i.test(value)) {
-    return "765F83";
+
+  xml(): string {
+    const hyperlinks = [...this.byUrl.entries()]
+      .map(
+        ([url, id]) =>
+          '<Relationship Id="' +
+          id +
+          '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' +
+          xml(url) +
+          '" TargetMode="External"/>',
+      )
+      .join("");
+    return (
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>' +
+      '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>' +
+      '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>' +
+      '<Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>' +
+      '<Relationship Id="rId6" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>' +
+      hyperlinks +
+      this.mediaRelationships.join("") +
+      "</Relationships>"
+    );
   }
-  return TEAL;
 }
 
 function run(
   value: string,
-  options: { bold?: boolean; italic?: boolean; color?: string } = {},
+  options: {
+    bold?: boolean;
+    italic?: boolean;
+    color?: string;
+    underline?: boolean;
+  } = {},
 ): string {
   const properties = [
-    '<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial"/>',
     options.bold ? "<w:b/>" : "",
     options.italic ? "<w:i/>" : "",
-    options.color ? `<w:color w:val="${options.color}"/>` : "",
+    options.color ? '<w:color w:val="' + options.color + '"/>' : "",
+    options.underline ? '<w:u w:val="single"/>' : "",
     '<w:lang w:val="de-DE"/>',
   ].join("");
-  return `<w:r><w:rPr>${properties}</w:rPr><w:t xml:space="preserve">${xml(value)}</w:t></w:r>`;
+  return (
+    "<w:r><w:rPr>" +
+    properties +
+    '</w:rPr><w:t xml:space="preserve">' +
+    xml(value) +
+    "</w:t></w:r>"
+  );
 }
 
-function inlineRuns(value: string, options: { labelColor?: string } = {}): string {
-  const cleanValue = value.trim();
-  const label = /^([A-ZÄÖÜ0-9][A-ZÄÖÜ0-9 &/+.-]{2,42}:)\s*(.*)$/u.exec(cleanValue);
-  if (label) {
-    return `${run(label[1], {
-      bold: true,
-      color: options.labelColor || categoryColor(label[1]),
-    })}${label[2] ? run(` ${label[2]}`) : ""}`;
-  }
-  const parts = cleanValue.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).filter(Boolean);
-  return parts
+function hyperlinkRun(
+  label: string,
+  url: string,
+  relationships: DocumentRelationships,
+  color: string,
+): string {
+  const id = relationships.idFor(url);
+  if (!id) return run(label);
+  return (
+    '<w:hyperlink r:id="' +
+    id +
+    '">' +
+    run(label, { color, underline: true }) +
+    "</w:hyperlink>"
+  );
+}
+
+function formattedRuns(value: string): string {
+  return value
+    .split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g)
+    .filter(Boolean)
     .map((part) => {
       if (part.startsWith("**") && part.endsWith("**")) {
         return run(part.slice(2, -2), { bold: true });
@@ -79,168 +319,659 @@ function inlineRuns(value: string, options: { labelColor?: string } = {}): strin
     .join("");
 }
 
-function paragraph(
-  style: string,
+function knownLinkRuns(
   value: string,
-  options: {
-    bullet?: boolean;
-    proof?: boolean;
-    keepNext?: boolean;
-    pageBreakBefore?: boolean;
-    rightInsetTwips?: number;
-  } = {},
+  links: MasterCvLink[],
+  relationships: DocumentRelationships,
+  color: string,
 ): string {
-  const color = categoryColor(value);
-  const direct = options.bullet
-    ? '<w:ind w:left="360" w:hanging="180"/>'
-    : options.proof
-      ? `<w:ind w:left="120" w:right="80"/><w:shd w:val="clear" w:color="auto" w:fill="EAF1F2"/><w:pBdr><w:left w:val="single" w:sz="18" w:space="5" w:color="${color}"/></w:pBdr>`
-      : "";
-  const layout = `${options.keepNext ? "<w:keepNext/>" : ""}${
-    options.pageBreakBefore ? "<w:pageBreakBefore/>" : ""
-  }${
-    options.rightInsetTwips
-      ? `<w:ind w:right="${options.rightInsetTwips}"/>`
-      : ""
-  }`;
-  const content = options.bullet
-    ? `${run("•", { bold: true, color })}${run("  ")}${inlineRuns(value, { labelColor: color })}`
-    : inlineRuns(value, { labelColor: color });
-  return `<w:p><w:pPr><w:pStyle w:val="${style}"/>${direct}${layout}</w:pPr>${content}</w:p>`;
+  let cursor = 0;
+  let output = "";
+  const normalized = value.toLocaleLowerCase("de-DE");
+  while (cursor < value.length) {
+    let best:
+      | { index: number; link: MasterCvLink }
+      | undefined;
+    for (const link of links) {
+      if (!link.label || !safeExternalUrl(link.url)) continue;
+      const index = normalized.indexOf(
+        link.label.toLocaleLowerCase("de-DE"),
+        cursor,
+      );
+      if (index >= 0 && (!best || index < best.index)) best = { index, link };
+    }
+    if (!best) {
+      output += formattedRuns(value.slice(cursor));
+      break;
+    }
+    output += formattedRuns(value.slice(cursor, best.index));
+    output += hyperlinkRun(
+      value.slice(best.index, best.index + best.link.label.length),
+      best.link.url,
+      relationships,
+      color,
+    );
+    cursor = best.index + best.link.label.length;
+  }
+  return output;
 }
 
-function bodyXml(content: string, topRightInsetTwips = 0): string {
-  const lines = content.replace(/\r\n?/g, "\n").split("\n");
-  const isCv = lines.some((line) => /^BEWERBUNGSFASSUNG\s*\|/i.test(line));
-  const isLongCv = isCv && content.trim().split(/\s+/).length >= 900;
-  let titleSeen = false;
-  let firstSectionSeen = false;
-  let cvHeaderIndex = 0;
-  let roleHeadingSeen = false;
-  const paragraphs: string[] = [];
+function inlineRuns(
+  value: string,
+  links: MasterCvLink[],
+  relationships: DocumentRelationships,
+  color: string,
+): string {
+  const pattern =
+    /\[([^\]]+)\]\(((?:https?:\/\/|mailto:|tel:)[^)]+)\)|((?:https?:\/\/|mailto:|tel:)[^\s)]+)/gi;
+  let cursor = 0;
+  let output = "";
+  for (const match of value.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    output += knownLinkRuns(
+      value.slice(cursor, index),
+      links,
+      relationships,
+      color,
+    );
+    const label = match[1] || match[3];
+    const url = match[2] || match[3];
+    output += hyperlinkRun(label, url, relationships, color);
+    cursor = index + match[0].length;
+  }
+  output += knownLinkRuns(value.slice(cursor), links, relationships, color);
+  return output;
+}
 
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
+function paragraph(
+  style: string,
+  content: string,
+  config: ResolvedArtifactConfig,
+  options: {
+    bullet?: boolean;
+    keepNext?: boolean;
+    pageBreakBefore?: boolean;
+    callout?: boolean;
+  } = {},
+): string {
+  const bullet = options.bullet
+    ? '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>'
+    : "";
+  const callout = options.callout
+    ? '<w:ind ' +
+      (options.bullet ? 'w:right="120"' : 'w:left="160" w:right="120"') +
+      '/><w:shd w:val="clear" w:color="auto" w:fill="' +
+      config.colors.soft +
+      '"/><w:pBdr><w:left w:val="single" w:sz="18" w:space="6" w:color="' +
+      config.colors.accent +
+      '"/></w:pBdr>'
+    : "";
+  const properties =
+    '<w:pStyle w:val="' +
+    style +
+    '"/>' +
+    bullet +
+    callout +
+    (options.keepNext ? "<w:keepNext/>" : "") +
+    (options.pageBreakBefore ? "<w:pageBreakBefore/>" : "");
+  return "<w:p><w:pPr>" + properties + "</w:pPr>" + content + "</w:p>";
+}
+
+function cvPageBreakIndex(lines: string[]): number {
+  const totalWords = lines.join(" ").trim().split(/\s+/).filter(Boolean).length;
+  if (totalWords < 650) return -1;
+  let running = 0;
+  let bestIndex = -1;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if ((/^##\s+/.test(line) || /^\*\*.*\d.*\*\*$/.test(line)) && index > 4) {
+      const ratio = running / totalWords;
+      if (ratio >= 0.42 && ratio <= 0.62) {
+        const distance = Math.abs(ratio - 0.52);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = index;
+        }
+      }
+    }
+    running += line.split(/\s+/).filter(Boolean).length;
+  }
+  return bestIndex;
+}
+
+function normalizedHeading(value: string): string {
+  return stripMarkdown(value)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("de-DE");
+}
+
+export function resolveVisualizationPlacements(
+  content: string,
+  media: ReadonlyArray<Pick<DocxEmbeddedMedia, "id" | "placement">>,
+): VisualizationPlacementReport[] {
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  const headings = lines.flatMap((line, index) => {
+    const match = /^(#{1,3})\s+(.+)$/.exec(line.trim());
+    return match
+      ? [{ index, level: match[1].length, label: normalizedHeading(match[2]) }]
+      : [];
+  });
+  const patterns: Record<Exclude<ApplicationVisualizationPlacement, "end">, RegExp> = {
+    "after-profile": /profil|professional summary|summary|uber mich/,
+    "after-skills": /skills?|kompetenz|kenntnis|technolog|tools?|werkzeug/,
+  };
+  return media.map((visual) => {
+    if (visual.placement === "end") {
+      return {
+        id: visual.id,
+        requestedPlacement: visual.placement,
+        resolvedPlacement: "end",
+        insertBeforeLine: lines.length,
+        warning: null,
+      };
+    }
+    const semanticPlacement = visual.placement;
+    const headingIndex = headings.findIndex((heading) =>
+      patterns[semanticPlacement].test(heading.label),
+    );
+    if (headingIndex < 0) {
+      const target = visual.placement === "after-profile" ? "Profil" : "Skills";
+      return {
+        id: visual.id,
+        requestedPlacement: visual.placement,
+        resolvedPlacement: "end-fallback",
+        insertBeforeLine: lines.length,
+        warning: `Abschnitt „${target}“ fehlt; die Visualisierung wird am Ende eingefügt.`,
+      };
+    }
+    const heading = headings[headingIndex];
+    const next = headings
+      .slice(headingIndex + 1)
+      .find((candidate) => candidate.level <= heading.level);
+    return {
+      id: visual.id,
+      requestedPlacement: visual.placement,
+      resolvedPlacement: visual.placement,
+      insertBeforeLine: next?.index ?? lines.length,
+      warning: null,
+    };
+  });
+}
+
+function drawingParagraph(
+  media: DocxEmbeddedMedia,
+  mediaIndex: number,
+  relationships: DocumentRelationships,
+  config: ResolvedArtifactConfig,
+): string {
+  if (
+    !media.title.trim() ||
+    !media.altText.trim() ||
+    media.width <= 0 ||
+    media.height <= 0 ||
+    media.pngBytes.length < 24
+  ) {
+    throw new Error("Visualisierungen benötigen Titel, Alternativtext und einen gültigen PNG-Fallback.");
+  }
+  const relation = relationships.mediaFor(mediaIndex, Boolean(media.svgBytes?.length));
+  const maximumWidth = Math.max(
+    914_400,
+    (config.page.width - config.margins.left - config.margins.right) * 635,
+  );
+  const maximumHeight = Math.max(
+    914_400,
+    (config.page.height - config.margins.top - config.margins.bottom - 720) * 635,
+  );
+  const nativeWidth = media.width * 9_525;
+  const nativeHeight = media.height * 9_525;
+  const scale = Math.min(1, maximumWidth / nativeWidth, maximumHeight / nativeHeight);
+  const width = Math.max(1, Math.round(nativeWidth * scale));
+  const height = Math.max(1, Math.round(nativeHeight * scale));
+  const drawingId = 1_000 + mediaIndex;
+  const svgExtension = relation.svgId
+    ? '<a:extLst><a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}">' +
+      '<asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main" r:embed="' +
+      relation.svgId +
+      '"/></a:ext></a:extLst>'
+    : "";
+  return (
+    '<w:p><w:pPr><w:pStyle w:val="Figure"/><w:keepNext/></w:pPr><w:r><w:drawing>' +
+    '<wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0">' +
+    `<wp:extent cx="${width}" cy="${height}"/>` +
+    '<wp:effectExtent l="0" t="0" r="0" b="0"/>' +
+    `<wp:docPr id="${drawingId}" name="${xml(media.title)}" descr="${xml(media.altText)}"/>` +
+    '<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>' +
+    '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+    '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr>' +
+    `<pic:cNvPr id="${drawingId}" name="${xml(media.title)}" descr="${xml(media.altText)}"/>` +
+    '<pic:cNvPicPr><a:picLocks noChangeAspect="1" noChangeArrowheads="1"/></pic:cNvPicPr></pic:nvPicPr>' +
+    '<pic:blipFill><a:blip r:embed="' +
+    relation.pngId +
+    '">' +
+    svgExtension +
+    '</a:blip><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
+    '<pic:spPr bwMode="auto"><a:xfrm><a:off x="0" y="0"/>' +
+    `<a:ext cx="${width}" cy="${height}"/>` +
+    '</a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></pic:spPr>' +
+    '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>' +
+    paragraph("Caption", run(media.title, { color: config.colors.muted }), config)
+  );
+}
+
+function bodyXml(
+  content: string,
+  kind: DocxArtifactKind,
+  links: MasterCvLink[],
+  relationships: DocumentRelationships,
+  config: ResolvedArtifactConfig,
+  media: DocxEmbeddedMedia[],
+): string {
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  const pageBreakIndex =
+    kind === "tailored-cv" && media.length === 0
+      ? cvPageBreakIndex(lines)
+      : -1;
+  const paragraphs: string[] = [];
+  let titleSeen = false;
+  let sectionHeading = "";
+  let preSectionLine = 0;
+  let calloutPending = false;
+  const placements = resolveVisualizationPlacements(content, media);
+  const mediaByLine = new Map<number, number[]>();
+  placements.forEach((placement, mediaIndex) => {
+    const indexes = mediaByLine.get(placement.insertBeforeLine) ?? [];
+    indexes.push(mediaIndex);
+    mediaByLine.set(placement.insertBeforeLine, indexes);
+  });
+  const appendMedia = (lineIndex: number) => {
+    for (const mediaIndex of mediaByLine.get(lineIndex) ?? []) {
+      paragraphs.push(
+        drawingParagraph(media[mediaIndex], mediaIndex, relationships, config),
+      );
+    }
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    appendMedia(index);
+    const line = lines[index].trim();
     if (!line) continue;
     const heading = /^(#{1,3})\s+(.+)$/.exec(line);
     if (heading) {
       const level = heading[1].length;
-      const value = stripMarkdown(heading[2]);
+      const value = heading[2].trim();
       if (level === 1 && !titleSeen) {
         titleSeen = true;
         paragraphs.push(
-          paragraph("Title", value, { rightInsetTwips: topRightInsetTwips }),
+          paragraph(
+            kind === "cover-letter" ? "CoverSubject" : "Title",
+            inlineRuns(value, links, relationships, config.colors.accent),
+            config,
+            { keepNext: true },
+          ),
         );
       } else if (level <= 2) {
-        firstSectionSeen = true;
-        roleHeadingSeen = false;
+        sectionHeading = stripMarkdown(value).toLocaleUpperCase("de-DE");
+        calloutPending =
+          kind === "interview-prep" &&
+          /KERNBOTSCHAFT/.test(sectionHeading);
         paragraphs.push(
-          paragraph("Heading1", value, {
-            pageBreakBefore: isLongCv && /^KERNKOMPETENZEN$/i.test(value),
-          }),
+          paragraph(
+            "Heading1",
+            inlineRuns(value, links, relationships, config.colors.accent),
+            config,
+            {
+              keepNext: true,
+              pageBreakBefore: index === pageBreakIndex,
+            },
+          ),
         );
       } else {
-        roleHeadingSeen = true;
-        paragraphs.push(paragraph("Heading2", value));
+        paragraphs.push(
+          paragraph(
+            "Heading2",
+            inlineRuns(value, links, relationships, config.colors.accent),
+            config,
+            { keepNext: true },
+          ),
+        );
       }
       continue;
     }
-    if (/^BEWERBUNGSFASSUNG\s*\|/i.test(line)) {
+    if (
+      kind === "tailored-cv" &&
+      /^BEWERBUNGSFASSUNG\s*\|/i.test(line)
+    ) {
       paragraphs.push(
-        paragraph("CVKicker", stripMarkdown(line), {
-          rightInsetTwips: topRightInsetTwips,
-        }),
+        paragraph(
+          "Kicker",
+          inlineRuns(stripMarkdown(line), links, relationships, config.colors.accent),
+          config,
+          { keepNext: true },
+        ),
       );
       continue;
     }
     const cleanLine = stripMarkdown(line);
-    if (/^\*\*.*\*\*$/.test(line) && /\d/.test(cleanLine)) {
-      paragraphs.push(paragraph("CVDate", cleanLine));
-      roleHeadingSeen = false;
-      continue;
-    }
-    if (/^\*(?!\*)(.+)\*$/.test(line) && roleHeadingSeen) {
-      paragraphs.push(paragraph("CVCompany", cleanLine));
-      roleHeadingSeen = false;
-      continue;
-    }
-    const bullet = /^\s*(?:[-•])\s+(.+)$/.exec(line);
-    if (bullet) {
-      paragraphs.push(paragraph("CVBullet", bullet[1], { bullet: true }));
-      continue;
-    }
-    if (/^MANDAT\s*&\s*KONTEXT:/i.test(cleanLine)) {
-      paragraphs.push(paragraph("CVSmall", cleanLine, { keepNext: true }));
-      continue;
-    }
-    if (isCv && titleSeen && !firstSectionSeen) {
-      const style =
-        cvHeaderIndex === 0
-          ? "Subtitle"
-          : cvHeaderIndex === 1
-            ? "CVTagline"
-            : "CVContact";
-      cvHeaderIndex += 1;
+    if (
+      kind === "tailored-cv" &&
+      /^\*\*.*\*\*$/.test(line) &&
+      /\d/.test(cleanLine)
+    ) {
       paragraphs.push(
-        paragraph(style, cleanLine, { rightInsetTwips: topRightInsetTwips }),
+        paragraph("Date", inlineRuns(cleanLine, links, relationships, config.colors.accent), config, {
+          keepNext: true,
+          pageBreakBefore: index === pageBreakIndex,
+        }),
       );
       continue;
     }
     if (
-      isCv &&
-      firstSectionSeen &&
-      /^[A-ZÄÖÜ0-9][A-ZÄÖÜ0-9 &/+.-]{2,42}:\s+/u.test(cleanLine)
+      kind === "tailored-cv" &&
+      /^\*(?!\*)(.+)\*$/.test(line)
     ) {
-      paragraphs.push(paragraph("CVProof", cleanLine, { proof: true }));
+      paragraphs.push(
+        paragraph("Company", inlineRuns(cleanLine, links, relationships, config.colors.accent), config, {
+          keepNext: true,
+        }),
+      );
       continue;
     }
-    paragraphs.push(paragraph("Normal", cleanLine));
+    const bullet = /^(?:[-•])\s+(.+)$/.exec(line);
+    if (bullet) {
+      paragraphs.push(
+        paragraph(
+          "Bullet",
+          inlineRuns(bullet[1], links, relationships, config.colors.accent),
+          config,
+          {
+            bullet: true,
+            callout:
+              kind === "interview-prep" &&
+              /OFFENE RISIKEN|RISIKEN UND LERNFELDER/.test(sectionHeading),
+          },
+        ),
+      );
+      continue;
+    }
+    if (kind === "cover-letter" && /^(?:Sehr geehrte|Guten Tag|Hallo|Dear)\b/i.test(cleanLine)) {
+      sectionHeading = "LETTER_BODY";
+      paragraphs.push(
+        paragraph("Greeting", inlineRuns(cleanLine, links, relationships, config.colors.accent), config, {
+          keepNext: true,
+        }),
+      );
+      continue;
+    }
+    if (titleSeen && !sectionHeading && preSectionLine < 6) {
+      const letterDate =
+        kind === "cover-letter" &&
+        /(?:\b\d{1,2}\.\s*[A-Za-zÄÖÜäöüß]+\s+\d{4}\b|\b\d{1,2}\.\d{1,2}\.\d{4}\b)/.test(
+          cleanLine,
+        );
+      const style =
+        kind === "tailored-cv"
+          ? preSectionLine === 0
+            ? "Subtitle"
+            : preSectionLine === 1
+              ? "Tagline"
+              : "Contact"
+          : letterDate
+            ? "LetterDate"
+            : preSectionLine === 0
+            ? "Contact"
+            : "Recipient";
+      preSectionLine += 1;
+      paragraphs.push(
+        paragraph(
+          style,
+          inlineRuns(line, links, relationships, config.colors.accent),
+          config,
+          { keepNext: true },
+        ),
+      );
+      continue;
+    }
+    paragraphs.push(
+      paragraph(
+        calloutPending ? "Callout" : "Normal",
+        inlineRuns(line, links, relationships, config.colors.accent),
+        config,
+        { callout: calloutPending },
+      ),
+    );
+    calloutPending = false;
   }
+  appendMedia(lines.length);
   return paragraphs.join("\n");
 }
 
-const DEFAULT_SECTION_PROPERTIES = `<w:sectPr>
-  <w:headerReference w:type="default" r:id="rId2"/>
-  <w:footerReference w:type="default" r:id="rId3"/>
-  <w:pgSz w:w="11906" w:h="16838"/>
-  <w:pgMar w:top="850" w:right="850" w:bottom="794" w:left="850" w:header="227" w:footer="397" w:gutter="0"/>
-  <w:cols w:space="708"/>
-  <w:docGrid w:linePitch="360"/>
-</w:sectPr>`;
-
-function documentXml(
-  content: string,
-  sectionProperties = DEFAULT_SECTION_PROPERTIES,
-  topRightInsetTwips = 0,
+function style(
+  id: string,
+  name: string,
+  basedOn: string,
+  paragraphProperties: string,
+  runProperties: string,
+  isDefault = false,
 ): string {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <w:body>
-    ${bodyXml(content, topRightInsetTwips)}
-    ${sectionProperties}
-  </w:body>
-</w:document>`;
+  return (
+    '<w:style w:type="paragraph"' +
+    (isDefault ? ' w:default="1"' : "") +
+    ' w:styleId="' +
+    id +
+    '"><w:name w:val="' +
+    name +
+    '"/><w:basedOn w:val="' +
+    basedOn +
+    '"/><w:qFormat/><w:pPr>' +
+    paragraphProperties +
+    "</w:pPr><w:rPr>" +
+    runProperties +
+    "</w:rPr></w:style>"
+  );
 }
 
-const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial"/><w:sz w:val="19"/><w:szCs w:val="19"/><w:color w:val="${TEXT}"/><w:lang w:val="de-DE"/></w:rPr></w:rPrDefault></w:docDefaults>
-  <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="0" w:after="48" w:line="252" w:lineRule="auto"/></w:pPr><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="19"/><w:szCs w:val="19"/><w:color w:val="${TEXT}"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="0" w:after="20" w:line="228" w:lineRule="auto"/><w:keepNext/></w:pPr><w:rPr><w:b/><w:color w:val="${NAVY}"/><w:sz w:val="50"/><w:szCs w:val="50"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="0" w:after="40"/><w:keepNext/></w:pPr><w:rPr><w:b/><w:color w:val="${TEAL}"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:keepLines/><w:spacing w:before="160" w:after="90" w:line="240" w:lineRule="auto"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:color w:val="${NAVY}"/><w:sz w:val="25"/><w:szCs w:val="25"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:keepLines/><w:spacing w:before="120" w:after="20"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:color w:val="${NAVY}"/><w:sz w:val="21"/><w:szCs w:val="21"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="CVKicker"><w:name w:val="CV Kicker"/><w:basedOn w:val="Normal"/><w:pPr><w:keepNext/><w:spacing w:after="20"/></w:pPr><w:rPr><w:b/><w:color w:val="${GOLD}"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:caps/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="CVTagline"><w:name w:val="CV Tagline"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="60"/></w:pPr><w:rPr><w:color w:val="${MUTED}"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="CVContact"><w:name w:val="CV Contact"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="20"/></w:pPr><w:rPr><w:color w:val="${MUTED}"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="CVDate"><w:name w:val="CV Date"/><w:basedOn w:val="Normal"/><w:pPr><w:keepNext/><w:spacing w:before="120" w:after="10"/></w:pPr><w:rPr><w:b/><w:color w:val="${TEAL}"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="CVCompany"><w:name w:val="CV Company"/><w:basedOn w:val="Normal"/><w:pPr><w:keepNext/><w:spacing w:after="30"/></w:pPr><w:rPr><w:color w:val="${MUTED}"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="CVSmall"><w:name w:val="CV Small"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="30"/></w:pPr><w:rPr><w:color w:val="${MUTED}"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="CVBullet"><w:name w:val="CV Bullet"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="360" w:hanging="180"/><w:spacing w:after="25" w:line="247" w:lineRule="auto"/></w:pPr><w:rPr><w:color w:val="${TEXT}"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="CVProof"><w:name w:val="CV Proof"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="120" w:right="80"/><w:spacing w:after="60" w:line="245" w:lineRule="auto"/></w:pPr><w:rPr><w:color w:val="${TEXT}"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="Header"><w:name w:val="header"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:color w:val="${MUTED}"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:color w:val="${MUTED}"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
-</w:styles>`;
+function fontProperties(
+  size: number,
+  font: string,
+  color: string,
+  extra = "",
+): string {
+  return (
+    '<w:rFonts w:ascii="' +
+    xml(font) +
+    '" w:hAnsi="' +
+    xml(font) +
+    '" w:eastAsia="' +
+    xml(font) +
+    '" w:cs="' +
+    xml(font) +
+    '"/>' +
+    '<w:sz w:val="' +
+    size +
+    '"/><w:szCs w:val="' +
+    size +
+    '"/><w:color w:val="' +
+    color +
+    '"/><w:lang w:val="de-DE" w:eastAsia="de-DE" w:bidi="de-DE"/>' +
+    extra
+  );
+}
+
+function stylesXml(
+  kind: DocxArtifactKind,
+  config: ResolvedArtifactConfig,
+): string {
+  const normal = style(
+    "Normal",
+    "Normal",
+    "Normal",
+    '<w:spacing w:before="0" w:after="' +
+      config.bodyAfter +
+      '" w:line="' +
+      config.bodyLine +
+      '" w:lineRule="auto"/><w:widowControl/>',
+    fontProperties(config.bodySize, config.fonts.body, config.colors.text),
+    true,
+  );
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+    '<w:docDefaults><w:rPrDefault><w:rPr>' +
+    fontProperties(config.bodySize, config.fonts.body, config.colors.text) +
+    "</w:rPr></w:rPrDefault></w:docDefaults>" +
+    normal +
+    style(
+      "Title",
+      "Dokumenttitel",
+      "Normal",
+      '<w:spacing w:before="0" w:after="80"/><w:keepNext/>',
+      fontProperties(config.titleSize, config.fonts.title, config.colors.title, "<w:b/>"),
+    ) +
+    style(
+      "CoverSubject",
+      "Anschreiben Betreff",
+      "Normal",
+      '<w:spacing w:before="160" w:after="120"/><w:keepNext/>',
+      fontProperties(22, config.fonts.heading, config.colors.text, "<w:b/>"),
+    ) +
+    style(
+      "Subtitle",
+      "CV Positionierung",
+      "Normal",
+      '<w:spacing w:before="0" w:after="36"/><w:keepNext/>',
+      fontProperties(23, config.fonts.heading, config.colors.accent, "<w:b/>"),
+    ) +
+    style(
+      "Tagline",
+      "CV Schwerpunkte",
+      "Normal",
+      '<w:spacing w:before="0" w:after="44"/><w:keepNext/>',
+      fontProperties(18, config.fonts.body, config.colors.muted),
+    ) +
+    style(
+      "Contact",
+      "Kontakt",
+      "Normal",
+      '<w:spacing w:before="0" w:after="52"/><w:keepNext/>',
+      fontProperties(18, config.fonts.body, config.colors.muted),
+    ) +
+    style(
+      "Recipient",
+      "Empfänger",
+      "Normal",
+      '<w:spacing w:before="0" w:after="24"/><w:keepNext/>',
+      fontProperties(20, config.fonts.body, config.colors.text),
+    ) +
+    style(
+      "LetterDate",
+      "Ort und Datum",
+      "Normal",
+      '<w:jc w:val="right"/><w:spacing w:before="80" w:after="80"/><w:keepNext/>',
+      fontProperties(20, config.fonts.body, config.colors.text),
+    ) +
+    style(
+      "Greeting",
+      "Anrede",
+      "Normal",
+      '<w:spacing w:before="120" w:after="120"/><w:keepNext/>',
+      fontProperties(Math.max(18, config.bodySize), config.fonts.body, config.colors.text),
+    ) +
+    style(
+      "Heading1",
+      "Überschrift 1",
+      "Normal",
+      '<w:spacing w:before="' +
+        config.headingBefore +
+        '" w:after="' +
+        config.headingAfter +
+        '"/><w:keepNext/><w:keepLines/><w:outlineLvl w:val="0"/><w:pBdr><w:bottom w:val="single" w:sz="8" w:space="4" w:color="' +
+        config.colors.rule +
+        '"/></w:pBdr>',
+      fontProperties(config.heading1Size, config.fonts.heading, config.colors.heading, "<w:b/>"),
+    ) +
+    style(
+      "Heading2",
+      "Überschrift 2",
+      "Normal",
+      '<w:spacing w:before="92" w:after="24"/><w:keepNext/><w:keepLines/><w:outlineLvl w:val="1"/>',
+      fontProperties(config.heading2Size, config.fonts.heading, config.colors.accent, "<w:b/>"),
+    ) +
+    style(
+      "Kicker",
+      "Dokumenttyp",
+      "Normal",
+      '<w:spacing w:before="0" w:after="24"/><w:keepNext/>',
+      fontProperties(18, config.fonts.body, config.colors.rule, "<w:b/><w:caps/>"),
+    ) +
+    style(
+      "Date",
+      "CV Datum",
+      "Normal",
+      '<w:spacing w:before="78" w:after="12"/><w:keepNext/>',
+      fontProperties(18, config.fonts.body, config.colors.accent, "<w:b/>"),
+    ) +
+    style(
+      "Company",
+      "CV Unternehmen",
+      "Normal",
+      '<w:spacing w:before="0" w:after="24"/><w:keepNext/>',
+      fontProperties(18, config.fonts.body, config.colors.muted, "<w:i/>"),
+    ) +
+    style(
+      "Bullet",
+      "Aufzählung",
+      "Normal",
+      '<w:spacing w:before="0" w:after="' +
+        Math.max(24, config.bodyAfter - 12) +
+        '" w:line="' +
+        config.bodyLine +
+        '" w:lineRule="auto"/>',
+      fontProperties(config.bodySize, config.fonts.body, config.colors.text),
+    ) +
+    style(
+      "Callout",
+      "Kernbotschaft",
+      "Normal",
+      '<w:ind w:left="160" w:right="120"/><w:spacing w:before="20" w:after="90" w:line="' +
+        config.bodyLine +
+        '" w:lineRule="auto"/><w:shd w:val="clear" w:color="auto" w:fill="' +
+        config.colors.soft +
+        '"/>',
+      fontProperties(config.bodySize, config.fonts.body, config.colors.text),
+    ) +
+    style(
+      "Header",
+      "Kopfzeile",
+      "Normal",
+      '<w:spacing w:after="0"/>',
+      fontProperties(18, config.fonts.body, config.colors.muted),
+    ) +
+    style(
+      "Footer",
+      "Fußzeile",
+      "Normal",
+      '<w:spacing w:after="0"/>',
+      fontProperties(18, config.fonts.body, config.colors.muted),
+    ) +
+    style(
+      "Figure",
+      "Inline-Visualisierung",
+      "Normal",
+      '<w:jc w:val="center"/><w:spacing w:before="100" w:after="28"/><w:keepNext/>',
+      fontProperties(config.bodySize, config.fonts.body, config.colors.text),
+    ) +
+    style(
+      "Caption",
+      "Visualisierungstitel",
+      "Normal",
+      '<w:jc w:val="center"/><w:spacing w:before="0" w:after="100"/><w:keepLines/>',
+      fontProperties(18, config.fonts.body, config.colors.muted, "<w:i/>"),
+    ) +
+    "</w:styles>"
+  );
+}
 
 function titleFromContent(content: string): string {
   return stripMarkdown(
@@ -252,13 +983,42 @@ function titleFromContent(content: string): string {
   );
 }
 
-function headerXml(content: string): string {
-  const title = titleFromContent(content).toLocaleUpperCase("de-DE");
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:pStyle w:val="Header"/><w:jc w:val="right"/></w:pPr>${run(title, { bold: true, color: MUTED })}</w:p></w:hdr>`;
+function headerXml(
+  content: string,
+  kind: DocxArtifactKind,
+  config: ResolvedArtifactConfig,
+): string {
+  if (kind === "cover-letter") {
+    return (
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p/></w:hdr>'
+    );
+  }
+  const title = titleFromContent(content).slice(0, 90);
+  const tabPosition = config.page.width - config.margins.left - config.margins.right;
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+    '<w:p><w:pPr><w:pStyle w:val="Header"/><w:tabs><w:tab w:val="right" w:pos="' +
+    tabPosition +
+    '"/></w:tabs></w:pPr>' +
+    run(CONFIG[kind].label, { bold: true, color: config.colors.accent }) +
+    run("\t" + title, { color: config.colors.muted }) +
+    "</w:p></w:hdr>"
+  );
 }
 
-function footerXml(): string {
+function footerXml(
+  kind: DocxArtifactKind,
+  config: ResolvedArtifactConfig,
+): string {
+  if (kind === "cover-letter") {
+    return (
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p/></w:ftr>'
+    );
+  }
+  const tabPosition = config.page.width - config.margins.left - config.margins.right;
   const stand = new Intl.DateTimeFormat("de-DE", {
     month: "2-digit",
     year: "numeric",
@@ -266,174 +1026,216 @@ function footerXml(): string {
   })
     .format(new Date())
     .replace(".", "/");
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:pStyle w:val="Footer"/><w:tabs><w:tab w:val="right" w:pos="10205"/></w:tabs></w:pPr>${run(`Bewerbungsunterlage  |  Stand ${stand}`, { color: MUTED })}${run("\tSeite ", { color: MUTED })}<w:fldSimple w:instr=" PAGE ">${run("1", { color: MUTED })}</w:fldSimple>${run(" / ", { color: MUTED })}<w:fldSimple w:instr=" NUMPAGES ">${run("1", { color: MUTED })}</w:fldSimple></w:p></w:ftr>`;
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+    '<w:p><w:pPr><w:pStyle w:val="Footer"/><w:tabs><w:tab w:val="right" w:pos="' +
+    tabPosition +
+    '"/></w:tabs></w:pPr>' +
+    run(CONFIG[kind].label + "  |  Stand " + stand, { color: config.colors.muted }) +
+    run("\tSeite ", { color: config.colors.muted }) +
+    '<w:fldSimple w:instr=" PAGE ">' +
+    run("1", { color: config.colors.muted }) +
+    "</w:fldSimple>" +
+    run(" / ", { color: config.colors.muted }) +
+    '<w:fldSimple w:instr=" NUMPAGES ">' +
+    run("1", { color: config.colors.muted }) +
+    "</w:fldSimple></w:p></w:ftr>"
+  );
 }
 
-const settingsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:updateFields w:val="true"/><w:defaultTabStop w:val="708"/><w:compat/></w:settings>`;
+function documentXml(
+  content: string,
+  kind: DocxArtifactKind,
+  links: MasterCvLink[],
+  relationships: DocumentRelationships,
+  config: ResolvedArtifactConfig,
+  media: DocxEmbeddedMedia[],
+): string {
+  const margins = config.margins;
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    "<w:body>" +
+    bodyXml(content, kind, links, relationships, config, media) +
+    "<w:sectPr>" +
+    '<w:headerReference w:type="default" r:id="rId2"/>' +
+    '<w:footerReference w:type="default" r:id="rId3"/>' +
+    '<w:pgSz w:w="' +
+    config.page.width +
+    '" w:h="' +
+    config.page.height +
+    '"/>' +
+    '<w:pgMar w:top="' +
+    margins.top +
+    '" w:right="' +
+    margins.right +
+    '" w:bottom="' +
+    margins.bottom +
+    '" w:left="' +
+    margins.left +
+    '" w:header="300" w:footer="360" w:gutter="0"/>' +
+    '<w:cols w:space="708"/><w:docGrid w:linePitch="360"/>' +
+    "</w:sectPr></w:body></w:document>"
+  );
+}
 
 function corePropertiesXml(content: string): string {
-  const title = titleFromContent(content);
   const now = new Date().toISOString();
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xml(title)}</dc:title><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`;
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
+    "<dc:title>" +
+    xml(titleFromContent(content)) +
+    '</dc:title><dcterms:created xsi:type="dcterms:W3CDTF">' +
+    now +
+    '</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">' +
+    now +
+    "</dcterms:modified></cp:coreProperties>"
+  );
 }
 
-function appPropertiesXml(): string {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Gerris Kompass</Application><AppVersion>1.0</AppVersion></Properties>`;
+function contentTypesXml(media: DocxEmbeddedMedia[]): string {
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    (media.length ? '<Default Extension="png" ContentType="image/png"/>' : "") +
+    (media.some((item) => item.svgBytes?.length)
+      ? '<Default Extension="svg" ContentType="image/svg+xml"/>'
+      : "") +
+    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+    '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+    '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>' +
+    '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' +
+    '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' +
+    '<Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/>' +
+    '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>' +
+    '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
+    '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>' +
+    "</Types>"
+  );
 }
 
-export function createEditableDocx(content: string): Uint8Array {
-  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
-  <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
-  <Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
-  <Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
-  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
-  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
-</Types>`;
-  const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`;
-  const documentRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/><Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/></Relationships>`;
+const rootRelationships =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+  '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+  '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>' +
+  '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>' +
+  "</Relationships>";
+
+const settingsXml =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+  '<w:updateFields w:val="true"/><w:defaultTabStop w:val="708"/>' +
+  '<w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat>' +
+  "</w:settings>";
+
+function fontTableXml(config: ResolvedArtifactConfig): string {
+  const fonts = [...new Set(Object.values(config.fonts))];
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+    fonts
+      .map((font) => {
+        const family = /Georgia|Times|Cambria|Caladea|Garamond|Baskerville/i.test(font)
+          ? "roman"
+          : "swiss";
+        const alternative =
+          font === "Carlito"
+            ? "Calibri"
+            : font === "Caladea"
+              ? "Cambria"
+              : "";
+        return (
+          '<w:font w:name="' +
+          xml(font) +
+          '"><w:family w:val="' +
+          family +
+          '"/>' +
+          (alternative ? `<w:altName w:val="${alternative}"/>` : "") +
+          '<w:charset w:val="00"/><w:pitch w:val="variable"/></w:font>'
+        );
+      })
+      .join("") +
+    "</w:fonts>"
+  );
+}
+
+function numberingXml(config: ResolvedArtifactConfig): string {
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+    '<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="singleLevel"/>' +
+    '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/>' +
+    '<w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:suff w:val="tab"/>' +
+    '<w:pPr><w:tabs><w:tab w:val="num" w:pos="340"/></w:tabs>' +
+    '<w:ind w:left="340" w:hanging="200"/></w:pPr>' +
+    '<w:rPr><w:rFonts w:ascii="' +
+    xml(config.fonts.body) +
+    '" w:hAnsi="' +
+    xml(config.fonts.body) +
+    '" w:eastAsia="' +
+    xml(config.fonts.body) +
+    '" w:cs="' +
+    xml(config.fonts.body) +
+    '"/><w:color w:val="' +
+    config.colors.accent +
+    '"/><w:lang w:val="de-DE" w:eastAsia="de-DE" w:bidi="de-DE"/></w:rPr></w:lvl></w:abstractNum>' +
+    '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>' +
+    "</w:numbering>"
+  );
+}
+
+const appPropertiesXml =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">' +
+  "<Application>Gerris Kompass</Application><AppVersion>2.0</AppVersion>" +
+  "</Properties>";
+
+export function createEditableDocx(
+  content: string,
+  kind: DocxArtifactKind = "company-brief",
+  links: MasterCvLink[] = [],
+  options: DocxExportOptions = {},
+): Uint8Array {
+  const media = options.media ? [...options.media] : [];
+  const config = artifactConfig(content, kind, options.templateProfile);
+  const relationships = new DocumentRelationships();
+  const document = documentXml(
+    content,
+    kind,
+    links,
+    relationships,
+    config,
+    media,
+  );
+  const packageParts: Record<string, Uint8Array> = {
+    "[Content_Types].xml": strToU8(contentTypesXml(media)),
+    "_rels/.rels": strToU8(rootRelationships),
+    "docProps/core.xml": strToU8(corePropertiesXml(content)),
+    "docProps/app.xml": strToU8(appPropertiesXml),
+    "word/document.xml": strToU8(document),
+    "word/styles.xml": strToU8(stylesXml(kind, config)),
+    "word/settings.xml": strToU8(settingsXml),
+    "word/fontTable.xml": strToU8(fontTableXml(config)),
+    "word/numbering.xml": strToU8(numberingXml(config)),
+    "word/header1.xml": strToU8(headerXml(content, kind, config)),
+    "word/footer1.xml": strToU8(footerXml(kind, config)),
+    "word/_rels/document.xml.rels": strToU8(relationships.xml()),
+  };
+  media.forEach((item, index) => {
+    packageParts[`word/media/visual-${index + 1}.png`] = item.pngBytes;
+    if (item.svgBytes?.length) {
+      packageParts[`word/media/visual-${index + 1}.svg`] = item.svgBytes;
+    }
+  });
   return zipSync(
-    {
-      "[Content_Types].xml": strToU8(contentTypes),
-      "_rels/.rels": strToU8(rootRels),
-      "docProps/core.xml": strToU8(corePropertiesXml(content)),
-      "docProps/app.xml": strToU8(appPropertiesXml()),
-      "word/document.xml": strToU8(documentXml(content)),
-      "word/styles.xml": strToU8(stylesXml),
-      "word/settings.xml": strToU8(settingsXml),
-      "word/header1.xml": strToU8(headerXml(content)),
-      "word/footer1.xml": strToU8(footerXml()),
-      "word/_rels/document.xml.rels": strToU8(documentRels),
-    },
+    packageParts,
     { level: 6 },
   );
-}
-
-function raiseMinimumFontSize(value: string): string {
-  return value.replace(
-    /<w:(sz|szCs)\b([^>]*?)w:val="(\d+)"([^>]*)\/>/g,
-    (match, tag: string, before: string, size: string, after: string) =>
-      Number(size) < 18
-        ? `<w:${tag}${before}w:val="18"${after}/>`
-        : match,
-  );
-}
-
-function removeHyperlinkRelationships(value: string): string {
-  return value.replace(
-    /\s*<Relationship\b[^>]*Type="[^"]*\/hyperlink"[^>]*\/>/g,
-    "",
-  );
-}
-
-function patchTemplateFooter(value: string): string {
-  const stand = new Intl.DateTimeFormat("de-DE", {
-    month: "2-digit",
-    year: "numeric",
-    timeZone: "Europe/Berlin",
-  })
-    .format(new Date())
-    .replace(".", "/");
-  return raiseMinimumFontSize(value)
-    .replace(/Master-Langfassung/g, "Bewerbungsfassung")
-    .replace(/Stand\s+\d{2}\/\d{4}/g, `Stand ${stand}`)
-    .replace(
-      /Gerrit Fabisch\s+\|\s+Bewerbungsfassung\s+\|\s+Stand\s+\d{2}\/\d{4}/g,
-      "Gerrit Fabisch  |  Bewerbungsfassung",
-    );
-}
-
-function enableFieldUpdates(value: string): string {
-  const withoutDuplicate = value.replace(/<w:updateFields\b[^>]*\/>/g, "");
-  if (/<\/w:settings>/.test(withoutDuplicate)) {
-    return withoutDuplicate.replace(
-      /<\/w:settings>/,
-      '<w:updateFields w:val="true"/></w:settings>',
-    );
-  }
-  return withoutDuplicate.replace(
-    /<w:settings\b([^>]*)\/>/,
-    '<w:settings$1><w:updateFields w:val="true"/></w:settings>',
-  );
-}
-
-export function createTemplateBackedDocx(
-  content: string,
-  templateBytes: Uint8Array,
-): Uint8Array {
-  const archive = unzipSync(templateBytes);
-  const originalDocument = archive["word/document.xml"];
-  const originalStyles = archive["word/styles.xml"];
-  if (!originalDocument || !originalStyles) {
-    throw new Error("Die DOCX-Vorlage enthält keine nutzbare Dokumentstruktur.");
-  }
-  const styles = strFromU8(originalStyles);
-  for (const styleId of [
-    "Title",
-    "Subtitle",
-    "Heading1",
-    "Heading2",
-    "CVKicker",
-    "CVTagline",
-    "CVContact",
-    "CVDate",
-    "CVCompany",
-    "CVSmall",
-    "CVBullet",
-    "CVProof",
-  ]) {
-    if (!styles.includes(`w:styleId="${styleId}"`)) {
-      throw new Error("Die DOCX-Vorlage verwendet kein kompatibles Master-CV-Design.");
-    }
-  }
-  const originalXml = strFromU8(originalDocument);
-  const sectionProperties = [...originalXml.matchAll(/<w:sectPr\b[\s\S]*?<\/w:sectPr>/g)].at(-1)?.[0];
-  if (!sectionProperties) {
-    throw new Error("Die Seiteneinstellungen der DOCX-Vorlage fehlen.");
-  }
-  archive["word/document.xml"] = strToU8(
-    documentXml(content, sectionProperties, 3_000),
-  );
-  archive["word/styles.xml"] = strToU8(raiseMinimumFontSize(styles));
-  if (archive["word/stylesWithEffects.xml"]) {
-    archive["word/stylesWithEffects.xml"] = strToU8(
-      raiseMinimumFontSize(strFromU8(archive["word/stylesWithEffects.xml"])),
-    );
-  }
-  for (const part of ["word/header1.xml", "word/header2.xml"]) {
-    if (archive[part]) {
-      archive[part] = strToU8(raiseMinimumFontSize(strFromU8(archive[part])));
-    }
-  }
-  for (const part of ["word/footer1.xml", "word/footer2.xml"]) {
-    if (archive[part]) {
-      archive[part] = strToU8(patchTemplateFooter(strFromU8(archive[part])));
-    }
-  }
-  if (archive["word/_rels/document.xml.rels"]) {
-    archive["word/_rels/document.xml.rels"] = strToU8(
-      removeHyperlinkRelationships(
-        strFromU8(archive["word/_rels/document.xml.rels"]),
-      ),
-    );
-  }
-  archive["word/settings.xml"] = strToU8(
-    archive["word/settings.xml"]
-      ? enableFieldUpdates(strFromU8(archive["word/settings.xml"]))
-      : settingsXml,
-  );
-  archive["docProps/core.xml"] = strToU8(corePropertiesXml(content));
-  return zipSync(archive, { level: 6 });
 }
 
 function downloadBytes(fileName: string, bytes: Uint8Array): void {
@@ -447,19 +1249,17 @@ function downloadBytes(fileName: string, bytes: Uint8Array): void {
   const safeName = fileName.replace(/[\\/:*?"<>|]+/g, "-").slice(0, 180);
   link.download = safeName.toLowerCase().endsWith(".docx")
     ? safeName
-    : `${safeName}.docx`;
+    : safeName + ".docx";
   link.click();
   URL.revokeObjectURL(url);
 }
 
-export function downloadEditableDocx(fileName: string, content: string): void {
-  downloadBytes(fileName, createEditableDocx(content));
-}
-
-export function downloadTemplateBackedDocx(
+export function downloadEditableDocx(
   fileName: string,
   content: string,
-  templateBytes: Uint8Array,
+  kind: DocxArtifactKind = "company-brief",
+  links: MasterCvLink[] = [],
+  options: DocxExportOptions = {},
 ): void {
-  downloadBytes(fileName, createTemplateBackedDocx(content, templateBytes));
+  downloadBytes(fileName, createEditableDocx(content, kind, links, options));
 }

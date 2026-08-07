@@ -58,6 +58,44 @@ test("enthält den vollständigen privaten Organisationsbereich", async () => {
   assert.doesNotMatch(page + app + layout, /codex-preview|Starter Project/);
 });
 
+test("zeigt erst den privaten Zustand und hält alle Bereiche teilbar und mobil erreichbar", async () => {
+  const [app, css, navigation] = await Promise.all([
+    readFile(new URL("components/life-os-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+    readFile(new URL("lib/view-navigation.ts", root), "utf8"),
+  ]);
+
+  assert.match(app, /if \(!ready\)/);
+  assert.match(app, /Gerris Kompass wird vorbereitet/);
+  assert.match(app, /Erst danach werden/);
+  assert.match(app, /className="skip-link"/);
+  assert.match(app, /window\.history\.pushState/);
+  assert.match(app, /window\.addEventListener\("popstate"/);
+  assert.match(app, /compactNavigation\.map/);
+  assert.match(app, />\s*Mehr\s*<\/button>/);
+  assert.match(navigation, /VIEW_QUERY_PARAMETER = "bereich"/);
+  assert.match(css, /@media \(pointer: coarse\)/);
+  assert.match(css, /@media \(prefers-contrast: more\)/);
+  assert.match(css, /@media \(forced-colors: active\)/);
+});
+
+test("löst Zustandskonflikte nur nach lokaler Sicherung bewusst auf", async () => {
+  const [app, state] = await Promise.all([
+    readFile(new URL("components/life-os-app.tsx", root), "utf8"),
+    readFile(new URL("lib/use-gerri-state.ts", root), "utf8"),
+  ]);
+
+  assert.match(state, /const acceptRemoteState = useCallback/);
+  assert.match(state, /setSyncStatus\("konflikt"\)/);
+  assert.match(app, /Zwei unterschiedliche Stände erkannt/);
+  assert.match(app, /Lokale Fassung sichern/);
+  assert.match(app, /Serverstand laden/);
+  assert.match(
+    app,
+    /onExport\(\);[\s\S]*setConflictBusy\(true\)[\s\S]*await onAcceptRemoteState\(\)/,
+  );
+});
+
 test("liefert die Kompass-Marke auch über die Browser-Standardroute", async () => {
   const [layout, favicon] = await Promise.all([
     readFile(new URL("app/layout.tsx", root), "utf8"),
@@ -101,6 +139,38 @@ test("pflegt Kontakte zentral und importiert gängige CSV-Formate", async () => 
     contactsModule.contactIdentity(result.contacts[0]),
     "email:ada@example.org",
   );
+  const invalidBirthday = contactsModule.parseContactCsv(
+    "Vorname;Geburtstag\nAda;31.02.2026",
+  );
+  assert.equal(invalidBirthday.contacts[0].birthday, null);
+  assert.equal(invalidBirthday.invalidBirthdays, 1);
+  assert.equal(
+    contactsModule.safeWebsiteUrl("javascript:alert(1)"),
+    null,
+  );
+  assert.equal(
+    contactsModule.safeMailtoUrl("ada@example.org"),
+    "mailto:ada@example.org",
+  );
+  assert.equal(
+    contactsModule.safeTelephoneUrl("+49 (30) 123-45"),
+    "tel:+493012345",
+  );
+  const merged = contactsModule.mergeContactCsvRow(
+    {
+      ...result.contacts[0],
+      id: "contact-1",
+      favorite: true,
+      createdAt: "2026-08-01T10:00:00.000Z",
+      updatedAt: "2026-08-01T10:00:00.000Z",
+    },
+    { ...result.contacts[0], email: "", notes: "", tags: ["Neu"] },
+    "2026-08-05T10:00:00.000Z",
+  );
+  assert.equal(merged.email, "ada@example.org");
+  assert.equal(merged.notes, "Notiz; mit Semikolon");
+  assert.equal(merged.favorite, true);
+  assert.deepEqual(merged.tags, ["Arbeit", "VIP", "Neu"]);
 });
 
 test("formatiert Termine in der festen deutschen App-Zeitzone", async () => {
@@ -115,6 +185,20 @@ test("formatiert Termine in der festen deutschen App-Zeitzone", async () => {
       "2026-07-31T21:45:00.000Z",
     ),
     1,
+  );
+  assert.equal(
+    format.zonedDateTimeToIso("2026-01-15", "09:00"),
+    "2026-01-15T08:00:00.000Z",
+  );
+  assert.equal(
+    format.zonedDateTimeToIso("2026-07-15", "09:00"),
+    "2026-07-15T07:00:00.000Z",
+  );
+  assert.equal(format.zonedDateTimeToIso("2026-03-29", "02:30"), null);
+  assert.equal(format.zonedDateTimeToIso("2026-02-30", "09:00"), null);
+  assert.equal(
+    format.zonedDateTimeInput("2026-07-15T07:45:00.000Z"),
+    "2026-07-15T09:45",
   );
 });
 
@@ -271,6 +355,8 @@ test("trennt freies Tagebuchspeichern von der inspirativen Tagesplanung", async 
   assert.match(diaryView, /Wochenblick/);
   assert.match(diaryView, /Nächste Woche grob planen/);
   assert.match(diaryView, /Planung geprüft – Tag abschließen/);
+  assert.match(diaryView, /reviewedAreas: closeDay[\s\S]*DIARY_REVIEW_AREAS/);
+  assert.match(diaryView, /if \(scheduled\) setCustomTaskTitle\(""\)/);
   assert.doesNotMatch(diaryView, /if \(!reviewComplete\)|criticalGaps\.length/);
   assert.match(diaryPlanning, /buildDiaryPlanningSuggestions/);
   assert.match(diaryPlanning, /isSundayDate/);
@@ -294,7 +380,12 @@ test("trennt freies Tagebuchspeichern von der inspirativen Tagesplanung", async 
 });
 
 test("übernimmt alte Journal-Einträge und führt Nachträge ohne Datenverlust zusammen", async () => {
-  const { DIARY_REVIEW_AREAS, normalizeDiaryEntries, upsertDiaryEntry } =
+  const {
+    DIARY_REVIEW_AREAS,
+    diaryRhythmDays,
+    normalizeDiaryEntries,
+    upsertDiaryEntry,
+  } =
     await importTypeScriptModule(new URL("lib/diary.ts", root));
   const oldEntry = {
     id: "journal-alt",
@@ -352,6 +443,16 @@ test("übernimmt alte Journal-Einträge und führt Nachträge ohne Datenverlust 
   assert.deepEqual(
     withQuickNote.entries[0].reviewedAreas,
     DIARY_REVIEW_AREAS,
+  );
+  assert.equal(
+    diaryRhythmDays(
+      [
+        { ...oldEntry, id: "dst-a", date: "2026-03-29" },
+        { ...oldEntry, id: "dst-b", date: "2026-04-04" },
+      ],
+      "2026-04-04",
+    ),
+    2,
   );
 });
 
@@ -411,6 +512,14 @@ test("bündelt vier Erfassungsarten und lässt nur E-Mail und Bewerbung in der S
   assert.match(app, /onUpload=\{\(\) => openQuickAction\("upload"\)\}/);
   assert.match(app, /Datei hochladen/);
   assert.match(eventForm, /Geburtstagserinnerung/);
+  assert.match(eventForm, /zonedDateTimeToIso/);
+  assert.match(app, /parseEuroInput\(amount\)/);
+  assert.match(app, /gültigen Betrag größer als 0 Euro/);
+  assert.match(app, /gültigen Erinnerungszeitpunkt in Berliner Zeit/);
+  assert.match(app, /Aufgabe bearbeiten/);
+  assert.match(app, /onEditTask=\{openTaskEditor\}/);
+  assert.match(app, /onUpdateTask=\{saveTaskChanges\}/);
+  assert.match(app, /bestehende Kalender-Erinnerung/);
   assert.match(actions, /Bewerbungspaket erstellen/);
   assert.match(actions, /Lokale Vorlage/);
   assert.match(assistantRoute, /store:\s*false/);
@@ -637,6 +746,8 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
     masterCvWorkspace,
     masterCvRoute,
     applicationWorkflow,
+    applicationGeneration,
+    applicationGenerationJobs,
   ] =
     await Promise.all([
       readFile(new URL("components/life-os-app.tsx", root), "utf8"),
@@ -652,6 +763,11 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
       readFile(new URL("components/master-cv-workspace.tsx", root), "utf8"),
       readFile(new URL("app/api/master-cv/route.ts", root), "utf8"),
       readFile(new URL("lib/application-workflow.ts", root), "utf8"),
+      readFile(new URL("lib/server/application-generation.ts", root), "utf8"),
+      readFile(
+        new URL("lib/server/application-generation-jobs.ts", root),
+        "utf8",
+      ),
     ]);
 
   assert.match(app, /label: "Bewerbungen"/);
@@ -674,33 +790,60 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(types, /vacancyResearch: VacancyResearch \| null/);
   assert.match(stateHook, /mergeApplicationResearch/);
   assert.match(stateHook, /normalizeMasterCvContent/);
-  assert.match(actions, /Master-CV verwenden/);
-  assert.match(actions, /masterCvToPlainText\(masterCvContent\)/);
-  assert.match(actions, /fetch\(masterCv\.downloadUrl/);
+  assert.match(actions, /Master-CV für diesen Auftrag auswählen/);
+  assert.match(actions, /wird nicht in der Dokumentbibliothek gespeichert/);
+  assert.doesNotMatch(actions, /fetch\(masterCvDownloadUrl/);
+  assert.doesNotMatch(actions, /form\.append\("masterCvDocumentId"|masterCvDocumentId: masterCv/);
   assert.match(actions, /interviewPrep/);
   assert.match(actions, /Grad der Förmlichkeit/);
-  assert.match(actions, /Welche Schwerpunkte sollen sichtbar werden/);
-  assert.match(actions, /Was soll die Webrecherche abdecken/);
+  assert.match(actions, /Webrecherche einstellen/);
+  assert.match(
+    actions,
+    /<details className="studio-option-group studio-research-options">/,
+  );
+  assert.match(actions, /Weitere persönliche Hinweise/);
+  assert.match(actions, /Sprache und Stil/);
+  assert.match(actions, /Inhaltliche Schwerpunkte/);
+  assert.match(actions, /Gehalt und Verhandlung/);
+  assert.equal(
+    (actions.match(/APPLICATION_RESEARCH_SCOPE_DEFINITIONS\.map/g) ?? [])
+      .length,
+    1,
+  );
   assert.match(actions, /Persönliche Untergrenze/);
   assert.match(actions, /assessSalaryPreference/);
-  assert.match(actions, /Als Word-Datei herunterladen/);
-  assert.match(actions, /Aus Master-CV erstellt/);
-  assert.match(actions, /Fokussiert · 2–3 gut gefüllte Seiten/);
+  assert.match(actions, /Als DOCX herunterladen/);
+  assert.match(actions, /gilt nur für diesen Auftrag/);
+  assert.match(actions, /Deutscher ATS-Standard/);
+  assert.match(actions, /750–1\.150 Wörter/);
+  assert.match(actions, /Angaben speichern/);
   assert.match(actions, /ApplicationDocumentPreview/);
-  assert.match(actions, /downloadTemplateBackedDocx/);
+  assert.match(actions, /downloadEditableDocx/);
+  assert.match(actions, /markApplicationPackageNeedsReview/);
+  assert.match(actions, /manual_review/);
+  assert.match(actions, /Erstellung abbrechen/);
+  assert.match(actions, /action: "poll"/);
+  assert.match(actions, /disabled=\{!packageReady\}/);
+  assert.doesNotMatch(
+    applications,
+    /recordActivity\("application_pack_completed"/,
+  );
+  assert.match(actions, /generationInputs/);
+  assert.doesNotMatch(actions, /buildLocalApplicationPackage/);
+  assert.doesNotMatch(actions, /downloadTemplateBackedDocx/);
   assert.doesNotMatch(actions, /Aus dem Original-CV übernehmen/);
   assert.match(actions, /<JobResearchPanel/);
   assert.match(jobResearchPanel, /Vakanz recherchieren/);
+  assert.match(
+    jobResearchPanel,
+    /Vakanzrecherche · \{researchScopes\.length\} Bereiche/,
+  );
   assert.match(jobResearchPanel, /Bestätigen/);
   assert.match(jobResearchPanel, /Bearbeiten/);
   assert.match(jobResearchPanel, /Ablehnen/);
   assert.match(jobResearchPanel, /Für Aussagen verwendete Quellen/);
-  assert.match(jobResearchRoute, /type: "web_search"/);
-  assert.match(jobResearchRoute, /external_web_access: true/);
-  assert.match(jobResearchRoute, /tool_choice: "required"/);
+  assert.match(jobResearchRoute, /researchOpenAIRequest/);
   assert.match(jobResearchRoute, /web_search_call\.action\.sources/);
-  assert.match(jobResearchRoute, /store: false/);
-  assert.match(jobResearchRoute, /background: true/);
   assert.match(jobResearchRoute, /verifyJobToken/);
   assert.match(jobResearchRoute, /payload\.status === "queued"/);
   assert.match(jobResearchPanel, /Quellen und Widersprüche werden geprüft/);
@@ -709,10 +852,17 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.doesNotMatch(assistantRoute, /type: "web_search"/);
   assert.match(assistantRoute, /confirmedResearchContext/);
   assert.match(assistantRoute, /selectedResearchClaimIds/);
-  assert.match(assistantRoute, /Persönliche Untergrenze, ausschließlich zur Strategie/);
-  assert.match(assistantRoute, /absichtlich keinen Webzugriff/);
-  assert.match(assistantRoute, /750–1\.150 Wörter/);
-  assert.match(assistantRoute, /Redaktionsanweisungen/);
+  assert.match(assistantRoute, /parseMasterCvDocument/);
+  assert.match(assistantRoute, /ApplicationGenerationJobService/);
+  assert.match(assistantRoute, /background: true/);
+  assert.match(assistantRoute, /action === "poll"/);
+  assert.match(applicationGenerationJobs, /evaluateApplicationModelOutput/);
+  assert.match(applicationGenerationJobs, /stage: "repair"/);
+  assert.match(assistantRoute, /ApplicationGenerationError/);
+  assert.match(applicationGeneration, /keinen Webzugriff/);
+  assert.match(applicationGeneration, /750–1\.150 Wörter/);
+  assert.match(applicationGeneration, /Text genau einmal in kleinen Markdown-Blöcken/);
+  assert.match(applicationGeneration, /einmaligen Reparaturversuch/);
   assert.match(masterCvWorkspace, /Inhalte bearbeiten/);
   assert.match(masterCvWorkspace, /Belege ansehen/);
   assert.match(masterCvWorkspace, /Master-CV importieren/);
@@ -851,4 +1001,62 @@ test("hält native Auswahlmenüs in allen App-Bereichen kontrastreich", async ()
     /select option,\s*select optgroup\s*\{[^}]*background-color:\s*Canvas[^}]*color:\s*CanvasText[^}]*color-scheme:\s*light/s,
   );
   assert.match(css, /select option:disabled\s*\{[^}]*color:\s*GrayText/s);
+});
+
+test("verwendet appweit keine informationskritische Kleinstschrift", async () => {
+  const css = await readFile(new URL("app/globals.css", root), "utf8");
+  const remSizes = [...css.matchAll(/font-size:\s*(0?\.\d+)rem/g)].map(
+    (match) => Number(match[1]),
+  );
+
+  assert.equal(remSizes.length > 300, true);
+  assert.equal(
+    remSizes.every((size) => size >= 0.72),
+    true,
+    "Explizite Schriftgrößen unter 0,72 rem sind in der App nicht zulässig.",
+  );
+});
+
+test("führt alle modalen Dialoge mit Fokusführung und Tastaturschutz", async () => {
+  const componentNames = (await readdir(new URL("components/", root))).filter(
+    (name) => name.endsWith(".tsx"),
+  );
+  const componentSources = await Promise.all(
+    componentNames.map(async (name) => ({
+      name,
+      source: await readFile(new URL(`components/${name}`, root), "utf8"),
+    })),
+  );
+  const dialogSources = componentSources.filter(({ source }) =>
+    source.includes('role="dialog"'),
+  );
+  const [hook, css] = await Promise.all([
+    readFile(new URL("lib/use-modal-dialog.ts", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  assert.equal(dialogSources.length >= 6, true);
+  for (const { name, source } of dialogSources) {
+    assert.match(
+      source,
+      /useModalDialog/,
+      `${name} muss die gemeinsame Dialogsteuerung verwenden`,
+    );
+    assert.match(
+      source,
+      /ref=\{dialogRef\}/,
+      `${name} muss die Dialog-Ref an den modalen Inhalt binden`,
+    );
+    assert.match(
+      source,
+      /tabIndex=\{-1\}/,
+      `${name} braucht ein programmatisch fokussierbares Dialogziel`,
+    );
+  }
+  assert.match(hook, /event\.key === "Escape"/);
+  assert.match(hook, /event\.key !== "Tab"/);
+  assert.match(hook, /previousFocus\?\.isConnected/);
+  assert.match(hook, /data-dialog-initial-focus/);
+  assert.match(hook, /document\.body\.classList\.add\("dialog-open"\)/);
+  assert.match(css, /body\.dialog-open/);
 });

@@ -23,7 +23,11 @@ import {
   formatDateLong,
   formatRelativeDate,
   formatTime,
+  isoDateInput,
+  zonedDateTimeInput,
+  zonedDateTimeToIso,
 } from "../lib/format";
+import { useModalDialog } from "../lib/use-modal-dialog";
 import type { GoogleWorkspaceStatus } from "../lib/google-tasks-client";
 import type {
   AppState,
@@ -41,6 +45,7 @@ type CalendarViewProps = {
   state: AppState;
   externalEvents: CalendarEvent[];
   integrations: IntegrationConfig;
+  now: number;
   calendarLive: boolean;
   planningReport: PlanningHealthReport | null;
   planningBusy: boolean;
@@ -68,37 +73,36 @@ const SELECTED_CALENDAR_STORAGE_KEY = "gerri-calendar-selection-v1";
 const CALENDAR_MODE_STORAGE_KEY = "gerri-calendar-mode-v1";
 const MAX_SELECTED_CALENDARS = 12;
 
-const startOfDay = (value: Date): Date => {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
-};
+const logicalDate = (date: string): Date => new Date(`${date}T12:00:00.000Z`);
+
+const dateKey = (value: Date): string => isoDateInput(value.toISOString());
+
+const startOfDay = (value: Date): Date => logicalDate(dateKey(value));
 
 const addDays = (value: Date, days: number): Date => {
-  const date = new Date(value);
-  date.setDate(date.getDate() + days);
-  return date;
+  const [year, month, day] = dateKey(value).split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days, 12));
 };
 
 const startOfWeek = (value: Date): Date => {
   const date = startOfDay(value);
-  const weekday = date.getDay() || 7;
+  const weekday = date.getUTCDay() || 7;
   return addDays(date, 1 - weekday);
 };
 
-const dateKey = (value: Date): string => {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+const dayBoundary = (value: Date): Date => {
+  const key = dateKey(value);
+  return new Date(
+    zonedDateTimeToIso(key, "00:00") ?? `${key}T00:00:00.000Z`,
+  );
 };
 
 const sameDay = (left: Date, right: Date): boolean =>
   dateKey(left) === dateKey(right);
 
 const eventsForDay = (events: CalendarEvent[], day: Date): CalendarEvent[] => {
-  const from = startOfDay(day).getTime();
-  const to = addDays(startOfDay(day), 1).getTime();
+  const from = dayBoundary(day).getTime();
+  const to = dayBoundary(addDays(day, 1)).getTime();
   return events.filter((event) => {
     const start = new Date(event.startAt).getTime();
     const end = new Date(event.endAt).getTime();
@@ -118,16 +122,29 @@ const eventMinutesOnDay = (
   event: CalendarEvent,
   day: Date,
 ): { start: number; end: number } => {
-  const midnight = startOfDay(day).getTime();
-  const start = Math.max(new Date(event.startAt).getTime(), midnight);
-  const end = Math.min(
-    new Date(event.endAt).getTime(),
-    addDays(startOfDay(day), 1).getTime(),
-  );
-  return {
-    start: Math.max(0, Math.round((start - midnight) / 60_000)),
-    end: Math.min(1_440, Math.round((end - midnight) / 60_000)),
+  const dayStart = dayBoundary(day).getTime();
+  const dayEnd = dayBoundary(addDays(day, 1)).getTime();
+  const minute = (value: string, endEdge = false): number => {
+    const timestamp = new Date(value).getTime();
+    if (timestamp <= dayStart) return 0;
+    if (timestamp >= dayEnd) return 1_440;
+    const local = zonedDateTimeInput(timestamp);
+    if (!local.startsWith(dateKey(day))) return endEdge ? 1_440 : 0;
+    const [hours, minutes] = local.slice(11).split(":").map(Number);
+    return hours * 60 + minutes;
   };
+  return {
+    start: minute(event.startAt),
+    end: minute(event.endAt, true),
+  };
+};
+
+const minutesNow = (now: number): number => {
+  const [hours, minutes] = zonedDateTimeInput(now)
+    .slice(11)
+    .split(":")
+    .map(Number);
+  return hours * 60 + minutes;
 };
 
 const mergedBusyMinutes = (events: CalendarEvent[], day: Date): number => {
@@ -275,13 +292,17 @@ function GuideCard({
 
 function MiniMonth({
   anchorDate,
+  now,
   onSelect,
 }: {
   anchorDate: Date;
+  now: number;
   onSelect: (date: Date) => void;
 }) {
-  const today = startOfDay(new Date());
-  const monthStart = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1);
+  const today = startOfDay(new Date(now));
+  const monthStart = new Date(
+    Date.UTC(anchorDate.getUTCFullYear(), anchorDate.getUTCMonth(), 1, 12),
+  );
   const gridStart = startOfWeek(monthStart);
   const days = Array.from({ length: 42 }, (_, index) => addDays(gridStart, index));
   return (
@@ -303,7 +324,7 @@ function MiniMonth({
           <button
             aria-label={formatDateLong(day.toISOString())}
             className={`${
-              day.getMonth() === anchorDate.getMonth() ? "" : "outside"
+              day.getUTCMonth() === anchorDate.getUTCMonth() ? "" : "outside"
             } ${sameDay(day, today) ? "today" : ""} ${
               sameDay(day, anchorDate) ? "selected" : ""
             }`}
@@ -311,7 +332,7 @@ function MiniMonth({
             onClick={() => onSelect(day)}
             type="button"
           >
-            {day.getDate()}
+            {day.getUTCDate()}
           </button>
         ))}
       </div>
@@ -323,15 +344,19 @@ function MonthCalendar({
   anchorDate,
   events,
   calendars,
+  now,
   onSelectDay,
 }: {
   anchorDate: Date;
   events: CalendarEvent[];
   calendars: GoogleCalendar[];
+  now: number;
   onSelectDay: (date: Date) => void;
 }) {
-  const today = startOfDay(new Date());
-  const monthStart = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1);
+  const today = startOfDay(new Date(now));
+  const monthStart = new Date(
+    Date.UTC(anchorDate.getUTCFullYear(), anchorDate.getUTCMonth(), 1, 12),
+  );
   const gridStart = startOfWeek(monthStart);
   const days = Array.from({ length: 42 }, (_, index) => addDays(gridStart, index));
   return (
@@ -346,7 +371,7 @@ function MonthCalendar({
         return (
           <div
             className={`calendar-month-day ${
-              day.getMonth() === anchorDate.getMonth() ? "" : "outside"
+              day.getUTCMonth() === anchorDate.getUTCMonth() ? "" : "outside"
             } ${sameDay(day, today) ? "today" : ""}`}
             key={dateKey(day)}
             role="gridcell"
@@ -356,7 +381,7 @@ function MonthCalendar({
               onClick={() => onSelectDay(day)}
               type="button"
             >
-              <span>{day.getDate()}</span>
+              <span>{day.getUTCDate()}</span>
               {sameDay(day, today) ? <small>Heute</small> : null}
             </button>
             <div className="calendar-month-events">
@@ -383,23 +408,24 @@ function WeekCalendar({
   anchorDate,
   events,
   calendars,
+  now,
   onSelectDay,
 }: {
   anchorDate: Date;
   events: CalendarEvent[];
   calendars: GoogleCalendar[];
+  now: number;
   onSelectDay: (date: Date) => void;
 }) {
-  const today = startOfDay(new Date());
+  const today = startOfDay(new Date(now));
   const weekStart = startOfWeek(anchorDate);
   const days = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
   const hours = Array.from(
     { length: HOUR_END - HOUR_START + 1 },
     (_, index) => HOUR_START + index,
   );
-  const now = new Date();
   const nowTop =
-    ((now.getHours() * 60 + now.getMinutes() - HOUR_START * 60) /
+    ((minutesNow(now) - HOUR_START * 60) /
       ((HOUR_END - HOUR_START) * 60)) *
     100;
 
@@ -414,8 +440,8 @@ function WeekCalendar({
             onClick={() => onSelectDay(day)}
             type="button"
           >
-            <span>{WEEKDAY_SHORT[(day.getDay() + 6) % 7]}</span>
-            <strong>{day.getDate()}</strong>
+            <span>{WEEKDAY_SHORT[(day.getUTCDay() + 6) % 7]}</span>
+            <strong>{day.getUTCDate()}</strong>
           </button>
         ))}
       </div>
@@ -482,10 +508,12 @@ function DayCalendar({
   day,
   events,
   calendars,
+  now,
 }: {
   day: Date;
   events: CalendarEvent[];
   calendars: GoogleCalendar[];
+  now: number;
 }) {
   const hours = Array.from(
     { length: HOUR_END - HOUR_START },
@@ -494,9 +522,8 @@ function DayCalendar({
   const dayEvents = eventsForDay(events, day);
   const timedEvents = dayEvents.filter((event) => !event.allDay);
   const allDayEvents = dayEvents.filter((event) => event.allDay);
-  const now = new Date();
   const nowTop =
-    ((now.getHours() * 60 + now.getMinutes() - HOUR_START * 60) /
+    ((minutesNow(now) - HOUR_START * 60) /
       ((HOUR_END - HOUR_START) * 60)) *
     100;
   return (
@@ -508,7 +535,7 @@ function DayCalendar({
             weekday: "long",
           }).format(day)}
         </span>
-        <strong>{day.getDate()}</strong>
+        <strong>{day.getUTCDate()}</strong>
         <p>{formatDateLong(day.toISOString())}</p>
       </header>
       {allDayEvents.length ? (
@@ -540,7 +567,7 @@ function DayCalendar({
           {hours.map((hour) => (
             <span className="calendar-hour-line" key={hour} />
           ))}
-          {sameDay(day, now) && nowTop >= 0 && nowTop <= 100 ? (
+          {sameDay(day, new Date(now)) && nowTop >= 0 && nowTop <= 100 ? (
             <span className="calendar-now-line" style={{ top: `${nowTop}%` }} />
           ) : null}
           {timedEvents.map((event, index) => {
@@ -669,19 +696,12 @@ function NewCalendarDialog({
   onClose: () => void;
   onCreated: (calendar: GoogleCalendar) => void;
 }) {
+  const dialogRef = useModalDialog<HTMLElement>(onClose);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [connectUrl, setConnectUrl] = useState("");
-
-  useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -717,7 +737,9 @@ function NewCalendarDialog({
         aria-modal="true"
         className="capture-dialog calendar-create-dialog"
         onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
       >
         <div className="dialog-handle" />
         <header className="dialog-heading">
@@ -779,6 +801,7 @@ export function CalendarView({
   state,
   externalEvents,
   integrations,
+  now,
   calendarLive,
   planningReport,
   planningBusy,
@@ -791,7 +814,7 @@ export function CalendarView({
   onPlanningModeChange,
   onSetDayIntent,
 }: CalendarViewProps) {
-  const [anchorDate, setAnchorDate] = useState(() => startOfDay(new Date()));
+  const [anchorDate, setAnchorDate] = useState(() => startOfDay(new Date(now)));
   const [mode, setMode] = useState<CalendarMode>("month");
   const [calendars, setCalendars] = useState<GoogleCalendar[]>([
     calendarFallback(integrations),
@@ -811,7 +834,14 @@ export function CalendarView({
     let to = addDays(from, 1);
     if (mode === "month") {
       from = startOfWeek(
-        new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1),
+        new Date(
+          Date.UTC(
+            anchorDate.getUTCFullYear(),
+            anchorDate.getUTCMonth(),
+            1,
+            12,
+          ),
+        ),
       );
       to = addDays(from, 42);
     } else if (mode === "week") {
@@ -820,7 +850,10 @@ export function CalendarView({
     } else if (mode === "agenda") {
       to = addDays(from, 31);
     }
-    return { timeMin: from.toISOString(), timeMax: to.toISOString() };
+    return {
+      timeMin: dayBoundary(from).toISOString(),
+      timeMax: dayBoundary(to).toISOString(),
+    };
   }, [anchorDate, mode]);
 
   const loadCalendarCatalog = useCallback(async () => {
@@ -923,7 +956,7 @@ export function CalendarView({
         );
         if (!active) return;
         setCalendarEvents(loaded);
-        const todayTime = startOfDay(new Date()).getTime();
+        const todayTime = Date.now();
         if (
           new Date(requestedWindow.timeMin).getTime() <= todayTime &&
           new Date(requestedWindow.timeMax).getTime() > todayTime
@@ -982,9 +1015,8 @@ export function CalendarView({
       state.calendarEvents,
     ],
   );
-  const today = useMemo(() => startOfDay(new Date()), []);
+  const today = useMemo(() => startOfDay(new Date(now)), [now]);
   const todayEvents = useMemo(() => eventsForDay(events, today), [events, today]);
-  const [now] = useState(() => Date.now());
   const runningEvent = todayEvents.find(
     (event) =>
       new Date(event.startAt).getTime() <= now &&
@@ -1029,9 +1061,12 @@ export function CalendarView({
     if (mode === "month") {
       setAnchorDate(
         new Date(
-          anchorDate.getFullYear(),
-          anchorDate.getMonth() + direction,
-          1,
+          Date.UTC(
+            anchorDate.getUTCFullYear(),
+            anchorDate.getUTCMonth() + direction,
+            1,
+            12,
+          ),
         ),
       );
     } else if (mode === "week") {
@@ -1096,7 +1131,7 @@ export function CalendarView({
               weekday: "short",
             }).format(today)}
           </span>
-          <strong>{today.getDate()}</strong>
+          <strong>{today.getUTCDate()}</strong>
           <small>
             {new Intl.DateTimeFormat("de-DE", {
               timeZone: APP_TIME_ZONE,
@@ -1384,7 +1419,7 @@ export function CalendarView({
 
         <div className="calendar-workspace-layout">
           <aside className="calendar-sidebar">
-            <MiniMonth anchorDate={anchorDate} onSelect={selectDay} />
+            <MiniMonth anchorDate={anchorDate} now={now} onSelect={selectDay} />
             <section className="calendar-source-picker" aria-labelledby="calendar-source-title">
               <header>
                 <div>
@@ -1470,6 +1505,7 @@ export function CalendarView({
                 anchorDate={anchorDate}
                 calendars={calendars}
                 events={events}
+                now={now}
                 onSelectDay={selectDay}
               />
             ) : null}
@@ -1478,11 +1514,17 @@ export function CalendarView({
                 anchorDate={anchorDate}
                 calendars={calendars}
                 events={events}
+                now={now}
                 onSelectDay={selectDay}
               />
             ) : null}
             {mode === "day" ? (
-              <DayCalendar calendars={calendars} day={anchorDate} events={events} />
+              <DayCalendar
+                calendars={calendars}
+                day={anchorDate}
+                events={events}
+                now={now}
+              />
             ) : null}
             {mode === "agenda" ? (
               <AgendaCalendar

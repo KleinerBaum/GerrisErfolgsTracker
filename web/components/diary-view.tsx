@@ -7,6 +7,7 @@ import {
   type FormEvent,
 } from "react";
 
+import { DIARY_REVIEW_AREAS } from "../lib/diary";
 import {
   addDiaryDays,
   buildDiaryPlanningSuggestions,
@@ -176,7 +177,7 @@ export function DiaryView({
   const snapshot = () => ({
     openTasks: openTasks.length,
     overdueTasks: openTasks.filter(
-      (task) => task.dueAt && isoDateInput(task.dueAt) <= today,
+      (task) => task.dueAt && isoDateInput(task.dueAt) < today,
     ).length,
     tomorrowTasks: tomorrowTasks.length,
     tomorrowEvents: tomorrowEvents.length,
@@ -203,7 +204,9 @@ export function DiaryView({
     win: currentWin.trim(),
     nextStep: currentNextStep.trim(),
     weekPlan: weekPlan.trim(),
-    reviewedAreas: todayEntry?.reviewedAreas ?? [],
+    reviewedAreas: closeDay
+      ? [...DIARY_REVIEW_AREAS]
+      : (todayEntry?.reviewedAreas ?? []),
     closeDay,
     plannedTaskId: todayEntry?.plannedTaskId ?? null,
     linkedApplicationIds: todayEntry?.linkedApplicationIds ?? [],
@@ -232,23 +235,32 @@ export function DiaryView({
   const scheduleSuggestion = async (
     suggestion: DiaryPlanningSuggestion,
     date: string,
-  ) => {
+  ): Promise<boolean> => {
     if (!tasksConnected) {
       setSubmitStatus(
         "Google Tasks ist nicht verbunden. Das Tagebuch und der Tagesabschluss bleiben trotzdem uneingeschränkt nutzbar.",
       );
-      return;
+      return false;
     }
-    if (schedulingId || taskActionId) return;
+    if (schedulingId || taskActionId) return false;
     setSchedulingId(suggestion.id);
     setSubmitStatus("");
-    const scheduled = await onScheduleSuggestion(suggestion, date);
-    setSchedulingId("");
+    let scheduled = false;
+    try {
+      scheduled = await onScheduleSuggestion(suggestion, date);
+    } catch {
+      setSubmitStatus(
+        `„${suggestion.title}“ konnte nicht eingeplant werden. Deine Eingabe bleibt erhalten.`,
+      );
+      return false;
+    } finally {
+      setSchedulingId("");
+    }
     if (!scheduled) {
       setSubmitStatus(
         `„${suggestion.title}“ konnte nicht eingeplant werden. Der Tagesabschluss bleibt weiterhin möglich.`,
       );
-      return;
+      return false;
     }
     setScheduledSuggestionIds((current) => [...current, suggestion.id]);
     if (date === tomorrow && !currentNextStep.trim()) {
@@ -260,6 +272,7 @@ export function DiaryView({
         date === tomorrow ? "morgen" : planDateLabel(date, true)
       } eingeplant.`,
     );
+    return true;
   };
 
   const dropOnDate = (event: DragEvent<HTMLElement>, date: string) => {
@@ -290,7 +303,9 @@ export function DiaryView({
         dueAt: null,
       },
       tomorrow,
-    ).then(() => setCustomTaskTitle(""));
+    ).then((scheduled) => {
+      if (scheduled) setCustomTaskTitle("");
+    });
   };
 
   const closeDay = async () => {

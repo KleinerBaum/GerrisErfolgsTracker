@@ -791,6 +791,31 @@ export type ApplicationOutputKind =
   | "company-brief"
   | "interview-prep";
 
+export type ApplicationDocumentKind = Exclude<
+  ApplicationOutputKind,
+  "application-email"
+>;
+
+export type ApplicationVisualizationPlacement =
+  | "after-profile"
+  | "after-skills"
+  | "end";
+
+export type ApplicationDocumentVisualization = {
+  id: string;
+  sourceDocumentId: string;
+  title: string;
+  altText: string;
+  targetKinds: ApplicationDocumentKind[];
+  placement: ApplicationVisualizationPlacement;
+  confirmedAt: string | null;
+};
+
+export type ApplicationDocumentDesign = {
+  templateDocumentIds: Record<ApplicationDocumentKind, string | null>;
+  visualizations: ApplicationDocumentVisualization[];
+};
+
 export type ApplicationFormality =
   | "modern"
   | "balanced"
@@ -816,6 +841,14 @@ export type ApplicationGenerationPreferences = {
   minimumSalaryAnnual: number | null;
   salaryFlexibility: "fixed" | "negotiable" | "open";
   mentionSalary: "never" | "if_requested" | "always";
+};
+
+export type ApplicationGenerationInputs = {
+  motivation: string;
+  achievements: string;
+  strengths: string;
+  constraints: string;
+  availability: string;
 };
 
 export type ApplicationContact = {
@@ -862,14 +895,44 @@ export type CareerPassportSnapshot = {
   importedAt: string;
 };
 
+export type MasterCvSectionKind =
+  | "profile"
+  | "value"
+  | "experience"
+  | "projects"
+  | "skills"
+  | "education"
+  | "languages"
+  | "other";
+
 export type MasterCvSection = {
   id: string;
   heading: string;
   content: string;
+  kind: MasterCvSectionKind;
+};
+
+export type MasterCvLink = {
+  id: string;
+  label: string;
+  url: string;
+  kind: "web" | "email" | "phone" | "portfolio";
+};
+
+export type MasterCvCoverageStats = {
+  totalWords: number;
+  evidenceItems: number;
+  experienceEntries: number;
+  projectItems: number;
+  skillItems: number;
+  educationItems: number;
+  languageItems: number;
+  linkedContacts: number;
+  sectionsByKind: Record<MasterCvSectionKind, number>;
 };
 
 export type MasterCvContent = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   sourceDocumentId: string;
   passportDocumentId: string | null;
   name: string;
@@ -878,6 +941,9 @@ export type MasterCvContent = {
   contactLine: string;
   language: string;
   sections: MasterCvSection[];
+  links: MasterCvLink[];
+  sourceFingerprint: string;
+  coverage: MasterCvCoverageStats;
   passport: CareerPassportSnapshot;
   importedAt: string;
   updatedAt: string;
@@ -979,6 +1045,7 @@ export type VacancyResearch = {
   schemaVersion: 1;
   retrievalStatus:
     | "exact_page_accessed"
+    | "provided_text"
     | "snippet_only"
     | "blocked_or_login"
     | "not_found"
@@ -1001,6 +1068,12 @@ export type VacancyResearch = {
     supportedClaims: number;
     unsupportedClaims: number;
     matchedSourceUrls: number;
+  };
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    webSearchCalls: number;
   };
 };
 
@@ -1035,7 +1108,9 @@ export type ApplicationProcess = {
   notes: string;
   artifacts: ApplicationArtifact[];
   vacancyResearch: VacancyResearch | null;
+  generationInputs: ApplicationGenerationInputs;
   generationPreferences: ApplicationGenerationPreferences;
+  documentDesign: ApplicationDocumentDesign;
   activities: ApplicationActivity[];
 };
 

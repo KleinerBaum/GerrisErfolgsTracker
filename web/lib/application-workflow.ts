@@ -2,7 +2,11 @@ import type {
   ApplicationActivity,
   ApplicationActivityType,
   ApplicationContact,
+  ApplicationDocumentDesign,
+  ApplicationDocumentKind,
+  ApplicationDocumentVisualization,
   ApplicationGenerationPreferences,
+  ApplicationGenerationInputs,
   ApplicationKpiGoal,
   ApplicationKpiKey,
   ApplicationKpiPeriod,
@@ -10,6 +14,7 @@ import type {
   ApplicationOutputKind,
   ApplicationProcess,
   ApplicationResearchScope,
+  DocumentRef,
   SalaryOutlook,
 } from "./types";
 
@@ -99,7 +104,7 @@ export const DEFAULT_APPLICATION_GENERATION_PREFERENCES: ApplicationGenerationPr
   focusThemes: [],
   customFocus: "",
   outputKinds: ["tailored-cv", "cover-letter"],
-  researchScopes: ["job_posting", "company", "salary"],
+  researchScopes: ["job_posting", "company"],
   researchSelectionMode: "all_confirmed",
   selectedResearchClaimIds: [],
   desiredSalaryAnnual: null,
@@ -107,6 +112,27 @@ export const DEFAULT_APPLICATION_GENERATION_PREFERENCES: ApplicationGenerationPr
   salaryFlexibility: "negotiable",
   mentionSalary: "if_requested",
 };
+
+export const DEFAULT_APPLICATION_GENERATION_INPUTS: ApplicationGenerationInputs = {
+  motivation: "",
+  achievements: "",
+  strengths: "",
+  constraints: "",
+  availability: "",
+};
+
+export function activeUploadedMasterCv(
+  documents: DocumentRef[],
+  masterCvDocumentId: string | null,
+): DocumentRef | null {
+  if (!masterCvDocumentId) return null;
+  return (
+    documents.find(
+      (document) =>
+        document.id === masterCvDocumentId && document.storage === "upload",
+    ) ?? null
+  );
+}
 
 export const APPLICATION_KPI_DEFINITIONS: ReadonlyArray<{
   key: ApplicationKpiKey;
@@ -163,6 +189,12 @@ export const DEFAULT_APPLICATION_KPI_SETTINGS: ApplicationKpiSettings = {
 const OUTPUT_KINDS = new Set<ApplicationOutputKind>(
   APPLICATION_OUTPUT_DEFINITIONS.map((definition) => definition.key),
 );
+const DOCUMENT_KINDS = new Set<ApplicationDocumentKind>([
+  "tailored-cv",
+  "cover-letter",
+  "company-brief",
+  "interview-prep",
+]);
 const RESEARCH_SCOPES = new Set<ApplicationResearchScope>(
   APPLICATION_RESEARCH_SCOPE_DEFINITIONS.map((definition) => definition.key),
 );
@@ -197,6 +229,111 @@ function optionalSalary(value: unknown): number | null {
     : null;
 }
 
+export function normalizeApplicationGenerationInputs(
+  value: unknown,
+): ApplicationGenerationInputs {
+  const candidate =
+    value && typeof value === "object"
+      ? (value as Partial<ApplicationGenerationInputs>)
+      : {};
+  const field = (input: unknown, maximum: number) =>
+    typeof input === "string" ? input.trim().slice(0, maximum) : "";
+  return {
+    motivation: field(candidate.motivation, 4_000),
+    achievements: field(candidate.achievements, 6_000),
+    strengths: field(candidate.strengths, 4_000),
+    constraints: field(candidate.constraints, 4_000),
+    availability: field(candidate.availability, 2_000),
+  };
+}
+
+export const DEFAULT_APPLICATION_DOCUMENT_DESIGN: ApplicationDocumentDesign = {
+  templateDocumentIds: {
+    "tailored-cv": null,
+    "cover-letter": null,
+    "company-brief": null,
+    "interview-prep": null,
+  },
+  visualizations: [],
+};
+
+export function normalizeApplicationDocumentDesign(
+  value: unknown,
+): ApplicationDocumentDesign {
+  const candidate =
+    value && typeof value === "object"
+      ? (value as Partial<ApplicationDocumentDesign>)
+      : {};
+  const templateIds: Partial<
+    Record<ApplicationDocumentKind, string | null>
+  > =
+    candidate.templateDocumentIds &&
+    typeof candidate.templateDocumentIds === "object"
+      ? candidate.templateDocumentIds
+      : {};
+  const templateId = (kind: ApplicationDocumentKind): string | null => {
+    const raw = templateIds[kind];
+    return typeof raw === "string" && raw.trim()
+      ? raw.trim().slice(0, 240)
+      : null;
+  };
+  const visualizations = (
+    Array.isArray(candidate.visualizations) ? candidate.visualizations : []
+  )
+    .map((item, index): ApplicationDocumentVisualization | null => {
+      if (!item || typeof item !== "object") return null;
+      const visual = item as Partial<ApplicationDocumentVisualization>;
+      const sourceDocumentId =
+        typeof visual.sourceDocumentId === "string"
+          ? visual.sourceDocumentId.trim().slice(0, 240)
+          : "";
+      if (!sourceDocumentId) return null;
+      const targetKinds = stringList(visual.targetKinds, 4, 40).filter(
+        (kind): kind is ApplicationDocumentKind =>
+          DOCUMENT_KINDS.has(kind as ApplicationDocumentKind),
+      );
+      const confirmedAt =
+        typeof visual.confirmedAt === "string" &&
+        Number.isFinite(Date.parse(visual.confirmedAt))
+          ? visual.confirmedAt
+          : null;
+      return {
+        id:
+          typeof visual.id === "string" && visual.id.trim()
+            ? visual.id.trim().slice(0, 240)
+            : `visualisierung-${index + 1}`,
+        sourceDocumentId,
+        title:
+          typeof visual.title === "string"
+            ? visual.title.trim().slice(0, 240)
+            : "",
+        altText:
+          typeof visual.altText === "string"
+            ? visual.altText.trim().slice(0, 500)
+            : "",
+        targetKinds,
+        placement: ["after-profile", "after-skills", "end"].includes(
+          visual.placement ?? "",
+        )
+          ? (visual.placement as ApplicationDocumentVisualization["placement"])
+          : "end",
+        confirmedAt,
+      };
+    })
+    .filter((item): item is ApplicationDocumentVisualization => Boolean(item))
+    .slice(0, 16);
+
+  return {
+    templateDocumentIds: {
+      "tailored-cv": templateId("tailored-cv"),
+      "cover-letter": templateId("cover-letter"),
+      "company-brief": templateId("company-brief"),
+      "interview-prep": templateId("interview-prep"),
+    },
+    visualizations,
+  };
+}
+
 export function normalizeApplicationGenerationPreferences(
   value: unknown,
 ): ApplicationGenerationPreferences {
@@ -219,11 +356,9 @@ export function normalizeApplicationGenerationPreferences(
       ? (candidate.addressStyle as ApplicationGenerationPreferences["addressStyle"])
       : DEFAULT_APPLICATION_GENERATION_PREFERENCES.addressStyle,
     language: candidate.language === "Englisch" ? "Englisch" : "Deutsch",
-    cvLength: ["compact", "two_pages", "detailed"].includes(
-      candidate.cvLength ?? "",
-    )
-      ? (candidate.cvLength as ApplicationGenerationPreferences["cvLength"])
-      : DEFAULT_APPLICATION_GENERATION_PREFERENCES.cvLength,
+    // Alte Zustände dürfen die früheren Varianten weiterhin enthalten. Für
+    // versandfertige Pakete gilt jedoch ein einziger, überprüfbarer Vertrag.
+    cvLength: "two_pages",
     focusThemes: stringList(candidate.focusThemes, 12, 160),
     customFocus:
       typeof candidate.customFocus === "string"

@@ -10,7 +10,7 @@ import type {
   VacancyResearch,
 } from "./types";
 
-export const JOB_RESEARCH_PROMPT_VERSION = "job-research-v2";
+export const JOB_RESEARCH_PROMPT_VERSION = "job-research-v3-lean";
 
 export const JOB_RESEARCH_FACT_KEYS = [
   "role.title",
@@ -71,6 +71,7 @@ export const JOB_RESEARCH_SCHEMA = {
       type: "string",
       enum: [
         "exact_page_accessed",
+        "provided_text",
         "snippet_only",
         "blocked_or_login",
         "not_found",
@@ -155,9 +156,58 @@ export const JOB_RESEARCH_INSTRUCTIONS = [
   "Fehlende Angaben sind keine negativen Fakten. Arbeitgeberweite Vorteile gelten nicht automatisch für diese konkrete Vakanz. Bewertungen sind Wahrnehmungssignale, keine verifizierten Arbeitgeberfakten.",
   "Sammle keine Kandidatendaten, geschützten Merkmale, Beschäftigtenprofile oder privaten Kontaktdaten. Suche nicht nach der bewerbenden Person.",
   "Nutze in source_urls ausschließlich vollständige HTTP(S)-URLs, die während dieses Laufs tatsächlich konsultiert wurden. Erhalte Widersprüche, veraltete Angaben und Lücken sichtbar.",
-  "Verdichte Wiederholungen: liefere höchstens 24 Anzeigenfakten, 18 ergänzende Unternehmens- oder Marktfakten und 18 priorisierte Lücken. Fasse zusammengehörige Aufgaben, Kompetenzen und Leistungen jeweils in einer präzisen Aussage zusammen.",
+  "Im Standardlauf sind Gehalt, allgemeines Marktumfeld und unbelegte Arbeitgeberversprechen ausgeschlossen.",
+  "Verdichte Wiederholungen: liefere höchstens zwölf Anzeigenfakten, fünf offizielle Firmenfakten, fünf priorisierte Lücken und drei Konflikte. Fasse zusammengehörige Aufgaben, Kompetenzen und Leistungen jeweils in einer präzisen Aussage zusammen.",
+  "Ist ein vollständiger Anzeigentext bereitgestellt, übernimm Anzeigenfakten ausschließlich daraus und verbrauche dafür keine Websuche. Nutze die knappe Webrecherche dann nur für offizielle Unternehmensquellen.",
+  "Ist keine Anzeige zuverlässig auffindbar und kein vollständiger Text bereitgestellt, beende die Analyse mit dem passenden Abrufstatus; starte keine breite Ersatzrecherche.",
   "Formuliere Lücken als präzise Fragen für Recruiter, Fachbereich oder Interview. Gib ausschließlich das verlangte strukturierte Ergebnis aus.",
 ].join("\n");
+
+export function researchOpenAIRequest({
+  model,
+  owner,
+  prompt,
+  providedAdText,
+}: {
+  model: string;
+  owner: string;
+  prompt: string;
+  providedAdText: boolean;
+}) {
+  return {
+    model,
+    background: true,
+    reasoning: { effort: "low" },
+    instructions: JOB_RESEARCH_INSTRUCTIONS,
+    input: prompt,
+    tools: [
+      {
+        type: "web_search",
+        search_context_size: "low",
+        external_web_access: true,
+      },
+    ],
+    tool_choice: "required",
+    max_tool_calls: providedAdText ? 2 : 3,
+    include: ["web_search_call.action.sources"],
+    max_output_tokens: 5_000,
+    store: false,
+    safety_identifier: owner,
+    metadata: {
+      workflow: "gerris_vacancy_research",
+      prompt_version: JOB_RESEARCH_PROMPT_VERSION,
+    },
+    text: {
+      verbosity: "medium",
+      format: {
+        type: "json_schema",
+        name: "vacancy_research_v1",
+        strict: true,
+        schema: JOB_RESEARCH_SCHEMA,
+      },
+    },
+  } as const;
+}
 
 type RawClaim = {
   claim_id?: unknown;
@@ -190,6 +240,7 @@ const TRACKING_PARAMETERS = new Set([
 
 const RETRIEVAL_STATUSES = new Set<VacancyResearch["retrievalStatus"]>([
   "exact_page_accessed",
+  "provided_text",
   "snippet_only",
   "blocked_or_login",
   "not_found",
@@ -282,6 +333,20 @@ export function publicJobUrl(value: unknown): string | null {
     return null;
   }
   return canonical;
+}
+
+export function validResearchJobSource(
+  requestedUrl: unknown,
+  providedAdText: unknown,
+): boolean {
+  if (
+    typeof requestedUrl !== "string" ||
+    typeof providedAdText !== "boolean"
+  ) {
+    return false;
+  }
+  if (!requestedUrl) return providedAdText;
+  return publicJobUrl(requestedUrl) === requestedUrl;
 }
 
 function unique<T>(values: T[]): T[] {
@@ -405,6 +470,7 @@ export function normalizeJobResearchPayload(
     model: string;
     responseId: string;
     providedAdText: boolean;
+    usage?: VacancyResearch["usage"];
   },
 ): VacancyResearch {
   if (!payload || typeof payload !== "object") {
@@ -412,13 +478,15 @@ export function normalizeJobResearchPayload(
   }
   const raw = payload as RawResearch;
   const requestedUrl = publicJobUrl(context.requestedUrl);
-  if (!requestedUrl) throw new Error("Die Stellen-URL ist nicht öffentlich zugänglich.");
+  if (!requestedUrl && !context.providedAdText) {
+    throw new Error("Die Stellen-URL ist nicht öffentlich zugänglich.");
+  }
   const consultedSources = sourceMap(context.sources);
   const canonicalCandidate = canonicalizeResearchUrl(raw.canonical_url);
   const canonicalUrl =
     canonicalCandidate && consultedSources.has(canonicalCandidate)
       ? canonicalCandidate
-      : consultedSources.has(requestedUrl)
+      : requestedUrl && consultedSources.has(requestedUrl)
         ? requestedUrl
         : null;
 
@@ -429,11 +497,15 @@ export function normalizeJobResearchPayload(
     ? (rawStatus as VacancyResearch["retrievalStatus"])
     : "ambiguous";
   const warnings = stringList(raw.warnings, 30);
-  if (retrievalStatus === "exact_page_accessed" && !canonicalUrl) {
+  if (context.providedAdText && !canonicalUrl) {
+    retrievalStatus = "provided_text";
+  } else if (retrievalStatus === "exact_page_accessed" && !canonicalUrl) {
     retrievalStatus = "snippet_only";
     warnings.push(
       "Der Zugriff auf die exakte Anzeige war in den zurückgegebenen Quellen nicht belegbar.",
     );
+  } else if (retrievalStatus === "provided_text" && !context.providedAdText) {
+    retrievalStatus = "ambiguous";
   }
 
   let matchedSourceUrls = 0;
@@ -443,7 +515,7 @@ export function normalizeJobResearchPayload(
   ): JobResearchClaim[] => {
     if (!Array.isArray(values)) return [];
     return values
-      .slice(0, 80)
+      .slice(0, prefix === "ad" ? 12 : 5)
       .map((value, index) =>
         value && typeof value === "object"
           ? normalizeClaim(
@@ -485,16 +557,16 @@ export function normalizeJobResearchPayload(
   return {
     schemaVersion: 1,
     retrievalStatus,
-    requestedUrl,
+    requestedUrl: requestedUrl ?? "",
     canonicalUrl,
     adFacts,
     enrichment,
     gaps: (Array.isArray(raw.gaps) ? raw.gaps : [])
-      .slice(0, 50)
+      .slice(0, 5)
       .map(normalizeGap)
       .filter((gap): gap is JobResearchGap => Boolean(gap)),
-    conflicts: stringList(raw.conflicts, 30),
-    warnings: unique(warnings),
+    conflicts: stringList(raw.conflicts, 3),
+    warnings: unique(warnings).slice(0, 8),
     sources,
     researchedAt: context.researchedAt,
     promptVersion: JOB_RESEARCH_PROMPT_VERSION,
@@ -507,6 +579,7 @@ export function normalizeJobResearchPayload(
       unsupportedClaims,
       matchedSourceUrls,
     },
+    usage: context.usage,
   };
 }
 
@@ -604,6 +677,7 @@ export function confirmedResearchContext(
 ) {
   if (!research) return null;
   const claims = confirmedClaims(research, selectedClaimIds).map((claim) => ({
+    id: claim.id,
     factKey: claim.factKey,
     value: claim.decision.value || claim.value,
     decision: claim.decision.status,

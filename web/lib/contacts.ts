@@ -8,6 +8,7 @@ export type ContactCsvRow = Omit<
 export type ContactCsvResult = {
   contacts: ContactCsvRow[];
   skippedRows: number;
+  invalidBirthdays: number;
   headers: string[];
 };
 
@@ -80,10 +81,81 @@ function parseRecords(raw: string, delimiter: string): string[][] {
 function normalizedBirthday(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const validDate = (date: string): string | null => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    return parsed.getUTCFullYear() === year &&
+      parsed.getUTCMonth() === month - 1 &&
+      parsed.getUTCDate() === day
+      ? date
+      : null;
+  };
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return validDate(trimmed);
   const german = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(trimmed);
   if (!german) return null;
-  return `${german[3]}-${german[2].padStart(2, "0")}-${german[1].padStart(2, "0")}`;
+  return validDate(
+    `${german[3]}-${german[2].padStart(2, "0")}-${german[1].padStart(2, "0")}`,
+  );
+}
+
+export function safeWebsiteUrl(value: string): string | null {
+  if (!value.trim()) return null;
+  try {
+    const withProtocol = /^https?:\/\//i.test(value.trim())
+      ? value.trim()
+      : `https://${value.trim()}`;
+    const url = new URL(withProtocol);
+    return ["http:", "https:"].includes(url.protocol) && url.hostname
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function safeMailtoUrl(value: string): string | null {
+  const email = value.trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    ? `mailto:${email}`
+    : null;
+}
+
+export function safeTelephoneUrl(value: string): string | null {
+  const compact = value.trim().replace(/[\s()./-]/g, "");
+  if (!/^\+?[0-9*#,;]{3,}$/.test(compact)) return null;
+  return `tel:${compact}`;
+}
+
+export function mergeContactCsvRow(
+  existing: Contact,
+  row: ContactCsvRow,
+  updatedAt: string,
+): Contact {
+  const supplied = (value: string, fallback: string): string =>
+    value.trim() ? value.trim() : fallback;
+  return {
+    ...existing,
+    firstName: supplied(row.firstName, existing.firstName),
+    lastName: supplied(row.lastName, existing.lastName),
+    organization: supplied(row.organization, existing.organization),
+    role: supplied(row.role, existing.role),
+    email: supplied(row.email, existing.email),
+    phone: supplied(row.phone, existing.phone),
+    mobile: supplied(row.mobile, existing.mobile),
+    street: supplied(row.street, existing.street),
+    postalCode: supplied(row.postalCode, existing.postalCode),
+    city: supplied(row.city, existing.city),
+    country: supplied(row.country, existing.country),
+    birthday: row.birthday ?? existing.birthday,
+    website: supplied(row.website, existing.website),
+    notes: supplied(row.notes, existing.notes),
+    tags: Array.from(new Set([...existing.tags, ...row.tags])),
+    updatedAt,
+  };
 }
 
 export function parseContactCsv(raw: string): ContactCsvResult {
@@ -106,6 +178,7 @@ export function parseContactCsv(raw: string): ContactCsvResult {
   const value = (record: string[], field: keyof ContactCsvRow): string =>
     indexes[field] >= 0 ? (record[indexes[field]] ?? "").trim() : "";
   let skippedRows = 0;
+  let invalidBirthdays = 0;
   const contacts = records.slice(1).flatMap((record) => {
     const firstName = value(record, "firstName");
     const lastName = value(record, "lastName");
@@ -114,6 +187,9 @@ export function parseContactCsv(raw: string): ContactCsvResult {
       skippedRows += 1;
       return [];
     }
+    const birthdayValue = value(record, "birthday");
+    const birthday = normalizedBirthday(birthdayValue);
+    if (birthdayValue && !birthday) invalidBirthdays += 1;
     return [{
       firstName,
       lastName,
@@ -126,13 +202,13 @@ export function parseContactCsv(raw: string): ContactCsvResult {
       postalCode: value(record, "postalCode"),
       city: value(record, "city"),
       country: value(record, "country"),
-      birthday: normalizedBirthday(value(record, "birthday")),
+      birthday,
       website: value(record, "website"),
       notes: value(record, "notes"),
       tags: value(record, "tags").split(/[|,]/).map((tag) => tag.trim()).filter(Boolean),
     }];
   });
-  return { contacts, skippedRows, headers };
+  return { contacts, skippedRows, invalidBirthdays, headers };
 }
 
 export function contactIdentity(contact: Pick<Contact, "email" | "phone" | "mobile" | "firstName" | "lastName" | "organization">): string {

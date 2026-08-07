@@ -9,6 +9,7 @@ import {
   normalizeJobResearchPayload,
   publicJobUrl,
   researchWithDecision,
+  validResearchJobSource,
 } from "../lib/job-research.ts";
 
 const REQUESTED_URL = "https://jobs.example.com/vacancy/42";
@@ -119,6 +120,36 @@ test("behauptet keinen Zugriff auf die exakte Anzeige ohne Quellennachweis", () 
   assert.equal(result.retrievalStatus, "snippet_only");
   assert.equal(result.canonicalUrl, null);
   assert.match(result.warnings.join(" "), /exakte Anzeige/);
+});
+
+test("akzeptiert einen eingefügten Anzeigentext ohne URL und kennzeichnet die Herkunft", () => {
+  const result = normalizeJobResearchPayload(
+    rawResearch({
+      retrieval_status: "provided_text",
+      canonical_url: null,
+      ad_facts: [
+        rawClaim({
+          evidence_class: "user_provided_ad_text",
+          source_urls: [],
+        }),
+      ],
+    }),
+    {
+      requestedUrl: "",
+      sources: [],
+      researchedAt: "2026-08-06T10:00:00.000Z",
+      model: "gpt-5.6-luna",
+      responseId: "resp_text",
+      providedAdText: true,
+    },
+  );
+
+  assert.equal(result.retrievalStatus, "provided_text");
+  assert.equal(result.requestedUrl, "");
+  assert.equal(result.adFacts[0].evidenceStatus, "supported");
+  assert.equal(validResearchJobSource("", true), true);
+  assert.equal(validResearchJobSource("", false), false);
+  assert.equal(validResearchJobSource(REQUESTED_URL, false), true);
 });
 
 test("fordert bei unbelegten Aussagen Bearbeitung vor Bestätigung", () => {

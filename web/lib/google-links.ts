@@ -1,6 +1,23 @@
 import type { CalendarEvent, Cost, DocumentKind } from "./types";
 
+const GOOGLE_DRIVE_HOSTS = new Set(["docs.google.com", "drive.google.com"]);
+const DRIVE_FILE_ID = /^[a-zA-Z0-9_-]+$/;
+
+export function safeGoogleDriveUrl(value: string): string | null {
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:" || !GOOGLE_DRIVE_HOSTS.has(url.hostname)) {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function extractDriveFileId(url: string): string | null {
+  const safeUrl = safeGoogleDriveUrl(url);
+  if (!safeUrl) return null;
   const patterns = [
     /\/file\/d\/([a-zA-Z0-9_-]+)/,
     /\/document\/d\/([a-zA-Z0-9_-]+)/,
@@ -9,8 +26,8 @@ export function extractDriveFileId(url: string): string | null {
     /[?&]id=([a-zA-Z0-9_-]+)/,
   ];
   for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match?.[1]) return match[1];
+    const match = safeUrl.match(pattern);
+    if (match?.[1] && DRIVE_FILE_ID.test(match[1])) return match[1];
   }
   return null;
 }
@@ -23,12 +40,13 @@ export function inferDocumentKind(url: string): DocumentKind {
 }
 
 export function drivePreviewUrl(url: string, fileId: string | null): string | null {
-  if (!fileId) return null;
-  if (url.includes("/document/"))
+  const safeUrl = safeGoogleDriveUrl(url);
+  if (!safeUrl || !fileId || !DRIVE_FILE_ID.test(fileId)) return null;
+  if (safeUrl.includes("/document/"))
     return `https://docs.google.com/document/d/${fileId}/preview`;
-  if (url.includes("/spreadsheets/"))
+  if (safeUrl.includes("/spreadsheets/"))
     return `https://docs.google.com/spreadsheets/d/${fileId}/preview`;
-  if (url.includes("/presentation/"))
+  if (safeUrl.includes("/presentation/"))
     return `https://docs.google.com/presentation/d/${fileId}/preview`;
   return `https://drive.google.com/file/d/${fileId}/preview`;
 }
@@ -36,13 +54,15 @@ export function drivePreviewUrl(url: string, fileId: string | null): string | nu
 export function driveDownloadUrl(
   url: string,
   fileId: string | null,
-): string {
-  if (!fileId) return url;
-  if (url.includes("/document/"))
+): string | null {
+  const safeUrl = safeGoogleDriveUrl(url);
+  if (!safeUrl) return null;
+  if (!fileId || !DRIVE_FILE_ID.test(fileId)) return safeUrl;
+  if (safeUrl.includes("/document/"))
     return `https://docs.google.com/document/d/${fileId}/export?format=pdf`;
-  if (url.includes("/spreadsheets/"))
+  if (safeUrl.includes("/spreadsheets/"))
     return `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
-  if (url.includes("/presentation/"))
+  if (safeUrl.includes("/presentation/"))
     return `https://docs.google.com/presentation/d/${fileId}/export/pdf`;
   return `https://drive.google.com/uc?export=download&id=${fileId}`;
 }

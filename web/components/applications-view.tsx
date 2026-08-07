@@ -22,8 +22,14 @@ import {
   APPLICATION_OUTPUT_DEFINITIONS,
   APPLICATION_RESEARCH_SCOPE_DEFINITIONS,
 } from "../lib/application-workflow";
-import { formatDate, formatRelativeDate } from "../lib/format";
+import {
+  calendarDayDifference,
+  formatDate,
+  formatRelativeDate,
+} from "../lib/format";
 import { applyConfirmedResearchClaim } from "../lib/job-research";
+import { responsePayload } from "../lib/http-response";
+import { documentOpenUrl } from "../lib/document-library";
 import {
   APPLICATION_STATUS_LABELS,
   SALARY_OUTLOOK_LABELS,
@@ -120,10 +126,7 @@ function formatBytes(bytes: number): string {
 }
 
 function dayDistance(value: string): number {
-  const target = new Date(`${value.slice(0, 10)}T12:00:00`);
-  const now = new Date();
-  now.setHours(12, 0, 0, 0);
-  return Math.round((target.getTime() - now.getTime()) / 86_400_000);
+  return calendarDayDifference(value);
 }
 
 function deadlineCopy(value: string | null): string {
@@ -159,7 +162,7 @@ async function uploadPrivateFile({
   form.append("file", file);
   form.append("destination", destination);
   const response = await fetch("/api/files", { method: "POST", body: form });
-  const payload = (await response.json()) as UploadResponse;
+  const payload = await responsePayload<UploadResponse>(response);
   if (
     !response.ok ||
     !payload.fileId ||
@@ -560,6 +563,7 @@ function ApplicationDetail({
     useState<ApplicationArtifactKind>("job-posting");
   const [uploading, setUploading] = useState(false);
   const masterCv = documents.find((document) => document.id === masterCvDocumentId);
+  const masterCvOpenUrl = documentOpenUrl(masterCv);
   const primaryArtifacts = draft.artifacts.filter(
     (artifact) => artifact.kind !== "job-screenshot",
   );
@@ -703,14 +707,6 @@ function ApplicationDetail({
         ) : null}
         <button onClick={() => onOpenStudio(draft)} type="button">
           Unterlagen erstellen
-        </button>
-        <button
-          onClick={() =>
-            recordActivity("application_pack_completed", "Vollständiges Paket")
-          }
-          type="button"
-        >
-          Paket vollständig
         </button>
         <button
           onClick={() => recordActivity("application_sent", "Bewerbung versendet")}
@@ -1133,8 +1129,8 @@ function ApplicationDetail({
               <strong>{masterCv.name}</strong>
               <small>Basis für neue Bewerbungspakete · bleibt unverändert</small>
             </p>
-            {masterCv.downloadUrl ? (
-              <a href={masterCv.downloadUrl} rel="noreferrer" target="_blank">
+            {masterCvOpenUrl ? (
+              <a href={masterCvOpenUrl} rel="noreferrer" target="_blank">
                 Öffnen
               </a>
             ) : null}
@@ -1145,7 +1141,7 @@ function ApplicationDetail({
             const document = documents.find(
               (candidate) => candidate.id === artifact.documentId,
             );
-            const openUrl = document?.downloadUrl || document?.driveUrl;
+            const openUrl = documentOpenUrl(document);
             return (
               <article key={artifact.id}>
                 <span>{ARTIFACT_LABELS[artifact.kind]}</span>
@@ -1190,7 +1186,7 @@ function ApplicationDetail({
                 const document = documents.find(
                   (candidate) => candidate.id === artifact.documentId,
                 );
-                const openUrl = document?.downloadUrl || document?.driveUrl;
+                const openUrl = documentOpenUrl(document);
                 return (
                   <article key={artifact.id}>
                     <span>Backup</span>

@@ -1,44 +1,61 @@
 "use client";
 
 import {
+  Fragment,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
 } from "react";
 
+import {
+  ApplicationDesignPanel,
+  ApplicationVisualPreview,
+} from "./application-design-panel";
 import { JobResearchPanel } from "./job-research-panel";
 import { gmailDraftUrl } from "../lib/google-links";
 import {
   downloadEditableDocx,
-  downloadTemplateBackedDocx,
+  resolveVisualizationPlacements,
+  type DocxExportOptions,
 } from "../lib/docx-export";
 import {
-  applicationPackageQualityIssues,
-  buildLocalApplicationPackage,
+  loadPrivateDocumentBytes,
+  prepareDocxVisualization,
+} from "../lib/application-document-design";
+import {
+  analyzeDocxTemplate,
+  type DocxTemplateAnalysis,
+  type DocxTemplateProfile,
+} from "../lib/docx-template-profile";
+import { responsePayload } from "../lib/http-response";
+import {
+  markApplicationPackageNeedsReview,
   type ApplicationPackage,
-  type CvContentSource,
 } from "../lib/application-package";
 import { applyConfirmedResearchClaim } from "../lib/job-research";
-import { masterCvToPlainText } from "../lib/master-cv";
-import { parseMasterCvDocument } from "../lib/server/master-cv-import";
+import { useModalDialog } from "../lib/use-modal-dialog";
 import {
   addApplicationActivity,
   assessSalaryPreference,
   APPLICATION_FOCUS_THEMES,
   APPLICATION_OUTPUT_DEFINITIONS,
   APPLICATION_RESEARCH_SCOPE_DEFINITIONS,
+  normalizeApplicationDocumentDesign,
+  normalizeApplicationGenerationInputs,
   normalizeApplicationGenerationPreferences,
 } from "../lib/application-workflow";
 import {
   SALARY_OUTLOOK_LABELS,
+  type ApplicationDocumentKind,
+  type ApplicationDocumentVisualization,
   type ApplicationGenerationPreferences,
   type ApplicationOutputKind,
   type ApplicationProcess,
   type DocumentKind,
   type DocumentRef,
   type IntegrationConfig,
-  type MasterCvContent,
   type VacancyResearch,
 } from "../lib/types";
 
@@ -86,8 +103,6 @@ type QuickActionDialogProps = {
   kind: QuickActionKind;
   documents: DocumentRef[];
   applicationDraft: ApplicationProcess | null;
-  masterCvDocumentId: string | null;
-  masterCvContent: MasterCvContent | null;
   integrations: IntegrationConfig;
   onClose: () => void;
   onSaveDocument: (document: DocumentRef) => void;
@@ -118,14 +133,13 @@ export function QuickActionDialog({
   documents,
   applicationDraft,
   integrations,
-  masterCvDocumentId,
-  masterCvContent,
   onClose,
   onSaveDocument,
   onUpdateApplication,
   toast,
 }: QuickActionDialogProps) {
   const copy = ACTION_COPY[kind];
+  const dialogRef = useModalDialog<HTMLElement>(onClose);
   return (
     <div className="dialog-backdrop" onMouseDown={onClose} role="presentation">
       <section
@@ -133,7 +147,9 @@ export function QuickActionDialog({
         aria-modal="true"
         className={`capture-dialog quick-action-dialog action-${kind}`}
         onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
       >
         <div className="dialog-handle" />
         <header className="dialog-heading">
@@ -166,8 +182,7 @@ export function QuickActionDialog({
             account={integrations.gmailAccount}
             documents={documents}
             initialApplication={applicationDraft}
-            masterCvDocumentId={masterCvDocumentId}
-            masterCvContent={masterCvContent}
+            onSaveDocument={onSaveDocument}
             onUpdateApplication={onUpdateApplication}
             toast={toast}
           />
@@ -277,8 +292,16 @@ function UploadForm({
         form.append("file", file);
         form.append("destination", normalizedDestination);
         const response = await fetch("/api/files", { method: "POST", body: form });
-        const payload = (await response.json()) as UploadResponse;
-        if (!response.ok) throw new Error(payload.error || "Upload fehlgeschlagen");
+        const payload = await responsePayload<UploadResponse>(response);
+        if (
+          !response.ok ||
+          !payload.fileId ||
+          !payload.downloadUrl ||
+          !payload.contentType ||
+          typeof payload.sizeBytes !== "number"
+        ) {
+          throw new Error(payload.error || "Upload fehlgeschlagen");
+        }
         const displayName =
           duplicate && duplicateMode === "rename"
             ? `${file.name.replace(/\.[^.]+$/, "")} – ${new Date()
@@ -352,7 +375,7 @@ function UploadForm({
         }}
       >
         <input
-          accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.md,.csv,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.heic"
+          accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.md,.csv,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.svg,.webp,.heic"
           className="visually-hidden"
           multiple
           onChange={(event) =>
@@ -566,13 +589,13 @@ function GmailDraftAction({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ to, subject, body }),
       });
-      const payload = (await response.json()) as {
+      const payload = await responsePayload<{
         draftId?: string;
         draft?: { id?: string };
         webUrl?: string;
         error?: string;
         connectUrl?: string;
-      };
+      }>(response);
       if (!response.ok || !(payload.draftId || payload.draft?.id)) {
         setConnectUrl(payload.connectUrl || "");
         throw new Error(
@@ -672,10 +695,10 @@ function EmailComposer({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(input),
       });
-      const payload = (await response.json()) as {
+      const payload = await responsePayload<{
         result?: unknown;
         error?: string;
-      };
+      }>(response);
       if (!response.ok || !isEmailDraft(payload.result)) {
         throw new Error(payload.error || "Textassistenz nicht erreichbar");
       }
@@ -893,7 +916,14 @@ function isApplicationPackage(value: unknown): value is ApplicationPackage {
     typeof result.applicationEmailBody === "string" &&
     Array.isArray(result.fitHighlights) &&
     Array.isArray(result.openQuestions) &&
-    Array.isArray(result.sources)
+    Array.isArray(result.sources) &&
+    Array.isArray(result.evidenceMap) &&
+    result.status === "ready" &&
+    Boolean(result.qualityReport) &&
+    typeof result.qualityReport === "object" &&
+    result.qualityReport.status === "ready" &&
+    Array.isArray(result.qualityReport.issues) &&
+    result.qualityReport.issues.length === 0
   );
 }
 
@@ -920,6 +950,49 @@ const OUTPUT_TAB_MAP: Record<ApplicationOutputKind, ApplicationTab> = {
   "application-email": "applicationEmailBody",
 };
 
+const TAB_DOCUMENT_KIND: Partial<Record<ApplicationTab, ApplicationDocumentKind>> = {
+  coverLetter: "cover-letter",
+  tailoredCv: "tailored-cv",
+  companyBrief: "company-brief",
+  interviewPrep: "interview-prep",
+};
+
+type ApplicationGenerationJobReference = {
+  id: string;
+  status: "queued" | "in_progress";
+  stage: "draft" | "repair" | "manual_review";
+  startedAt: string;
+  expiresAt: string;
+};
+
+type ApplicationGenerationApiPayload = {
+  result?: unknown;
+  job?: ApplicationGenerationJobReference;
+  cancelled?: boolean;
+  error?: string;
+  issues?: string[];
+  usage?: {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
+};
+
+const APPLICATION_GENERATION_POLL_DEADLINE_MS = 21 * 60_000;
+
+function applicationGenerationProgress(
+  stage: ApplicationGenerationJobReference["stage"],
+): string {
+  if (stage === "repair") {
+    return "Gezielt korrigieren: Nur die beanstandeten Blöcke werden überarbeitet …";
+  }
+  if (stage === "manual_review") {
+    return "Manuelle Änderungen werden mit KI und Evidenz geprüft …";
+  }
+  return "Unterlagen entwerfen: Lebenslauf und Anschreiben entstehen im Hintergrund …";
+}
+
 function previewInline(value: string) {
   return value
     .split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g)
@@ -945,52 +1018,108 @@ function previewInline(value: string) {
 
 function ApplicationDocumentPreview({
   content,
+  documents,
   kind,
+  profile,
+  visualizations,
 }: {
   content: string;
+  documents: DocumentRef[];
   kind: ApplicationTab;
+  profile: DocxTemplateProfile | null;
+  visualizations: ApplicationDocumentVisualization[];
 }) {
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  const placements = resolveVisualizationPlacements(content, visualizations);
+  const visualsByLine = new Map<number, Array<{
+    visual: ApplicationDocumentVisualization;
+    warning: string | null;
+  }>>();
+  placements.forEach((placement, index) => {
+    const items = visualsByLine.get(placement.insertBeforeLine) ?? [];
+    items.push({ visual: visualizations[index], warning: placement.warning });
+    visualsByLine.set(placement.insertBeforeLine, items);
+  });
+  const previewStyle = profile
+    ? ({
+        "--document-body-font": profile.fonts.body,
+        "--document-title-font": profile.fonts.title,
+        "--document-heading-font": profile.fonts.heading,
+        "--document-text": `#${profile.colors.text}`,
+        "--document-accent": `#${profile.colors.accent}`,
+        "--document-muted": `#${profile.colors.muted}`,
+        "--document-soft": `#${profile.colors.soft}`,
+      } as CSSProperties)
+    : undefined;
+  const renderVisuals = (lineIndex: number) =>
+    (visualsByLine.get(lineIndex) ?? []).map(({ visual, warning }) => {
+      const source = documents.find(
+        (document) => document.id === visual.sourceDocumentId,
+      );
+      return (
+        <figure className="document-visual-preview" key={visual.id}>
+          {source ? (
+            <ApplicationVisualPreview alt={visual.altText} source={source} />
+          ) : (
+            <div className="document-visual-missing">Ressource fehlt</div>
+          )}
+          <figcaption>{visual.title || source?.name || "Visualisierung"}</figcaption>
+          {!visual.confirmedAt ? (
+            <small>Vor dem Export ist die Inhaltsbestätigung erforderlich.</small>
+          ) : null}
+          {warning ? <small>{warning}</small> : null}
+        </figure>
+      );
+    });
   return (
     <article
       aria-label="Formatierte Dokumentvorschau"
       className={`application-document-preview preview-${kind}`}
+      style={previewStyle}
     >
-      {content.replace(/\r\n?/g, "\n").split("\n").map((rawLine, index) => {
+      {lines.map((rawLine, index) => {
         const line = rawLine.trim();
-        if (!line) return <div className="document-spacer" key={`space-${index}`} />;
+        let lineNode;
+        if (!line) {
+          lineNode = <div className="document-spacer" />;
+        } else {
         const heading = /^(#{1,3})\s+(.+)$/.exec(line);
         if (heading?.[1].length === 1) {
-          return <h1 key={`line-${index}`}>{previewInline(heading[2])}</h1>;
-        }
-        if (heading?.[1].length === 2) {
-          return <h2 key={`line-${index}`}>{previewInline(heading[2])}</h2>;
-        }
-        if (heading?.[1].length === 3) {
-          return <h3 key={`line-${index}`}>{previewInline(heading[2])}</h3>;
-        }
-        if (/^BEWERBUNGSFASSUNG\s*\|/i.test(line)) {
-          return <span className="document-kicker" key={`line-${index}`}>{line}</span>;
-        }
-        const bullet = /^\s*(?:[-•])\s+(.+)$/.exec(line);
-        if (bullet) {
-          return (
+            lineNode = <h1>{previewInline(heading[2])}</h1>;
+          } else if (heading?.[1].length === 2) {
+            lineNode = <h2>{previewInline(heading[2])}</h2>;
+          } else if (heading?.[1].length === 3) {
+            lineNode = <h3>{previewInline(heading[2])}</h3>;
+          } else if (/^BEWERBUNGSFASSUNG\s*\|/i.test(line)) {
+            lineNode = <span className="document-kicker">{line}</span>;
+          } else {
+            const bullet = /^\s*(?:[-•])\s+(.+)$/.exec(line);
+            if (bullet) {
+              lineNode = (
             <div className="document-bullet" key={`line-${index}`}>
               <span aria-hidden="true">•</span>
               <p>{previewInline(bullet[1])}</p>
             </div>
-          );
+              );
+            } else if (/^\*\*.*\*\*$/.test(line) && /\d/.test(line)) {
+              lineNode = <p className="document-date">{previewInline(line)}</p>;
+            } else if (/^\*(?!\*)(.+)\*$/.test(line)) {
+              lineNode = <p className="document-company">{previewInline(line)}</p>;
+            } else if (/^[A-ZÄÖÜ0-9][A-ZÄÖÜ0-9 &/+.-]{2,42}:\s+/u.test(line)) {
+              lineNode = <p className="document-proof">{previewInline(line)}</p>;
+            } else {
+              lineNode = <p>{previewInline(line)}</p>;
+            }
+          }
         }
-        if (/^\*\*.*\*\*$/.test(line) && /\d/.test(line)) {
-          return <p className="document-date" key={`line-${index}`}>{previewInline(line)}</p>;
-        }
-        if (/^\*(?!\*)(.+)\*$/.test(line)) {
-          return <p className="document-company" key={`line-${index}`}>{previewInline(line)}</p>;
-        }
-        if (/^[A-ZÄÖÜ0-9][A-ZÄÖÜ0-9 &/+.-]{2,42}:\s+/u.test(line)) {
-          return <p className="document-proof" key={`line-${index}`}>{previewInline(line)}</p>;
-        }
-        return <p key={`line-${index}`}>{previewInline(line)}</p>;
+        return (
+          <Fragment key={`line-${index}`}>
+            {renderVisuals(index)}
+            {lineNode}
+          </Fragment>
+        );
       })}
+      {renderVisuals(lines.length)}
     </article>
   );
 }
@@ -1018,25 +1147,22 @@ function ApplicationStudio({
   account,
   documents,
   initialApplication,
-  masterCvDocumentId,
-  masterCvContent,
+  onSaveDocument,
   onUpdateApplication,
   toast,
 }: {
   account: string;
   documents: DocumentRef[];
   initialApplication: ApplicationProcess | null;
-  masterCvDocumentId: string | null;
-  masterCvContent: MasterCvContent | null;
+  onSaveDocument: (document: DocumentRef) => void;
   onUpdateApplication: (application: ApplicationProcess) => void;
   toast: (message: string) => void;
 }) {
-  const cvRef = useRef<HTMLInputElement>(null);
-  const masterCv = documents.find(
-    (document) =>
-      document.id === masterCvDocumentId && document.storage === "upload",
-  );
   const [jobUrl, setJobUrl] = useState(initialApplication?.sourceUrl ?? "");
+  const [jobText, setJobText] = useState(
+    initialApplication?.jobDescriptionText ?? "",
+  );
+  const [masterCvFile, setMasterCvFile] = useState<File | null>(null);
   const [companyName, setCompanyName] = useState(
     initialApplication?.company ?? "",
   );
@@ -1049,25 +1175,24 @@ function ApplicationStudio({
   const [recipientEmail, setRecipientEmail] = useState(
     initialApplication?.contactEmail ?? "",
   );
-  const [cv, setCv] = useState<File | null>(null);
-  const [useMasterCv, setUseMasterCv] = useState(Boolean(masterCv));
   const [research, setResearch] = useState<VacancyResearch | null>(
     initialApplication?.vacancyResearch ?? null,
   );
-  const [motivation, setMotivation] = useState(
-    initialApplication?.researchSummary ?? "",
+  const initialGenerationInputs = normalizeApplicationGenerationInputs(
+    initialApplication?.generationInputs,
   );
-  const [achievements, setAchievements] = useState("");
-  const [strengths, setStrengths] = useState("");
+  const [motivation, setMotivation] = useState(
+    initialGenerationInputs.motivation,
+  );
+  const [achievements, setAchievements] = useState(
+    initialGenerationInputs.achievements,
+  );
+  const [strengths, setStrengths] = useState(initialGenerationInputs.strengths);
   const [constraints, setConstraints] = useState(
-    initialApplication?.notes ?? "",
+    initialGenerationInputs.constraints,
   );
   const [availability, setAvailability] = useState(
-    initialApplication
-      ? [initialApplication.publishedTerms, initialApplication.appliedTerms]
-          .filter(Boolean)
-          .join(" · ")
-      : "",
+    initialGenerationInputs.availability,
   );
   const [preferences, setPreferences] =
     useState<ApplicationGenerationPreferences>(() =>
@@ -1075,11 +1200,28 @@ function ApplicationStudio({
         initialApplication?.generationPreferences,
       ),
     );
+  const [documentDesign, setDocumentDesign] = useState(() =>
+    normalizeApplicationDocumentDesign(initialApplication?.documentDesign),
+  );
+  const [templateAnalyses, setTemplateAnalyses] = useState<
+    Record<string, DocxTemplateAnalysis>
+  >({});
   const [result, setResult] = useState<ApplicationPackage | null>(null);
   const [activeTab, setActiveTab] = useState<ApplicationTab>("coverLetter");
   const [editingResult, setEditingResult] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [usedFallback, setUsedFallback] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [generationError, setGenerationError] = useState<string[]>([]);
+  const [generationProgress, setGenerationProgress] = useState("");
+  const [generationUsage, setGenerationUsage] = useState<
+    ApplicationGenerationApiPayload["usage"]
+  >(undefined);
+  const [activeGenerationJobId, setActiveGenerationJobId] = useState<
+    string | null
+  >(null);
+  const activeGenerationJobIdRef = useRef<string | null>(null);
+  const generationCancelRequested = useRef(false);
+  const masterCvInputRef = useRef<HTMLInputElement | null>(null);
   const confirmedClaims = useMemo(
     () =>
       research
@@ -1098,6 +1240,73 @@ function ApplicationStudio({
     desiredSalaryAnnual: preferences.desiredSalaryAnnual,
     minimumSalaryAnnual: preferences.minimumSalaryAnnual,
   });
+  const researchScopeSummary = `${preferences.researchScopes.length} von ${APPLICATION_RESEARCH_SCOPE_DEFINITIONS.length} Bereichen`;
+  const researchUseSummary =
+    preferences.researchSelectionMode === "none"
+      ? "nicht für Texte verwenden"
+      : preferences.researchSelectionMode === "selected_only"
+        ? "nur einzeln ausgewählte Ergebnisse"
+        : "alle bestätigten Ergebnisse";
+  const additionalFitDetailsCount = [
+    strengths,
+    constraints,
+    availability,
+  ].filter((value) => value.trim()).length;
+  const styleSummary = `${preferences.language} · ${
+    preferences.formality === "formal"
+      ? "klassisch formell"
+      : preferences.formality === "modern"
+        ? "modern und direkt"
+        : "ausgewogen professionell"
+  } · ${
+    preferences.addressStyle === "auto"
+      ? "Anrede automatisch"
+      : `Anrede ${preferences.addressStyle === "sie" ? "Sie" : "Du"}`
+  }`;
+  const focusSummary = preferences.focusThemes.length
+    ? `${preferences.focusThemes.length} Schwerpunkte${preferences.customFocus.trim() ? " · eigener Hinweis" : ""}`
+    : preferences.customFocus.trim()
+      ? "Eigener Schwerpunkt hinterlegt"
+      : "Keine zusätzlichen Schwerpunkte";
+  const salarySummary = preferences.desiredSalaryAnnual
+    ? `${preferences.desiredSalaryAnnual.toLocaleString("de-DE")} € Wunschgehalt`
+    : "Keine Gehaltsangabe hinterlegt";
+
+  const updateDocumentDesign = (
+    value: Parameters<typeof normalizeApplicationDocumentDesign>[0],
+  ) => {
+    const normalized = normalizeApplicationDocumentDesign(value);
+    setDocumentDesign(normalized);
+    if (!initialApplication) return;
+    onUpdateApplication({
+      ...initialApplication,
+      sourceUrl: jobUrl.trim(),
+      jobDescriptionText: jobText.trim(),
+      company: companyName.trim(),
+      jobTitle: roleTitle.trim(),
+      contactPerson: contactPerson.trim(),
+      contactEmail: recipientEmail.trim(),
+      generationInputs: normalizeApplicationGenerationInputs({
+        motivation,
+        achievements,
+        strengths,
+        constraints,
+        availability,
+      }),
+      generationPreferences: normalizeApplicationGenerationPreferences(
+        preferences,
+      ),
+      documentDesign: normalized,
+      vacancyResearch: research,
+    });
+  };
+
+  const recordTemplateAnalysis = (
+    documentId: string,
+    analysis: DocxTemplateAnalysis,
+  ) => {
+    setTemplateAnalyses((current) => ({ ...current, [documentId]: analysis }));
+  };
 
   const toggleFocusTheme = (theme: string, enabled: boolean) => {
     setPreferences((current) => ({
@@ -1129,6 +1338,7 @@ function ApplicationStudio({
         nextResearch.canonicalUrl
           ? nextResearch.canonicalUrl
           : initialApplication.sourceUrl,
+      documentDesign,
     };
     for (const claim of [
       ...nextResearch.adFacts,
@@ -1139,24 +1349,117 @@ function ApplicationStudio({
     onUpdateApplication(nextApplication);
   };
 
-  const generate = async (event: FormEvent) => {
-    event.preventDefault();
+  const persistGenerationSettings = (
+    generationInputs: ReturnType<typeof normalizeApplicationGenerationInputs>,
+    normalizedPreferences: ApplicationGenerationPreferences,
+    announce = false,
+  ) => {
+    if (!initialApplication) return;
+    onUpdateApplication({
+      ...initialApplication,
+      sourceUrl: jobUrl.trim(),
+      jobDescriptionText: jobText.trim(),
+      company: companyName.trim(),
+      jobTitle: roleTitle.trim(),
+      contactPerson: contactPerson.trim(),
+      contactEmail: recipientEmail.trim(),
+      generationInputs,
+      generationPreferences: normalizedPreferences,
+      documentDesign,
+      vacancyResearch: research,
+    });
+    if (announce) toast("Persönliche Angaben und Paketauswahl gespeichert");
+  };
+
+  const cancelApplicationGeneration = async () => {
+    const jobId = activeGenerationJobIdRef.current;
+    if (!jobId || generationCancelRequested.current) return;
+    generationCancelRequested.current = true;
+    setGenerationProgress("Erstellung wird abgebrochen …");
+    try {
+      const response = await fetch("/api/assistant", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind: "application_generation",
+          action: "cancel",
+          jobId,
+        }),
+      });
+      const payload = await responsePayload<ApplicationGenerationApiPayload>(
+        response,
+      );
+      if (!response.ok || !payload.cancelled) {
+        throw new Error(
+          payload.error || "Die Erstellung konnte nicht abgebrochen werden.",
+        );
+      }
+      activeGenerationJobIdRef.current = null;
+      setActiveGenerationJobId(null);
+      setGenerationProgress("");
+      setBusy(false);
+      setMasterCvFile(null);
+      if (masterCvInputRef.current) masterCvInputRef.current.value = "";
+      toast("Bewerbungserstellung abgebrochen");
+    } catch (error) {
+      generationCancelRequested.current = false;
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Die Erstellung konnte nicht abgebrochen werden.";
+      setGenerationError([message]);
+      setGenerationProgress("Erstellung läuft weiter …");
+      toast(message);
+    }
+  };
+
+
+  const submitApplicationGeneration = async (
+    action: "generate" | "manual_review",
+    draft: ApplicationPackage | null = null,
+  ) => {
     if (!preferences.outputKinds.length) {
       toast("Bitte mindestens ein gewünschtes Ergebnis auswählen");
       return;
     }
     if (
-      (!cv && !(useMasterCv && masterCv)) ||
-      !jobUrl.trim() ||
-      !companyName.trim() ||
-      !roleTitle.trim() ||
+      !masterCvFile ||
+      (!jobUrl.trim() && !jobText.trim()) ||
       busy
     ) {
+      if (!masterCvFile) {
+        toast("Bitte den Master-CV für diesen Auftrag als DOCX auswählen");
+      } else if (!jobUrl.trim() && !jobText.trim()) {
+        toast("Bitte Stellen-URL oder vollständigen Anzeigentext angeben");
+      }
       return;
     }
-    const normalizedPreferences = normalizeApplicationGenerationPreferences(
-      preferences,
-    );
+    if (
+      masterCvFile.size > 16 * 1024 * 1024 ||
+      !masterCvFile.name.toLocaleLowerCase("de-DE").endsWith(".docx")
+    ) {
+      toast("Der Master-CV muss eine DOCX-Datei mit höchstens 16 MB sein");
+      return;
+    }
+    const normalizedPreferences = {
+      ...normalizeApplicationGenerationPreferences(preferences),
+      language: "Deutsch" as const,
+      cvLength: "two_pages" as const,
+      outputKinds: [
+        "tailored-cv",
+        "cover-letter",
+        ...preferences.outputKinds.filter(
+          (kind) => !["tailored-cv", "cover-letter"].includes(kind),
+        ),
+      ] as ApplicationOutputKind[],
+    };
+    const generationInputs = normalizeApplicationGenerationInputs({
+      motivation,
+      achievements,
+      strengths,
+      constraints,
+      availability,
+    });
     setPreferences(normalizedPreferences);
     const firstTab = APPLICATION_TABS.find((tab) =>
       normalizedPreferences.outputKinds.some(
@@ -1164,168 +1467,148 @@ function ApplicationStudio({
       ),
     );
     if (firstTab) setActiveTab(firstTab.key);
-    if (initialApplication) {
-      onUpdateApplication({
-        ...initialApplication,
-        sourceUrl: jobUrl.trim(),
-        company: companyName.trim(),
-        jobTitle: roleTitle.trim(),
-        contactPerson: contactPerson.trim(),
-        contactEmail: recipientEmail.trim(),
-        generationPreferences: normalizedPreferences,
-        vacancyResearch: research,
-      });
-    }
+    persistGenerationSettings(generationInputs, normalizedPreferences);
+
     setBusy(true);
-    setUsedFallback(false);
+    setGenerationError([]);
+    setGenerationUsage(undefined);
+    setGenerationProgress(
+      action === "manual_review"
+        ? "Erneute Prüfung wird gestartet …"
+        : "Anzeige und Unternehmen prüfen: Auftrag wird vorbereitet …",
+    );
     setEditingResult(false);
-    const values = {
-      jobUrl,
-      companyName,
-      roleTitle,
-      contactPerson,
-      motivation,
-      achievements,
-      strengths,
-      constraints,
-      availability,
-      style:
-        normalizedPreferences.formality === "formal"
-          ? "klassisch und formell"
-          : normalizedPreferences.formality === "modern"
-            ? "modern, direkt und präzise"
-            : "professionell, ausgewogen und glaubwürdig",
-      formality: normalizedPreferences.formality,
-      addressStyle: normalizedPreferences.addressStyle,
-      language: normalizedPreferences.language,
-      cvLength: normalizedPreferences.cvLength,
-      focusThemes: JSON.stringify(normalizedPreferences.focusThemes),
-      customFocus: normalizedPreferences.customFocus,
-      outputKinds: JSON.stringify(normalizedPreferences.outputKinds),
-      researchScopes: JSON.stringify(normalizedPreferences.researchScopes),
-      researchSelectionMode: normalizedPreferences.researchSelectionMode,
-      selectedResearchClaimIds: JSON.stringify(
-        normalizedPreferences.selectedResearchClaimIds,
-      ),
-      desiredSalaryAnnual:
-        normalizedPreferences.desiredSalaryAnnual?.toString() ?? "",
-      minimumSalaryAnnual:
-        normalizedPreferences.minimumSalaryAnnual?.toString() ?? "",
-      publishedCompensation: initialApplication?.compensation ?? "",
-      salaryOutlook: initialApplication?.salaryOutlook ?? "open",
-      salaryFlexibility: normalizedPreferences.salaryFlexibility,
-      mentionSalary: normalizedPreferences.mentionSalary,
-      researchContext: JSON.stringify(research),
-    };
-    let sourceCv = cv;
+    generationCancelRequested.current = false;
     try {
-      if (!sourceCv && useMasterCv && masterCvContent) {
-        sourceCv = new File(
-          [masterCvToPlainText(masterCvContent)],
-          "Master-CV-bearbeitet.txt",
-          { type: "text/plain;charset=utf-8" },
-        );
-      } else if (!sourceCv && useMasterCv && masterCv?.downloadUrl) {
-        const response = await fetch(masterCv.downloadUrl, {
-          headers: { accept: masterCv.contentType || "application/octet-stream" },
-        });
-        if (!response.ok) {
-          throw new Error("Der Master-CV konnte nicht geladen werden.");
-        }
-        const blob = await response.blob();
-        sourceCv = new File([blob], masterCv.name, {
-          type: masterCv.contentType || blob.type || "application/octet-stream",
-        });
-      }
-      if (!sourceCv) throw new Error("Bitte einen Lebenslauf auswählen.");
       const form = new FormData();
+      const values = {
+        jobUrl,
+        jobText,
+        companyName,
+        roleTitle,
+        contactPerson,
+        motivation: generationInputs.motivation,
+        achievements: generationInputs.achievements,
+        strengths: generationInputs.strengths,
+        constraints: generationInputs.constraints,
+        availability: generationInputs.availability,
+        style:
+          normalizedPreferences.formality === "formal"
+            ? "klassisch und formell"
+            : normalizedPreferences.formality === "modern"
+              ? "modern, direkt und präzise"
+              : "professionell, ausgewogen und glaubwürdig",
+        formality: normalizedPreferences.formality,
+        addressStyle: normalizedPreferences.addressStyle,
+        language: normalizedPreferences.language,
+        cvLength: normalizedPreferences.cvLength,
+        focusThemes: JSON.stringify(normalizedPreferences.focusThemes),
+        customFocus: normalizedPreferences.customFocus,
+        outputKinds: JSON.stringify(normalizedPreferences.outputKinds),
+        researchScopes: JSON.stringify(normalizedPreferences.researchScopes),
+        researchSelectionMode: normalizedPreferences.researchSelectionMode,
+        selectedResearchClaimIds: JSON.stringify(
+          normalizedPreferences.selectedResearchClaimIds,
+        ),
+        desiredSalaryAnnual:
+          normalizedPreferences.desiredSalaryAnnual?.toString() ?? "",
+        minimumSalaryAnnual:
+          normalizedPreferences.minimumSalaryAnnual?.toString() ?? "",
+        salaryFlexibility: normalizedPreferences.salaryFlexibility,
+        mentionSalary: normalizedPreferences.mentionSalary,
+        researchContext: JSON.stringify(research),
+        generationAction: action,
+        generationRequestId: crypto.randomUUID(),
+      };
       Object.entries(values).forEach(([key, value]) => form.append(key, value));
       form.append("kind", "application");
-      form.append("cv", sourceCv);
-      const response = await fetch("/api/assistant", {
+      form.append("masterCvFile", masterCvFile);
+      if (draft) form.append("draftPackage", JSON.stringify(draft));
+
+      let packageResponse = await fetch("/api/assistant", {
         method: "POST",
         body: form,
       });
-      const payload = (await response.json()) as {
-        result?: unknown;
-        error?: string;
-      };
-      if (!response.ok || !isApplicationPackage(payload.result)) {
-        throw new Error(payload.error || "Bewerbungserstellung nicht erreichbar");
-      }
-      const qualityIssues = applicationPackageQualityIssues(
-        payload.result,
-        normalizedPreferences.outputKinds,
-        normalizedPreferences.cvLength,
-      );
-      if (qualityIssues.length) {
-        throw new Error(`Qualitätsprüfung fehlgeschlagen: ${qualityIssues.join("; ")}`);
-      }
-      setResult(payload.result);
-    } catch {
-      let fallbackSource: CvContentSource | null = masterCvContent;
-      if (!fallbackSource && sourceCv) {
-        const extension = sourceCv.name
-          .split(".")
-          .pop()
-          ?.toLocaleLowerCase("de-DE");
-        try {
-          if (extension === "docx") {
-            fallbackSource = parseMasterCvDocument(
-              new Uint8Array(await sourceCv.arrayBuffer()),
-            );
-          } else if (extension === "txt" || extension === "md") {
-            fallbackSource = {
-              name: sourceCv.name.replace(/\.(?:txt|md)$/i, ""),
-              headline: roleTitle,
-              subheadline: "",
-              contactLine: "",
-              sections: [
-                {
-                  id: "hochgeladener-lebenslauf",
-                  heading: "BERUFSPROFIL",
-                  content: await sourceCv.text(),
-                },
-              ],
-            };
-          }
-        } catch {
-          fallbackSource = null;
+      const pollingStartedAt = Date.now();
+      let pollingDelay = 2_000;
+      let payload: ApplicationGenerationApiPayload;
+      for (;;) {
+        payload = await responsePayload<ApplicationGenerationApiPayload>(
+          packageResponse,
+        );
+        if (!packageResponse.ok) {
+          const issues = Array.isArray(payload.issues) ? payload.issues : [];
+          setGenerationError(
+            issues.length
+              ? issues
+              : [payload.error || "Bewerbungserstellung nicht erreichbar"],
+          );
+          throw new Error(
+            payload.error || "Bewerbungserstellung nicht erreichbar",
+          );
         }
+        if (isApplicationPackage(payload.result)) break;
+        if (packageResponse.status !== 202 || !payload.job) {
+          throw new Error(
+            "Die Bewerbungserstellung hat kein Ergebnis geliefert.",
+          );
+        }
+        if (
+          Date.now() - pollingStartedAt >
+          APPLICATION_GENERATION_POLL_DEADLINE_MS
+        ) {
+          throw new Error(
+            "Die Bewerbungserstellung dauert ungewöhnlich lange. Bitte später neu starten.",
+          );
+        }
+        activeGenerationJobIdRef.current = payload.job.id;
+        setActiveGenerationJobId(payload.job.id);
+        setGenerationProgress(applicationGenerationProgress(payload.job.stage));
+        await new Promise((resolve) => setTimeout(resolve, pollingDelay));
+        pollingDelay = Math.min(8_000, Math.ceil(pollingDelay * 1.5));
+        if (generationCancelRequested.current) return;
+        packageResponse = await fetch("/api/assistant", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            kind: "application_generation",
+            action: "poll",
+            jobId: payload.job.id,
+          }),
+        });
       }
-      const confirmedFacts = confirmedClaims
-        .map((claim) => claim.decision.value || claim.value)
-        .filter((value): value is string => Boolean(value));
-      const sources = [
-        ...new Set(confirmedClaims.flatMap((claim) => claim.sourceUrls)),
-      ];
-      const fallback = buildLocalApplicationPackage({
-        companyName: companyName.trim(),
-        roleTitle: roleTitle.trim(),
-        contactPerson: contactPerson.trim(),
-        motivation: motivation.trim(),
-        achievements: achievements.trim(),
-        strengths: strengths.trim(),
-        constraints: constraints.trim(),
-        availability: availability.trim(),
-        jobUrl: jobUrl.trim(),
-        cvLength: normalizedPreferences.cvLength,
-        focusThemes: normalizedPreferences.focusThemes,
-        outputKinds: normalizedPreferences.outputKinds,
-        confirmedFacts,
-        sources,
-        cvSource: fallbackSource,
-      });
-      setResult(fallback);
-      setUsedFallback(true);
+      setGenerationProgress("Qualität prüfen: Das verbindliche Gate ist bestanden …");
+      setResult(payload.result);
+      setGenerationUsage(payload.usage);
       toast(
-        fallbackSource
-          ? "Vollständiges Bewerbungspaket aus dem Master-CV erstellt"
-          : "Teilpaket erstellt · CV-Inhalt lokal nicht lesbar",
+        action === "manual_review"
+          ? "Änderungen erneut geprüft und freigegeben"
+          : "Versandfertiges Bewerbungspaket geprüft und freigegeben",
+      );
+    } catch (error) {
+      if (!generationError.length) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Bewerbungserstellung nicht erreichbar";
+        setGenerationError((current) => (current.length ? current : [message]));
+      }
+      toast(
+        error instanceof Error
+          ? error.message
+          : "Bewerbungserstellung nicht erreichbar",
       );
     } finally {
+      activeGenerationJobIdRef.current = null;
+      setActiveGenerationJobId(null);
+      setGenerationProgress("");
       setBusy(false);
     }
+  };
+
+  const generate = async (event: FormEvent) => {
+    event.preventDefault();
+    await submitApplicationGeneration("generate");
   };
 
   if (result) {
@@ -1340,64 +1623,130 @@ function ApplicationStudio({
       interviewPrep: `Interview-${result.companyName}.docx`,
       applicationEmailBody: `Bewerbungs-Mail-${result.companyName}.txt`,
     };
+    const artifactKinds = {
+      coverLetter: "cover-letter",
+      tailoredCv: "tailored-cv",
+      companyBrief: "company-brief",
+      interviewPrep: "interview-prep",
+    } as const;
+    const activeDocumentKind = TAB_DOCUMENT_KIND[activeTab];
+    const selectedTemplateId = activeDocumentKind
+      ? documentDesign.templateDocumentIds[activeDocumentKind]
+      : null;
+    const activeTemplateAnalysis = selectedTemplateId
+      ? templateAnalyses[selectedTemplateId]
+      : null;
+    const activeTemplateProfile =
+      activeTemplateAnalysis?.status === "ready" ||
+      activeTemplateAnalysis?.status === "adapted"
+        ? activeTemplateAnalysis.profile
+        : null;
+    const activeVisualizations = activeDocumentKind
+      ? documentDesign.visualizations.filter((visual) =>
+          visual.targetKinds.includes(activeDocumentKind),
+        )
+      : [];
+    const packageReady =
+      result.status === "ready" && result.qualityReport.status === "ready";
+    const updateResultContent = (
+      key: ApplicationTab | "applicationEmailSubject",
+      value: string,
+    ) => {
+      setResult((current) =>
+        current
+          ? markApplicationPackageNeedsReview({ ...current, [key]: value })
+          : current,
+      );
+      setGenerationError([]);
+    };
     const downloadActiveDocument = async () => {
+      if (!packageReady) {
+        toast("Vor dem Download müssen die Änderungen erneut geprüft werden");
+        return;
+      }
       if (activeTab === "applicationEmailBody") {
         downloadText(fileNames[activeTab], activeContent);
         return;
       }
-      if (activeTab === "tailoredCv") {
-        try {
-          let templateBytes: Uint8Array | null = null;
-          if (cv?.name.toLocaleLowerCase("de-DE").endsWith(".docx")) {
-            templateBytes = new Uint8Array(await cv.arrayBuffer());
-          } else if (useMasterCv && masterCv?.downloadUrl) {
-            const response = await fetch(masterCv.downloadUrl, {
-              headers: {
-                accept:
-                  masterCv.contentType ||
-                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-              },
-            });
-            if (response.ok) {
-              templateBytes = new Uint8Array(await response.arrayBuffer());
-            }
-          }
-          if (templateBytes) {
-            downloadTemplateBackedDocx(
-              fileNames[activeTab],
-              activeContent,
-              templateBytes,
-            );
-            toast("Word-CV im Design des Master-CV erstellt");
-            return;
-          }
-        } catch {
-          toast("Master-Design nicht vollständig nutzbar · sicheres Word-Layout verwendet");
+      if (!activeDocumentKind || exportBusy) return;
+      setExportBusy(true);
+      try {
+        const options: DocxExportOptions = {};
+        const templateId = documentDesign.templateDocumentIds[activeDocumentKind];
+        if (templateId) {
+          const template = documents.find((document) => document.id === templateId);
+          if (!template) throw new Error("Die ausgewählte Formatvorlage fehlt.");
+          const bytes = await loadPrivateDocumentBytes(template);
+          const analysis = await analyzeDocxTemplate(bytes, template.name);
+          recordTemplateAnalysis(template.id, analysis);
+          if (analysis.status === "blocked") throw new Error(analysis.error);
+          options.templateProfile = analysis.profile;
         }
+        const selectedVisuals = documentDesign.visualizations.filter((visual) =>
+          visual.targetKinds.includes(activeDocumentKind),
+        );
+        const unconfirmed = selectedVisuals.find((visual) => !visual.confirmedAt);
+        if (unconfirmed) {
+          throw new Error(
+            `Bitte „${unconfirmed.title || "Visualisierung"}“ inhaltlich bestätigen oder entfernen.`,
+          );
+        }
+        options.media = await Promise.all(
+          selectedVisuals.map(async (visual) => {
+            const source = documents.find(
+              (document) => document.id === visual.sourceDocumentId,
+            );
+            if (!source) throw new Error(`Die Visualisierung „${visual.title}“ fehlt.`);
+            return prepareDocxVisualization(source, visual);
+          }),
+        );
+        const placementWarnings = resolveVisualizationPlacements(
+          activeContent,
+          options.media,
+        )
+          .map((placement) => placement.warning)
+          .filter((warning): warning is string => Boolean(warning));
+        downloadEditableDocx(
+          fileNames[activeTab],
+          activeContent,
+          artifactKinds[activeTab],
+          [],
+          options,
+        );
+        toast(
+          placementWarnings[0] ||
+            (options.templateProfile?.status === "adapted"
+              ? "DOCX-Datei mit sicher adaptierter Vorlage erstellt"
+              : "DOCX-Datei im deutschen Bewerbungsstandard erstellt"),
+        );
+      } catch (error) {
+        toast(error instanceof Error ? error.message : "DOCX-Export fehlgeschlagen");
+      } finally {
+        setExportBusy(false);
       }
-      downloadEditableDocx(fileNames[activeTab], activeContent);
     };
     return (
       <div className="application-result">
         <div className="assistant-result-heading">
           <div>
-            <span className={`assistant-mode ${usedFallback ? "local" : ""}`}>
-              {usedFallback
-                ? "Aus Master-CV erstellt"
-                : "Paket mit Recherche"}
+            <span className={`assistant-mode ${packageReady ? "" : "local"}`}>
+              {packageReady ? "KI- und evidenzgeprüft" : "Prüfung erforderlich"}
             </span>
             <h3>
               {result.companyName} · {result.roleTitle}
             </h3>
           </div>
-          <button onClick={() => setResult(null)} type="button">
+          <button
+            onClick={() => {
+              setResult(null);
+              setMasterCvFile(null);
+              if (masterCvInputRef.current) masterCvInputRef.current.value = "";
+              setGenerationUsage(undefined);
+            }}
+            type="button"
+          >
             Angaben ändern
           </button>
-        </div>
-        <div className="fit-highlight-row">
-          {result.fitHighlights.slice(0, 4).map((highlight) => (
-            <span key={highlight}>{highlight}</span>
-          ))}
         </div>
         <div className="result-tabs" role="tablist">
           {visibleTabs.map((tab) => (
@@ -1421,10 +1770,9 @@ function ApplicationStudio({
             Betreff
             <input
               onChange={(event) =>
-                setResult((current) =>
-                  current
-                    ? { ...current, applicationEmailSubject: event.target.value }
-                    : current,
+                updateResultContent(
+                  "applicationEmailSubject",
+                  event.target.value,
                 )
               }
               value={result.applicationEmailSubject}
@@ -1440,7 +1788,7 @@ function ApplicationStudio({
                   ? "Kompakte Bewerbungsfassung"
                   : preferences.cvLength === "detailed"
                     ? "Ausführliche Bewerbungsfassung"
-                    : "Fokussierte 2–3-Seiten-Fassung"
+                    : "Fokussierte Zwei-Seiten-Fassung"
                 : "Bearbeitbarer Inhalt"}
             </strong>
           </div>
@@ -1452,27 +1800,61 @@ function ApplicationStudio({
             {editingResult ? "Formatierte Vorschau" : "Inhalt bearbeiten"}
           </button>
         </div>
+        {activeTemplateAnalysis ? (
+          <div className={`template-preview-status ${activeTemplateAnalysis.status}`}>
+            <strong>
+              {activeTemplateAnalysis.status === "ready"
+                ? "Formatvorlage geprüft"
+                : activeTemplateAnalysis.status === "adapted"
+                  ? "Formatvorlage sicher adaptiert"
+                  : "Formatvorlage blockiert"}
+            </strong>
+            <small>
+              {activeTemplateAnalysis.status === "blocked"
+                ? activeTemplateAnalysis.error
+                : activeTemplateAnalysis.warnings[0] ||
+                  "Seitenformat, Typografie, Farben und Abstände werden verwendet."}
+            </small>
+          </div>
+        ) : null}
+        <details className="studio-option-group">
+          <summary>Erweitert: Vorlage und Visualisierungen</summary>
+          <ApplicationDesignPanel
+            analyses={templateAnalyses}
+            design={documentDesign}
+            documents={documents}
+            onAnalysis={recordTemplateAnalysis}
+            onChange={updateDocumentDesign}
+            onSaveDocument={onSaveDocument}
+            outputKinds={preferences.outputKinds}
+            toast={toast}
+          />
+        </details>
         {editingResult ? (
           <textarea
             aria-label={`${APPLICATION_TABS.find((tab) => tab.key === activeTab)?.label} bearbeiten`}
             className="result-editor application-editor"
             onChange={(event) =>
-              setResult((current) =>
-                current
-                  ? { ...current, [activeTab]: event.target.value }
-                  : current,
-              )
+              updateResultContent(activeTab, event.target.value)
             }
             rows={19}
             value={activeContent}
           />
         ) : (
-          <ApplicationDocumentPreview content={activeContent} kind={activeTab} />
+          <ApplicationDocumentPreview
+            content={activeContent}
+            documents={documents}
+            kind={activeTab}
+            profile={activeTemplateProfile}
+            visualizations={activeVisualizations}
+          />
         )}
         <div className="artifact-actions">
           <button
             className="button button-soft"
+            disabled={!packageReady}
             onClick={async () => {
+              if (!packageReady) return;
               await navigator.clipboard.writeText(activeContent);
               toast("Text kopiert");
             }}
@@ -1482,14 +1864,17 @@ function ApplicationStudio({
           </button>
           <button
             className="button button-ghost"
-            onClick={downloadActiveDocument}
+            disabled={!packageReady || exportBusy}
+            onClick={() => void downloadActiveDocument()}
             type="button"
           >
             {activeTab === "applicationEmailBody"
               ? "Text herunterladen"
-              : "Als Word-Datei herunterladen"}
+              : exportBusy
+                ? "DOCX-Datei wird vorbereitet …"
+                : "Als DOCX herunterladen"}
           </button>
-          {activeTab === "applicationEmailBody" ? (
+          {activeTab === "applicationEmailBody" && packageReady ? (
             <>
               <GmailDraftAction
                 account={account}
@@ -1512,15 +1897,50 @@ function ApplicationStudio({
                 Nur im Gmail-Fenster öffnen
               </a>
             </>
+          ) : activeTab === "applicationEmailBody" ? (
+            <button className="button button-ghost" disabled type="button">
+              Gmail nach erneuter Prüfung
+            </button>
+          ) : null}
+          {!packageReady ? (
+            <button
+              className="button button-primary"
+              disabled={busy}
+              onClick={() =>
+                void submitApplicationGeneration("manual_review", result)
+              }
+              type="button"
+            >
+              {busy ? "Änderungen werden geprüft …" : "Änderungen mit KI & Evidenz prüfen"}
+            </button>
+          ) : null}
+          {activeGenerationJobId ? (
+            <button
+              className="button button-ghost"
+              onClick={() => void cancelApplicationGeneration()}
+              type="button"
+            >
+              Erstellung abbrechen
+            </button>
           ) : null}
           {initialApplication ? (
             <button
               className="button button-primary"
+              disabled={!packageReady}
               onClick={() => {
+                if (!packageReady) return;
                 const next = addApplicationActivity(
                   {
                     ...initialApplication,
+                    generationInputs: normalizeApplicationGenerationInputs({
+                      motivation,
+                      achievements,
+                      strengths,
+                      constraints,
+                      availability,
+                    }),
                     generationPreferences: preferences,
+                    documentDesign,
                     vacancyResearch: research,
                   },
                   "application_pack_completed",
@@ -1534,8 +1954,38 @@ function ApplicationStudio({
             </button>
           ) : null}
         </div>
-        <details className="quality-check-panel" open={result.openQuestions.length > 0}>
+        {generationProgress ? (
+          <p aria-live="polite" className="form-trust">
+            {generationProgress}
+          </p>
+        ) : null}
+        <details
+          className="quality-check-panel"
+          open={!packageReady || result.openQuestions.length > 0}
+        >
           <summary>Qualitätscheck vor dem Versand</summary>
+          <p>
+            <strong>
+              {packageReady ? "Freigegeben" : "Erneute Prüfung erforderlich"}
+            </strong>{" "}
+            · Versuch {result.qualityReport.attempt} · Evidenzzuordnung{" "}
+            {result.qualityReport.metrics.evidenceCoveragePercent}%
+          </p>
+          {generationUsage ? (
+            <p>
+              {generationUsage.calls} Modellaufruf
+              {generationUsage.calls === 1 ? "" : "e"} ·{" "}
+              {generationUsage.inputTokens.toLocaleString("de-DE")} Eingabe- ·{" "}
+              {generationUsage.outputTokens.toLocaleString("de-DE")} Ausgabetokens
+            </p>
+          ) : null}
+          {generationError.length ? (
+            <ul>
+              {generationError.map((issue) => (
+                <li key={issue}>{issue}</li>
+              ))}
+            </ul>
+          ) : null}
           {result.openQuestions.length ? (
             <ul>
               {result.openQuestions.map((question) => (
@@ -1568,45 +2018,140 @@ function ApplicationStudio({
       <div className="studio-step">
         <span>1</span>
         <div>
-          <strong>Stelle und Lebenslauf</strong>
-          <small>Stelle und CV auswählen</small>
+          <strong>Stelle, Recherche und Lebenslauf</strong>
+          <small>Basisdaten zuerst; Recherche nur einmal einstellen</small>
         </div>
       </div>
       <label>
-        URL der Stellenanzeige
+        URL der Stellenanzeige (alternativ zum eingefügten Text)
         <input
           autoFocus
           onChange={(event) => setJobUrl(event.target.value)}
           placeholder="https://…"
-          required
           type="url"
           value={jobUrl}
         />
       </label>
       <div className="form-grid">
         <label>
-          Unternehmen
+          Unternehmen (optional bei eingefügtem Text)
           <input
             onChange={(event) => setCompanyName(event.target.value)}
             placeholder="Name des Unternehmens"
-            required
             value={companyName}
           />
         </label>
         <label>
-          Zielrolle
+          Zielrolle (optional bei eingefügtem Text)
           <input
             onChange={(event) => setRoleTitle(event.target.value)}
             placeholder="Exakte Stellenbezeichnung"
-            required
             value={roleTitle}
           />
         </label>
       </div>
+      <details className="studio-option-group studio-research-options">
+        <summary>
+          <span>
+            <strong>Webrecherche einstellen</strong>
+            <small>{researchScopeSummary} · {researchUseSummary}</small>
+          </span>
+          <b aria-hidden="true">Anpassen</b>
+        </summary>
+        <div className="studio-option-content">
+          <fieldset className="studio-choice-panel studio-choice-panel-nested">
+            <legend>Rechercheumfang</legend>
+            <div className="studio-choice-grid studio-choice-grid-compact">
+              {APPLICATION_RESEARCH_SCOPE_DEFINITIONS.map((definition) => (
+                <label key={definition.key}>
+                  <input
+                    checked={preferences.researchScopes.includes(definition.key)}
+                    onChange={(event) =>
+                      setPreferences((current) => ({
+                        ...current,
+                        researchScopes: event.target.checked
+                          ? [
+                              ...new Set([
+                                ...current.researchScopes,
+                                definition.key,
+                              ]),
+                            ]
+                          : current.researchScopes.filter(
+                              (candidate) => candidate !== definition.key,
+                            ),
+                      }))
+                    }
+                    type="checkbox"
+                  />
+                  <span>
+                    <strong>{definition.label}</strong>
+                    <small>{definition.description}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <label>
+            Bestätigte Rechercheergebnisse für die Texte
+            <select
+              onChange={(event) =>
+                setPreferences((current) => ({
+                  ...current,
+                  researchSelectionMode:
+                    event.target.value as ApplicationGenerationPreferences["researchSelectionMode"],
+                }))
+              }
+              value={preferences.researchSelectionMode}
+            >
+              <option value="all_confirmed">Alle von mir bestätigten Ergebnisse</option>
+              <option value="selected_only">Nur einzeln ausgewählte Ergebnisse</option>
+              <option value="none">Keine Rechercheergebnisse in den Texten</option>
+            </select>
+          </label>
+          {preferences.researchSelectionMode === "selected_only" ? (
+            <div className="studio-research-claims">
+              {confirmedClaims.length ? (
+                confirmedClaims.map((claim) => (
+                  <label key={claim.id}>
+                    <input
+                      checked={preferences.selectedResearchClaimIds.includes(
+                        claim.id,
+                      )}
+                      onChange={(event) =>
+                        setPreferences((current) => ({
+                          ...current,
+                          selectedResearchClaimIds: event.target.checked
+                            ? [
+                                ...new Set([
+                                  ...current.selectedResearchClaimIds,
+                                  claim.id,
+                                ]),
+                              ]
+                            : current.selectedResearchClaimIds.filter(
+                                (candidate) => candidate !== claim.id,
+                              ),
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    <span>{claim.decision.value || claim.value}</span>
+                  </label>
+                ))
+              ) : (
+                <p>
+                  Bestätige zuerst Rechercheergebnisse, die du gezielt nutzen
+                  möchtest.
+                </p>
+              )}
+            </div>
+          ) : null}
+        </div>
+      </details>
       <JobResearchPanel
         compact
         companyName={companyName}
         initialJobPostingText={initialApplication?.jobDescriptionText ?? ""}
+        onJobPostingTextChange={setJobText}
         onChange={updateResearch}
         research={research}
         researchScopes={preferences.researchScopes}
@@ -1632,66 +2177,29 @@ function ApplicationStudio({
           />
         </label>
       </div>
-      <label
-        className={`cv-upload-field ${cv ? "has-file" : ""}`}
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => {
-          event.preventDefault();
-          setCv(event.dataTransfer.files[0] ?? null);
-          setUseMasterCv(false);
-        }}
-      >
-        <input
-          accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.md"
-          className="visually-hidden"
-          onChange={(event) => {
-            setCv(event.target.files?.[0] ?? null);
-            setUseMasterCv(false);
-          }}
-          ref={cvRef}
-          required={!masterCv || !useMasterCv}
-          type="file"
-        />
-        <span aria-hidden="true">CV</span>
+      <label className="master-cv-choice active">
+        <span aria-hidden="true">M</span>
         <div>
-          <strong>{cv ? cv.name : "Lebenslauf hochladen"}</strong>
+          <strong>Master-CV für diesen Auftrag auswählen</strong>
           <small>
-            {cv ? formatBytes(cv.size) : "PDF, Word, ODT, RTF oder Text · max. 16 MB"}
+            {masterCvFile
+              ? `${masterCvFile.name} · ${(masterCvFile.size / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`
+              : "DOCX · höchstens 16 MB · wird nicht in der Dokumentbibliothek gespeichert"}
           </small>
+          <input
+            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              setMasterCvFile(file);
+              setGenerationError([]);
+            }}
+            ref={masterCvInputRef}
+            required
+            type="file"
+          />
         </div>
-        <button
-          onClick={(event) => {
-            event.preventDefault();
-            cvRef.current?.click();
-          }}
-          type="button"
-        >
-          {cv ? "Ändern" : "Auswählen"}
-        </button>
+        <b>{masterCvFile ? "Ausgewählt" : "Pflicht"}</b>
       </label>
-      {masterCv ? (
-        <button
-          aria-pressed={useMasterCv && !cv}
-          className={`master-cv-choice ${useMasterCv && !cv ? "active" : ""}`}
-          onClick={() => {
-            setCv(null);
-            setUseMasterCv(true);
-            if (cvRef.current) cvRef.current.value = "";
-          }}
-          type="button"
-        >
-          <span aria-hidden="true">M</span>
-          <div>
-            <strong>Master-CV verwenden</strong>
-            <small>
-              {masterCvContent
-                ? `Bearbeitete Fassung · Version ${masterCvContent.editRevision + 1} · mit Belegen`
-                : `${masterCv.name} · nur für dieses Paket geladen`}
-            </small>
-          </div>
-          <b>{useMasterCv && !cv ? "Ausgewählt" : "Auswählen"}</b>
-        </button>
-      ) : null}
 
       <div className="studio-step">
         <span>2</span>
@@ -1718,329 +2226,390 @@ function ApplicationStudio({
           value={achievements}
         />
       </label>
-      <label>
-        Welche Stärken sollen im Vordergrund stehen?
-        <textarea
-          onChange={(event) => setStrengths(event.target.value)}
-          placeholder="Fachkompetenz, Arbeitsweise, Branchenwissen, Persönlichkeit"
-          rows={3}
-          value={strengths}
-        />
-      </label>
-      <div className="form-grid">
-        <label>
-          Was soll betont, vermieden oder erklärt werden?
-          <textarea
-            onChange={(event) => setConstraints(event.target.value)}
-            placeholder="z. B. Quereinstieg, Lücke, keine Gehaltsangabe"
-            rows={3}
-            value={constraints}
-          />
-        </label>
-        <label>
-          Verfügbarkeit und Rahmenbedingungen
-          <textarea
-            onChange={(event) => setAvailability(event.target.value)}
-            placeholder="Startdatum, Standort, Remote, optional Gehalt"
-            rows={3}
-            value={availability}
-          />
-        </label>
-      </div>
+      <details className="studio-option-group">
+        <summary>
+          <span>
+            <strong>Weitere persönliche Hinweise</strong>
+            <small>
+              {additionalFitDetailsCount
+                ? `${additionalFitDetailsCount} von 3 Angaben ergänzt`
+                : "Optional: Stärken, Grenzen und Verfügbarkeit"}
+            </small>
+          </span>
+          <b aria-hidden="true">Ergänzen</b>
+        </summary>
+        <div className="studio-option-content">
+          <label>
+            Welche Stärken sollen im Vordergrund stehen?
+            <textarea
+              onChange={(event) => setStrengths(event.target.value)}
+              placeholder="Fachkompetenz, Arbeitsweise, Branchenwissen, Persönlichkeit"
+              rows={3}
+              value={strengths}
+            />
+          </label>
+          <div className="form-grid">
+            <label>
+              Was soll betont, vermieden oder erklärt werden?
+              <textarea
+                onChange={(event) => setConstraints(event.target.value)}
+                placeholder="z. B. Quereinstieg, Lücke, keine Gehaltsangabe"
+                rows={3}
+                value={constraints}
+              />
+            </label>
+            <label>
+              Verfügbarkeit und Rahmenbedingungen
+              <textarea
+                onChange={(event) => setAvailability(event.target.value)}
+                placeholder="Startdatum, Standort, Remote, optional Gehalt"
+                rows={3}
+                value={availability}
+              />
+            </label>
+          </div>
+        </div>
+      </details>
 
       <div className="studio-step">
         <span>3</span>
         <div>
           <strong>Auswahl für dein Paket</strong>
-          <small>Inhalte, Ton, Recherche und Gehalt</small>
+          <small>Ergebnisse auswählen; Details nur bei Bedarf anpassen</small>
         </div>
       </div>
-      <div className="form-grid studio-style-grid">
-        <label>
-          Grad der Förmlichkeit
-          <select
-            onChange={(event) =>
-              setPreferences((current) => ({
-                ...current,
-                formality: event.target.value as ApplicationGenerationPreferences["formality"],
-              }))
-            }
-            value={preferences.formality}
-          >
-            <option value="modern">Modern und direkt</option>
-            <option value="balanced">Ausgewogen professionell</option>
-            <option value="formal">Klassisch formell</option>
-          </select>
-        </label>
-        <label>
-          Anrede
-          <select
-            onChange={(event) =>
-              setPreferences((current) => ({
-                ...current,
-                addressStyle: event.target.value as ApplicationGenerationPreferences["addressStyle"],
-              }))
-            }
-            value={preferences.addressStyle}
-          >
-            <option value="auto">Aus Anzeige und Unternehmen ableiten</option>
-            <option value="sie">Sie</option>
-            <option value="du">Du</option>
-          </select>
-        </label>
-        <label>
-          Sprache
-          <select
-            onChange={(event) =>
-              setPreferences((current) => ({
-                ...current,
-                language: event.target.value as ApplicationGenerationPreferences["language"],
-              }))
-            }
-            value={preferences.language}
-          >
-            <option>Deutsch</option>
-            <option>Englisch</option>
-          </select>
-        </label>
-        <label>
-          Länge des angepassten CV
-          <select
-            onChange={(event) =>
-              setPreferences((current) => ({
-                ...current,
-                cvLength: event.target.value as ApplicationGenerationPreferences["cvLength"],
-              }))
-            }
-            value={preferences.cvLength}
-          >
-            <option value="two_pages">Fokussiert · 2–3 gut gefüllte Seiten</option>
-            <option value="compact">Kompakt · 1–2 Seiten</option>
-            <option value="detailed">Ausführlich · 4–6 Seiten</option>
-          </select>
-        </label>
+      <div className="master-cv-choice active">
+        <span aria-hidden="true">2</span>
+        <div>
+          <strong>Deutscher ATS-Standard</strong>
+          <small>
+            Lebenslauf (zwei Seiten) und Anschreiben (eine Seite) · Carlito und
+            Caladea · DOCX für LibreOffice/OpenOffice
+          </small>
+        </div>
+        <b>Standard</b>
       </div>
-
-      <fieldset className="studio-choice-panel">
-        <legend>Welche Ergebnisse sollen entstehen?</legend>
-        <div className="studio-choice-grid">
-          {APPLICATION_OUTPUT_DEFINITIONS.map((definition) => (
-            <label key={definition.key}>
-              <input
-                checked={preferences.outputKinds.includes(definition.key)}
-                onChange={(event) => toggleOutput(definition.key, event.target.checked)}
-                type="checkbox"
-              />
-              <span>
-                <strong>{definition.label}</strong>
-                <small>{definition.description}</small>
-              </span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-
-      <fieldset className="studio-choice-panel">
-        <legend>Welche Schwerpunkte sollen sichtbar werden?</legend>
-        <div className="studio-chip-grid">
-          {APPLICATION_FOCUS_THEMES.map((theme) => (
-            <label key={theme}>
-              <input
-                checked={preferences.focusThemes.includes(theme)}
-                onChange={(event) => toggleFocusTheme(theme, event.target.checked)}
-                type="checkbox"
-              />
-              <span>{theme}</span>
-            </label>
-          ))}
-        </div>
-        <label>
-          Weitere Akzente oder bewusste Grenzen
-          <textarea
-            onChange={(event) =>
-              setPreferences((current) => ({
-                ...current,
-                customFocus: event.target.value,
-              }))
-            }
-            placeholder="z. B. Führung nur zurückhaltend darstellen; Digitalisierungserfolge priorisieren"
-            rows={3}
-            value={preferences.customFocus}
-          />
-        </label>
-      </fieldset>
-
-      <fieldset className="studio-choice-panel">
-        <legend>Was soll die Webrecherche abdecken?</legend>
-        <div className="studio-choice-grid">
-          {APPLICATION_RESEARCH_SCOPE_DEFINITIONS.map((definition) => (
-            <label key={definition.key}>
-              <input
-                checked={preferences.researchScopes.includes(definition.key)}
-                onChange={(event) =>
-                  setPreferences((current) => ({
-                    ...current,
-                    researchScopes: event.target.checked
-                      ? [...new Set([...current.researchScopes, definition.key])]
-                      : current.researchScopes.filter(
-                          (candidate) => candidate !== definition.key,
-                        ),
-                  }))
-                }
-                type="checkbox"
-              />
-              <span>
-                <strong>{definition.label}</strong>
-                <small>{definition.description}</small>
-              </span>
-            </label>
-          ))}
-        </div>
-        <label>
-          Bestätigte Web-Ergebnisse für die Texte
-          <select
-            onChange={(event) =>
-              setPreferences((current) => ({
-                ...current,
-                researchSelectionMode:
-                  event.target.value as ApplicationGenerationPreferences["researchSelectionMode"],
-              }))
-            }
-            value={preferences.researchSelectionMode}
-          >
-            <option value="all_confirmed">Alle von mir bestätigten Ergebnisse</option>
-            <option value="selected_only">Nur einzeln ausgewählte Ergebnisse</option>
-            <option value="none">Keine Web-Ergebnisse in den Texten</option>
-          </select>
-        </label>
-        {preferences.researchSelectionMode === "selected_only" ? (
-          <div className="studio-research-claims">
-            {confirmedClaims.length ? confirmedClaims.map((claim) => (
-              <label key={claim.id}>
+      <details className="studio-option-group">
+        <summary>
+          <span>
+            <strong>Erweitert: Zusatzunterlagen</strong>
+            <small>Briefing, Bewerbungs-Mail oder Interviewvorbereitung</small>
+          </span>
+          <b aria-hidden="true">Optional</b>
+        </summary>
+        <fieldset className="studio-choice-panel studio-output-panel studio-option-content">
+          <legend>Zusätzliche Ergebnisse</legend>
+          <div className="studio-choice-grid">
+            {APPLICATION_OUTPUT_DEFINITIONS.filter(
+              (definition) =>
+                !["tailored-cv", "cover-letter"].includes(definition.key),
+            ).map((definition) => (
+              <label key={definition.key}>
                 <input
-                  checked={preferences.selectedResearchClaimIds.includes(claim.id)}
+                  checked={preferences.outputKinds.includes(definition.key)}
                   onChange={(event) =>
-                    setPreferences((current) => ({
-                      ...current,
-                      selectedResearchClaimIds: event.target.checked
-                        ? [...new Set([...current.selectedResearchClaimIds, claim.id])]
-                        : current.selectedResearchClaimIds.filter(
-                            (candidate) => candidate !== claim.id,
-                          ),
-                    }))
+                    toggleOutput(definition.key, event.target.checked)
                   }
                   type="checkbox"
                 />
-                <span>{claim.decision.value || claim.value}</span>
+                <span>
+                  <strong>{definition.label}</strong>
+                  <small>{definition.description}</small>
+                </span>
               </label>
-            )) : (
-              <p>Bestätige zuerst Rechercheergebnisse, die du gezielt nutzen möchtest.</p>
-            )}
+            ))}
           </div>
-        ) : null}
-      </fieldset>
+        </fieldset>
+      </details>
+      <details className="studio-option-group">
+        <summary>
+          <span>
+            <strong>Sprache und Stil</strong>
+            <small>{styleSummary} · fokussierter Zwei-Seiten-CV</small>
+          </span>
+          <b aria-hidden="true">Anpassen</b>
+        </summary>
+        <div className="studio-option-content">
+          <div className="form-grid studio-style-grid">
+            <label>
+              Grad der Förmlichkeit
+              <select
+                onChange={(event) =>
+                  setPreferences((current) => ({
+                    ...current,
+                    formality:
+                      event.target.value as ApplicationGenerationPreferences["formality"],
+                  }))
+                }
+                value={preferences.formality}
+              >
+                <option value="modern">Modern und direkt</option>
+                <option value="balanced">Ausgewogen professionell</option>
+                <option value="formal">Klassisch formell</option>
+              </select>
+            </label>
+            <label>
+              Anrede
+              <select
+                onChange={(event) =>
+                  setPreferences((current) => ({
+                    ...current,
+                    addressStyle:
+                      event.target.value as ApplicationGenerationPreferences["addressStyle"],
+                  }))
+                }
+                value={preferences.addressStyle}
+              >
+                <option value="auto">Aus Anzeige und Unternehmen ableiten</option>
+                <option value="sie">Sie</option>
+                <option value="du">Du</option>
+              </select>
+            </label>
+            <label>
+              Sprache
+              <select
+                disabled
+                value="Deutsch"
+              >
+                <option>Deutsch</option>
+              </select>
+            </label>
+            <div className="master-cv-choice active">
+              <span aria-hidden="true">2</span>
+              <div>
+                <strong>Fokussierter Zwei-Seiten-CV</strong>
+                <small>
+                  ATS-sicher · 750–1.150 Wörter · vollständige Chronologie
+                </small>
+              </div>
+              <b>Fest</b>
+            </div>
+          </div>
+        </div>
+      </details>
 
-      <fieldset className="studio-choice-panel salary-choice-panel">
-        <legend>Gehaltswunsch und Verhandlungsspielraum</legend>
-        <div className={`salary-assessment tone-${salaryAssessment.tone}`}>
-          <strong>{salaryAssessment.title}</strong>
-          <p>{salaryAssessment.detail}</p>
-        </div>
-        {initialApplication ? (
-          <p className="salary-context-note">
-            Recherchehinweis: {initialApplication.compensation || "keine Vergütung veröffentlicht"}
-            {" · "}{SALARY_OUTLOOK_LABELS[initialApplication.salaryOutlook]}
-          </p>
-        ) : null}
-        <div className="form-grid">
+      <details className="studio-option-group">
+        <summary>
+          <span>
+            <strong>Inhaltliche Schwerpunkte</strong>
+            <small>{focusSummary}</small>
+          </span>
+          <b aria-hidden="true">Anpassen</b>
+        </summary>
+        <div className="studio-option-content">
+          <div className="studio-chip-grid">
+            {APPLICATION_FOCUS_THEMES.map((theme) => (
+              <label key={theme}>
+                <input
+                  checked={preferences.focusThemes.includes(theme)}
+                  onChange={(event) =>
+                    toggleFocusTheme(theme, event.target.checked)
+                  }
+                  type="checkbox"
+                />
+                <span>{theme}</span>
+              </label>
+            ))}
+          </div>
           <label>
-            Wunschgehalt brutto pro Jahr
-            <input
-              min={1}
+            Weitere Akzente oder bewusste Grenzen
+            <textarea
               onChange={(event) =>
                 setPreferences((current) => ({
                   ...current,
-                  desiredSalaryAnnual: event.target.value
-                    ? Number(event.target.value)
-                    : null,
+                  customFocus: event.target.value,
                 }))
               }
-              placeholder="z. B. 58000"
-              step={500}
-              type="number"
-              value={preferences.desiredSalaryAnnual ?? ""}
+              placeholder="z. B. Führung nur zurückhaltend darstellen; Digitalisierungserfolge priorisieren"
+              rows={3}
+              value={preferences.customFocus}
             />
           </label>
-          <label>
-            Persönliche Untergrenze
-            <input
-              min={1}
-              onChange={(event) =>
-                setPreferences((current) => ({
-                  ...current,
-                  minimumSalaryAnnual: event.target.value
-                    ? Number(event.target.value)
-                    : null,
-                }))
-              }
-              placeholder="nur für die Strategie"
-              step={500}
-              type="number"
-              value={preferences.minimumSalaryAnnual ?? ""}
-            />
-          </label>
-          <label>
-            Spielraum
-            <select
-              onChange={(event) =>
-                setPreferences((current) => ({
-                  ...current,
-                  salaryFlexibility:
-                    event.target.value as ApplicationGenerationPreferences["salaryFlexibility"],
-                }))
-              }
-              value={preferences.salaryFlexibility}
-            >
-              <option value="fixed">Fest</option>
-              <option value="negotiable">Verhandelbar</option>
-              <option value="open">Zunächst offen</option>
-            </select>
-          </label>
-          <label>
-            Im Anschreiben erwähnen
-            <select
-              onChange={(event) =>
-                setPreferences((current) => ({
-                  ...current,
-                  mentionSalary:
-                    event.target.value as ApplicationGenerationPreferences["mentionSalary"],
-                }))
-              }
-              value={preferences.mentionSalary}
-            >
-              <option value="never">Nie</option>
-              <option value="if_requested">Nur wenn verlangt</option>
-              <option value="always">Immer</option>
-            </select>
-          </label>
         </div>
-        <small>
-          Die Untergrenze dient nur der persönlichen Entscheidung und wird niemals
-          automatisch in Anschreiben oder Mail übernommen.
-        </small>
-      </fieldset>
+      </details>
+
+      <details className="studio-option-group salary-choice-panel">
+        <summary>
+          <span>
+            <strong>Gehalt und Verhandlung</strong>
+            <small>{salarySummary} · nur bei Bedarf</small>
+          </span>
+          <b aria-hidden="true">Anpassen</b>
+        </summary>
+        <div className="studio-option-content">
+          <div className={`salary-assessment tone-${salaryAssessment.tone}`}>
+            <strong>{salaryAssessment.title}</strong>
+            <p>{salaryAssessment.detail}</p>
+          </div>
+          {initialApplication ? (
+            <p className="salary-context-note">
+              Recherchehinweis: {initialApplication.compensation || "keine Vergütung veröffentlicht"}
+              {" · "}{SALARY_OUTLOOK_LABELS[initialApplication.salaryOutlook]}
+            </p>
+          ) : null}
+          <div className="form-grid">
+            <label>
+              Wunschgehalt brutto pro Jahr
+              <input
+                min={1}
+                onChange={(event) =>
+                  setPreferences((current) => ({
+                    ...current,
+                    desiredSalaryAnnual: event.target.value
+                      ? Number(event.target.value)
+                      : null,
+                  }))
+                }
+                placeholder="z. B. 58000"
+                step={500}
+                type="number"
+                value={preferences.desiredSalaryAnnual ?? ""}
+              />
+            </label>
+            <label>
+              Persönliche Untergrenze
+              <input
+                min={1}
+                onChange={(event) =>
+                  setPreferences((current) => ({
+                    ...current,
+                    minimumSalaryAnnual: event.target.value
+                      ? Number(event.target.value)
+                      : null,
+                  }))
+                }
+                placeholder="nur für die Strategie"
+                step={500}
+                type="number"
+                value={preferences.minimumSalaryAnnual ?? ""}
+              />
+            </label>
+            <label>
+              Spielraum
+              <select
+                onChange={(event) =>
+                  setPreferences((current) => ({
+                    ...current,
+                    salaryFlexibility:
+                      event.target.value as ApplicationGenerationPreferences["salaryFlexibility"],
+                  }))
+                }
+                value={preferences.salaryFlexibility}
+              >
+                <option value="fixed">Fest</option>
+                <option value="negotiable">Verhandelbar</option>
+                <option value="open">Zunächst offen</option>
+              </select>
+            </label>
+            <label>
+              Im Anschreiben erwähnen
+              <select
+                onChange={(event) =>
+                  setPreferences((current) => ({
+                    ...current,
+                    mentionSalary:
+                      event.target.value as ApplicationGenerationPreferences["mentionSalary"],
+                  }))
+                }
+                value={preferences.mentionSalary}
+              >
+                <option value="never">Nie</option>
+                <option value="if_requested">Nur wenn verlangt</option>
+                <option value="always">Immer</option>
+              </select>
+            </label>
+          </div>
+          <small>
+            Die Untergrenze dient nur der persönlichen Entscheidung und wird
+            niemals automatisch in Anschreiben oder Mail übernommen.
+          </small>
+        </div>
+      </details>
+      <details className="studio-option-group">
+        <summary>
+          <span>
+            <strong>Erweitert: eigene Vorlagen und Visualisierungen</strong>
+            <small>Der Standardexport bleibt einspaltig und ATS-sicher</small>
+          </span>
+          <b aria-hidden="true">Optional</b>
+        </summary>
+        <ApplicationDesignPanel
+          analyses={templateAnalyses}
+          design={documentDesign}
+          documents={documents}
+          onAnalysis={recordTemplateAnalysis}
+          onChange={updateDocumentDesign}
+          onSaveDocument={onSaveDocument}
+          outputKinds={preferences.outputKinds}
+          toast={toast}
+        />
+      </details>
       <p className="form-trust">
-        CV und Antworten werden nur für dieses Paket verarbeitet. Das Original bleibt
-        unverändert; Texte werden nicht automatisch gespeichert oder um erfundene
-        Angaben ergänzt.
+        Der ausgewählte Master-CV gilt nur für diesen Auftrag. Die Binärdatei
+        wird weder in D1 noch in R2 oder der Dokumentbibliothek gespeichert;
+        für die nächste Bewerbung wählst du sie erneut aus.
       </p>
+      {generationError.length ? (
+        <div className="quality-check-panel" role="alert">
+          <strong>Keine Freigabe</strong>
+          <ul>
+            {generationError.map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {generationProgress ? (
+        <p aria-live="polite" className="form-trust">
+          {generationProgress}
+        </p>
+      ) : null}
       <div className="dialog-actions">
+        {initialApplication ? (
+          <button
+            className="button button-soft"
+            disabled={busy}
+            onClick={() => {
+              const generationInputs = normalizeApplicationGenerationInputs({
+                motivation,
+                achievements,
+                strengths,
+                constraints,
+                availability,
+              });
+              const normalizedPreferences =
+                normalizeApplicationGenerationPreferences(preferences);
+              setPreferences(normalizedPreferences);
+              persistGenerationSettings(
+                generationInputs,
+                normalizedPreferences,
+                true,
+              );
+            }}
+            type="button"
+          >
+            Angaben speichern
+          </button>
+        ) : null}
+        {activeGenerationJobId ? (
+          <button
+            className="button button-ghost"
+            onClick={() => void cancelApplicationGeneration()}
+            type="button"
+          >
+            Erstellung abbrechen
+          </button>
+        ) : null}
         <button
           className="button button-primary"
-          disabled={busy || (!cv && !(useMasterCv && masterCv))}
+          disabled={
+            busy ||
+            !masterCvFile ||
+            (!jobUrl.trim() && !jobText.trim())
+          }
           type="submit"
         >
-          {busy ? "Bewerbungspaket wird erstellt …" : "Bewerbungspaket erstellen"}
+          {busy ? "Unterlagen werden erstellt …" : "Lebenslauf & Anschreiben erstellen"}
         </button>
       </div>
     </form>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { COST_CATEGORIES } from "./finance-data";
+import { COST_CATEGORIES, normalizeAccountBalances } from "./finance-data";
 import { mergeApplicationResearch } from "./application-research";
 import { normalizeApplicationKpiSettings } from "./application-workflow";
 import { diaryRhythmDays, normalizeDiaryEntries } from "./diary";
@@ -62,14 +62,7 @@ function normalizeState(value: AppState): AppState {
       return { ...cost, category };
     }),
     incomes: Array.isArray(candidate.incomes) ? candidate.incomes : [],
-    accountBalances: {
-      paypal: finiteOrZero(candidate.accountBalances?.paypal),
-      revolut: finiteOrZero(candidate.accountBalances?.revolut),
-      updatedAt:
-        typeof candidate.accountBalances?.updatedAt === "string"
-          ? candidate.accountBalances.updatedAt
-          : candidate.updatedAt,
-    },
+    accountBalances: normalizeAccountBalances(candidate.accountBalances),
     applications: mergeApplicationResearch(candidate.applications),
     contacts: Array.isArray(candidate.contacts) ? candidate.contacts : [],
     dashboardSettings: normalizeDashboardSettings(
@@ -252,6 +245,31 @@ export function useGerriState(initialState: AppState) {
     }));
   }, []);
 
+  const acceptRemoteState = useCallback(async () => {
+    setSyncStatus("lade");
+    try {
+      const response = await fetch("/api/state", {
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok || response.status === 204) {
+        throw new Error("Der private Serverstand ist nicht verfügbar.");
+      }
+      const payload: unknown = await response.json();
+      if (!isAppState(payload)) {
+        throw new Error("Der private Serverstand hat kein unterstütztes Format.");
+      }
+      const normalized = normalizeState(payload);
+      setState(normalized);
+      writeLocalState(normalized);
+      remoteAvailable.current = true;
+      remoteRevision.current = normalized.revision;
+      setSyncStatus("synchronisiert");
+    } catch (error) {
+      setSyncStatus("konflikt");
+      throw error;
+    }
+  }, []);
+
   return {
     state,
     ready,
@@ -260,5 +278,6 @@ export function useGerriState(initialState: AppState) {
     replaceState: setState,
     exportBackup,
     importBackup,
+    acceptRemoteState,
   };
 }

@@ -14,6 +14,8 @@ import type {
   DriveFolderContent,
   DriveItem,
 } from "../lib/types";
+import { formatDate } from "../lib/format";
+import { useModalDialog } from "../lib/use-modal-dialog";
 
 type DriveExplorerController = {
   status: DriveConnectionStatus | null;
@@ -31,6 +33,7 @@ type DriveExplorerController = {
   selectFolder: (folder: DriveItem) => Promise<void>;
   selectFile: (file: DriveItem | null) => void;
   toggleFolder: (folder: DriveItem) => Promise<void>;
+  retryStatus: () => Promise<void>;
   disconnect: () => Promise<void>;
 };
 
@@ -42,13 +45,24 @@ const EMPTY_STATUS: DriveConnectionStatus = {
 };
 
 async function jsonResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as T & {
-    error?: string;
-    reconnect?: boolean;
-  };
-  if (!response.ok) {
-    throw new Error(payload.error || "Google Drive ist momentan nicht erreichbar.");
+  const body = await response.text();
+  let payload: (T & { error?: string; reconnect?: boolean }) | null = null;
+  if (body) {
+    try {
+      payload = JSON.parse(body) as T & {
+        error?: string;
+        reconnect?: boolean;
+      };
+    } catch {
+      payload = null;
+    }
   }
+  if (!response.ok) {
+    throw new Error(
+      payload?.error || "Google Drive ist momentan nicht erreichbar.",
+    );
+  }
+  if (!payload) throw new Error("Google Drive lieferte keine gültige Antwort.");
   return payload;
 }
 
@@ -100,43 +114,40 @@ export function useDriveExplorer(): DriveExplorerController {
     [],
   );
 
-  useEffect(() => {
-    let active = true;
-    const loadStatus = async () => {
-      try {
-        const response = await fetch("/api/drive/status", { cache: "no-store" });
-        const next = await jsonResponse<DriveConnectionStatus>(response);
-        if (!active) return;
-        setStatus(next);
-        if (next.connected && next.root) {
-          setSelectedFolderId((current) => current || next.root?.id || null);
-          setExpandedFolders((current) => new Set(current).add(next.root!.id));
-          await loadFolder(next.root.id);
-        }
-      } catch (caught) {
-        if (!active) return;
-        setStatus(EMPTY_STATUS);
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : "Google Drive ist momentan nicht erreichbar.",
-        );
-      } finally {
-        if (active) setStatusLoading(false);
+  const retryStatus = useCallback(async () => {
+    setStatusLoading(true);
+    try {
+      const response = await fetch("/api/drive/status", { cache: "no-store" });
+      const next = await jsonResponse<DriveConnectionStatus>(response);
+      setStatus(next);
+      setError("");
+      if (next.connected && next.root) {
+        setSelectedFolderId((current) => current || next.root?.id || null);
+        setExpandedFolders((current) => new Set(current).add(next.root!.id));
+        await loadFolder(next.root.id);
       }
-    };
-    void loadStatus();
-    return () => {
-      active = false;
-    };
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Google Drive ist momentan nicht erreichbar.",
+      );
+    } finally {
+      setStatusLoading(false);
+    }
   }, [loadFolder]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void retryStatus(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [retryStatus]);
 
   const selectFolder = useCallback(
     async (folder: DriveItem) => {
-      setSelectedFolderId(folder.id);
-      setSelectedFile(null);
       const selectedContent = await loadFolder(folder.id);
       if (!selectedContent) return;
+      setSelectedFolderId(folder.id);
+      setSelectedFile(null);
       await Promise.all(
         selectedContent.breadcrumbs
           .slice(0, -1)
@@ -210,6 +221,7 @@ export function useDriveExplorer(): DriveExplorerController {
     selectFolder,
     selectFile: setSelectedFile,
     toggleFolder,
+    retryStatus,
     disconnect,
   };
 }
@@ -347,7 +359,8 @@ function FileKind({ item }: { item: DriveItem }) {
 }
 
 function formatSize(bytes: number | null): string {
-  if (!bytes) return "";
+  if (bytes === null) return "";
+  if (bytes === 0) return "0 KB";
   if (bytes < 1_048_576) return `${Math.max(1, Math.round(bytes / 1_024))} KB`;
   return `${(bytes / 1_048_576).toFixed(1).replace(".", ",")} MB`;
 }
@@ -365,25 +378,7 @@ function DriveFilePreview({
     file.previewKind === "pdf"
       ? `${source}#page=1&view=Fit&toolbar=1&navpanes=0`
       : source;
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const previousFocus =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.body.classList.add("drive-preview-open");
-    window.addEventListener("keydown", closeOnEscape);
-    closeButtonRef.current?.focus();
-    return () => {
-      document.body.classList.remove("drive-preview-open");
-      window.removeEventListener("keydown", closeOnEscape);
-      previousFocus?.focus();
-    };
-  }, [onClose]);
+  const dialogRef = useModalDialog<HTMLElement>(onClose);
 
   return (
     <div
@@ -397,7 +392,9 @@ function DriveFilePreview({
         aria-labelledby="drive-preview-title"
         aria-modal="true"
         className="drive-inline-preview"
+        ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
       >
         <header>
           <div>
@@ -405,9 +402,9 @@ function DriveFilePreview({
             <h2 id="drive-preview-title">{file.name}</h2>
             <p>
               {file.modifiedAt
-                ? `Geändert ${new Date(file.modifiedAt).toLocaleDateString("de-DE")}`
+                ? `Geändert ${formatDate(file.modifiedAt)}`
                 : "Google-Drive-Datei"}
-              {file.sizeBytes ? ` · ${formatSize(file.sizeBytes)}` : ""}
+              {file.sizeBytes !== null ? ` · ${formatSize(file.sizeBytes)}` : ""}
               {file.previewKind === "pdf"
                 ? " · ganze Seite im Original-Layout eingepasst"
                 : " · eingepasst"}
@@ -427,8 +424,8 @@ function DriveFilePreview({
             </a>
             <button
               className="button button-ghost"
+              data-dialog-initial-focus
               onClick={onClose}
-              ref={closeButtonRef}
               type="button"
             >
               Schließen
@@ -444,6 +441,7 @@ function DriveFilePreview({
           ) : file.previewKind === "pdf" || file.previewKind === "text" ? (
             <iframe
               loading="eager"
+              referrerPolicy="no-referrer"
               src={previewSource}
               title={`Vorschau von ${file.name}`}
             />
@@ -479,10 +477,20 @@ function DriveFolderSearch({
   controller: DriveExplorerController;
 }) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<DriveItem[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState("");
+  const [searchResult, setSearchResult] = useState<{
+    query: string;
+    items: DriveItem[];
+    error: string;
+  } | null>(null);
+  const [searchingQuery, setSearchingQuery] = useState("");
   const normalizedQuery = query.trim();
+  const currentResult =
+    searchResult?.query === normalizedQuery ? searchResult : null;
+  const results = currentResult?.items ?? [];
+  const searchError = currentResult?.error ?? "";
+  const searching =
+    normalizedQuery.length >= 2 &&
+    (!currentResult || searchingQuery === normalizedQuery);
 
   useEffect(() => {
     if (normalizedQuery.length < 2) {
@@ -490,25 +498,34 @@ function DriveFolderSearch({
     }
     const abortController = new AbortController();
     const timeout = window.setTimeout(async () => {
-      setSearching(true);
+      setSearchingQuery(normalizedQuery);
       try {
         const response = await fetch(
           `/api/drive/search?q=${encodeURIComponent(normalizedQuery)}`,
           { cache: "no-store", signal: abortController.signal },
         );
         const payload = await jsonResponse<{ items: DriveItem[] }>(response);
-        setResults(payload.items);
-        setSearchError("");
+        setSearchResult({
+          query: normalizedQuery,
+          items: payload.items,
+          error: "",
+        });
       } catch (caught) {
         if (caught instanceof DOMException && caught.name === "AbortError") return;
-        setResults([]);
-        setSearchError(
-          caught instanceof Error
-            ? caught.message
-            : "Die Ordnersuche ist momentan nicht erreichbar.",
-        );
+        setSearchResult({
+          query: normalizedQuery,
+          items: [],
+          error:
+            caught instanceof Error
+              ? caught.message
+              : "Die Ordnersuche ist momentan nicht erreichbar.",
+        });
       } finally {
-        if (!abortController.signal.aborted) setSearching(false);
+        if (!abortController.signal.aborted) {
+          setSearchingQuery((current) =>
+            current === normalizedQuery ? "" : current,
+          );
+        }
       }
     }, 250);
     return () => {
@@ -532,7 +549,7 @@ function DriveFolderSearch({
       {normalizedQuery.length >= 2 ? (
         <div className="drive-folder-search-results" id="drive-folder-search-results">
           {searching ? <p>Ordner werden gesucht …</p> : null}
-          {!searching && searchError ? <p role="status">{searchError}</p> : null}
+          {!searching && searchError ? <p role="alert">{searchError}</p> : null}
           {!searching && !searchError && !results.length ? (
             <p>Kein passender Ordner in dieser Ablage gefunden.</p>
           ) : null}
@@ -585,6 +602,18 @@ export function DriveExplorer({
 
   if (controller.statusLoading) {
     return <Notice>Google Drive wird sicher verbunden …</Notice>;
+  }
+
+  if (!controller.status && controller.error) {
+    return (
+      <Notice>
+        <strong>Google Drive konnte nicht geladen werden.</strong>
+        <span>{controller.error}</span>
+        <button onClick={() => void controller.retryStatus()} type="button">
+          Erneut versuchen
+        </button>
+      </Notice>
+    );
   }
 
   if (!controller.status?.configured) {
@@ -656,7 +685,7 @@ export function DriveExplorer({
               Aktualisieren
             </button>
           </div>
-          <div className="drive-item-list" role="list">
+          <div className="drive-item-list">
             {content.items.map((item) => (
               <button
                 aria-current={
@@ -671,7 +700,6 @@ export function DriveExplorer({
                     ? void controller.selectFolder(item)
                     : controller.selectFile(item)
                 }
-                role="listitem"
                 type="button"
               >
                 <FileKind item={item} />
@@ -682,7 +710,7 @@ export function DriveExplorer({
                       ? "Unterordner öffnen"
                       : [
                           item.modifiedAt
-                            ? new Date(item.modifiedAt).toLocaleDateString("de-DE")
+                            ? formatDate(item.modifiedAt)
                             : "",
                           formatSize(item.sizeBytes),
                         ]

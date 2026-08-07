@@ -4,12 +4,28 @@ import type {
   CareerPassportSnapshot,
   CareerPassportSource,
   MasterCvContent,
+  MasterCvCoverageStats,
+  MasterCvLink,
   MasterCvSection,
+  MasterCvSectionKind,
 } from "./types";
 
-const MAX_SECTIONS = 24;
+const MAX_SECTIONS = 48;
 const MAX_EVIDENCE = 240;
 const MAX_SOURCES = 80;
+const MAX_LINKS = 40;
+const SECTION_KINDS: readonly MasterCvSectionKind[] = [
+  "profile",
+  "value",
+  "experience",
+  "projects",
+  "skills",
+  "education",
+  "languages",
+  "other",
+];
+const EXPERIENCE_DATE =
+  /^(?:\d{2}[./]\d{4}|\d{4})\s*[-–—]\s*(?:\d{2}[./]\d{4}|\d{4}|heute|aktuell|present)$/i;
 
 function text(value: unknown, max: number): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -26,6 +42,133 @@ function confidence(value: unknown): CareerEvidenceConfidence {
   return value === "user_confirmed" || value === "externally_corroborated"
     ? value
     : "source_only";
+}
+
+export function classifyMasterCvSection(value: string): MasterCvSectionKind {
+  const heading = value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/gi, " ")
+    .trim()
+    .toLocaleLowerCase("de-DE");
+  if (/\b(sprachen?|fremdsprachen?|languages?)\b/.test(heading)) {
+    return "languages";
+  }
+  if (
+    /\b(berufserfahrung|berufspraxis|beruflicher werdegang|professional experience|work experience|karriereverlauf)\b/.test(
+      heading,
+    )
+  ) {
+    return "experience";
+  }
+  if (/\b(projekte?|fallstudien?|cases?|prototypen?|portfolio)\b/.test(heading)) {
+    return "projects";
+  }
+  if (
+    /\b(kompetenz(?:en)?|kompetenzprofil|methoden?|tools?|arbeitsumfeld|arbeitsweise|starken|fachkenntnisse?|technologien?|skills?)\b/.test(
+      heading,
+    )
+  ) {
+    return "skills";
+  }
+  if (
+    /\b(ausbildung|weiterbildung|qualifikation(?:en)?|zertifikate?|studium|hochschule|education|certifications?)\b/.test(
+      heading,
+    )
+  ) {
+    return "education";
+  }
+  if (/\b(kurzprofil|berufliches profil|profil|uber mich|about)\b/.test(heading)) {
+    return "profile";
+  }
+  if (
+    /\b(ergebnisse?|highlights?|rollen navigator|rollenpassung|schwerpunkte?|mehrwert|wertbeitrag)\b/.test(
+      heading,
+    )
+  ) {
+    return "value";
+  }
+  return "other";
+}
+
+function sectionKind(value: unknown, heading: string): MasterCvSectionKind {
+  return typeof value === "string" &&
+    SECTION_KINDS.includes(value as MasterCvSectionKind)
+    ? (value as MasterCvSectionKind)
+    : classifyMasterCvSection(heading);
+}
+
+function safeLink(value: unknown, index: number): MasterCvLink | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<MasterCvLink>;
+  const label = text(candidate.label, 300);
+  const rawUrl = text(candidate.url, 2_000);
+  if (!label || !rawUrl) return null;
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  if (!["http:", "https:", "mailto:", "tel:"].includes(url.protocol)) {
+    return null;
+  }
+  const kind: MasterCvLink["kind"] =
+    url.protocol === "mailto:"
+      ? "email"
+      : url.protocol === "tel:"
+        ? "phone"
+        : /linkedin|github|portfolio|streamlit/i.test(`${label} ${rawUrl}`)
+          ? "portfolio"
+          : "web";
+  return {
+    id: text(candidate.id, 160) || `link-${index + 1}`,
+    label,
+    url: rawUrl,
+    kind,
+  };
+}
+
+function meaningfulLines(section: MasterCvSection): string[] {
+  return section.content
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*[•*-]\s*/, "").trim())
+    .filter(Boolean);
+}
+
+export function masterCvCoverageStats(
+  sections: MasterCvSection[],
+  links: MasterCvLink[] = [],
+  evidenceItems = 0,
+): MasterCvCoverageStats {
+  const sectionsByKind = Object.fromEntries(
+    SECTION_KINDS.map((kind) => [kind, 0]),
+  ) as Record<MasterCvSectionKind, number>;
+  for (const section of sections) sectionsByKind[section.kind] += 1;
+  const countLines = (kind: MasterCvSectionKind) =>
+    sections
+      .filter((section) => section.kind === kind)
+      .flatMap(meaningfulLines).length;
+  const experienceEntries = sections
+    .filter((section) => section.kind === "experience")
+    .flatMap(meaningfulLines)
+    .filter((line) => EXPERIENCE_DATE.test(line)).length;
+  return {
+    totalWords: sections
+      .map((section) => section.content)
+      .join(" ")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean).length,
+    evidenceItems,
+    experienceEntries,
+    projectItems: countLines("projects"),
+    skillItems: countLines("skills"),
+    educationItems: countLines("education"),
+    languageItems: countLines("languages"),
+    linkedContacts: links.length,
+    sectionsByKind,
+  };
 }
 
 function normalizeSource(value: unknown): CareerPassportSource | null {
@@ -101,6 +244,7 @@ function normalizeSection(value: unknown, index: number): MasterCvSection | null
     id: text(candidate.id, 160) || `section-${index + 1}`,
     heading,
     content,
+    kind: sectionKind(candidate.kind, heading),
   };
 }
 
@@ -112,8 +256,9 @@ export function normalizeMasterCvContent(value: unknown): MasterCvContent | null
   const passportDocumentId = text(candidate.passportDocumentId, 200) || null;
   const name = text(candidate.name, 240);
   const importedAt = text(candidate.importedAt, 80);
+  const schemaVersion = (candidate as { schemaVersion?: unknown }).schemaVersion;
   if (
-    candidate.schemaVersion !== 1 ||
+    (schemaVersion !== 1 && schemaVersion !== 2) ||
     !passport ||
     !sourceDocumentId ||
     !name ||
@@ -128,8 +273,14 @@ export function normalizeMasterCvContent(value: unknown): MasterCvContent | null
         .slice(0, MAX_SECTIONS)
     : [];
   if (!sections.length) return null;
+  const links = Array.isArray(candidate.links)
+    ? candidate.links
+        .map(safeLink)
+        .filter((item): item is MasterCvLink => Boolean(item))
+        .slice(0, MAX_LINKS)
+    : [];
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sourceDocumentId,
     passportDocumentId,
     name,
@@ -138,6 +289,15 @@ export function normalizeMasterCvContent(value: unknown): MasterCvContent | null
     contactLine: text(candidate.contactLine, 600),
     language: text(candidate.language, 30) || "en",
     sections,
+    links,
+    sourceFingerprint:
+      text(candidate.sourceFingerprint, 200) ||
+      `legacy-unverified:${sourceDocumentId}`,
+    coverage: masterCvCoverageStats(
+      sections,
+      links,
+      passport.evidence.length,
+    ),
     passport,
     importedAt,
     updatedAt: text(candidate.updatedAt, 80) || importedAt,
@@ -173,6 +333,7 @@ export function masterCvToPlainText(masterCv: MasterCvContent): string {
     section.heading.toUpperCase(),
     section.content,
   ]);
+  const links = masterCv.links.map((link) => `${link.label}: ${link.url}`);
   const evidence = masterCv.passport.evidence.flatMap((item) => {
     const restrictions = item.restrictions.length
       ? `${isGerman ? "Einschränkungen" : "Restrictions"}: ${item.restrictions.join(" | ")}`
@@ -189,6 +350,7 @@ export function masterCvToPlainText(masterCv: MasterCvContent): string {
     ...profile,
     "",
     ...sections,
+    ...(links.length ? ["", isGerman ? "SICHERE LINKS" : "SAFE LINKS", ...links] : []),
     "",
     isGerman
       ? "BELEGREGISTER ZUM BERUFLICHEN PROFIL — NUR DIE NACHSTEHENDEN SICHEREN FORMULIERUNGEN VERWENDEN"

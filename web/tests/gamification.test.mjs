@@ -272,3 +272,106 @@ test("Einlösungen können den Klarpunkte-Saldo nie unter null drücken", async 
   assert.equal(exact.error, null);
   assert.equal(ledgerTotals(exact.gamification.ledger).balanceXp, 0);
 });
+
+test("importierte Belohnungszustände werden dedupliziert und sicher normalisiert", async () => {
+  const { createDefaultGamification, normalizeGamificationState } =
+    await importGamification();
+  const candidate = createDefaultGamification(100, now);
+  candidate.ledger.push(
+    {
+      ...candidate.ledger[0],
+      id: "duplicate-key",
+      sequence: 2,
+    },
+    {
+      ...candidate.ledger[0],
+      idempotencyKey: "other-key",
+      sequence: 3,
+    },
+    {
+      ...candidate.ledger[0],
+      id: "invalid-kind",
+      idempotencyKey: "invalid-kind",
+      kind: "UNKNOWN_REWARD",
+      sequence: 4,
+    },
+    {
+      ...candidate.ledger[0],
+      id: "invalid-date",
+      idempotencyKey: "invalid-date",
+      createdAt: "kein Datum",
+      sequence: 5,
+    },
+  );
+  candidate.profiles = [
+    profile("same-task", { difficultyBand: "D2" }),
+    profile("same-task", { difficultyBand: "D4" }),
+  ];
+  candidate.rewardCatalog = [
+    { id: "unsafe-negative", title: "Manipuliert", cost: -50, active: true },
+    { id: "safe", title: " Sichere Belohnung ", cost: 9.6, active: true },
+    { id: "safe", title: "Doppelter Eintrag", cost: 30, active: true },
+  ];
+
+  const normalized = normalizeGamificationState(candidate, 0, now);
+
+  assert.equal(normalized.ledger.length, 1);
+  assert.equal(normalized.ledger[0].sequence, 1);
+  assert.deepEqual(normalized.profiles.map((item) => item.difficultyBand), ["D4"]);
+  assert.deepEqual(normalized.rewardCatalog, [
+    { id: "safe", title: "Sichere Belohnung", cost: 10, active: true },
+  ]);
+});
+
+test("Einlösung und Weltenbau bleiben bei wiederholten Aufrufen idempotent", async () => {
+  const {
+    applyTaskCompletionReward,
+    buildWorldUpgrade,
+    createDefaultGamification,
+    redeemPersonalReward,
+  } = await importGamification();
+
+  const pointsBase = createDefaultGamification(100, now);
+  const firstRedemption = redeemPersonalReward(pointsBase, "reward-break", now);
+  const repeatedRedemption = redeemPersonalReward(
+    firstRedemption.gamification,
+    "reward-break",
+    now,
+  );
+  assert.equal(firstRedemption.gamification.ledger.length, 2);
+  assert.equal(repeatedRedemption.entry, null);
+  assert.equal(repeatedRedemption.error, null);
+  assert.equal(repeatedRedemption.gamification.ledger.length, 2);
+
+  const item = task("world-resource");
+  const earned = applyTaskCompletionReward({
+    gamification: createDefaultGamification(0, now),
+    task: item,
+    allTasks: [item],
+    profile: profile(item.id, { difficultyBand: "D5" }),
+    completedAt: now,
+  });
+  const upgradeCountBeforeBuild = earned.gamification.world.upgrades.length;
+  const firstBuild = buildWorldUpgrade(
+    earned.gamification,
+    "WORKSHOP",
+    "DECORATION",
+    now,
+  );
+  const repeatedBuild = buildWorldUpgrade(
+    firstBuild.gamification,
+    "WORKSHOP",
+    "DECORATION",
+    now,
+  );
+  assert.equal(
+    firstBuild.gamification.world.upgrades.length,
+    upgradeCountBeforeBuild + 1,
+  );
+  assert.equal(repeatedBuild.entry, null);
+  assert.equal(repeatedBuild.error, null);
+  assert.equal(
+    repeatedBuild.gamification.world.upgrades.length,
+    upgradeCountBeforeBuild + 1,
+  );
+});

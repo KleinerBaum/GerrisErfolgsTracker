@@ -7,6 +7,8 @@ import {
   DEFAULT_APPLICATION_GENERATION_PREFERENCES,
   normalizeApplicationActivities,
   normalizeApplicationContacts,
+  normalizeApplicationDocumentDesign,
+  normalizeApplicationGenerationInputs,
   normalizeApplicationGenerationPreferences,
 } from "./application-workflow.ts";
 import type {
@@ -975,11 +977,13 @@ function legacyVacancy(seed: VacancySeed): ApplicationProcess {
     notes: "",
     artifacts: [],
     vacancyResearch: null,
+    generationInputs: normalizeApplicationGenerationInputs(null),
     generationPreferences: {
       ...DEFAULT_APPLICATION_GENERATION_PREFERENCES,
       outputKinds: [...DEFAULT_APPLICATION_GENERATION_PREFERENCES.outputKinds],
       researchScopes: [...DEFAULT_APPLICATION_GENERATION_PREFERENCES.researchScopes],
     },
+    documentDesign: normalizeApplicationDocumentDesign(null),
     activities: [],
   };
 }
@@ -1382,11 +1386,13 @@ function jobRadarVacancy(record: JobRadarRecord, rank: number): ApplicationProce
     notes: "",
     artifacts: [],
     vacancyResearch: importedVacancyResearch(record),
+    generationInputs: normalizeApplicationGenerationInputs(null),
     generationPreferences: {
       ...DEFAULT_APPLICATION_GENERATION_PREFERENCES,
       outputKinds: [...DEFAULT_APPLICATION_GENERATION_PREFERENCES.outputKinds],
       researchScopes: [...DEFAULT_APPLICATION_GENERATION_PREFERENCES.researchScopes],
     },
+    documentDesign: normalizeApplicationDocumentDesign(null),
     activities: [],
   };
 }
@@ -1485,9 +1491,13 @@ function mergeSeededApplication(
     vacancyResearch: isSavedVacancyResearch(current.vacancyResearch)
       ? current.vacancyResearch
       : seeded.vacancyResearch,
+    generationInputs: normalizeApplicationGenerationInputs(
+      current.generationInputs,
+    ),
     generationPreferences: normalizeApplicationGenerationPreferences(
       current.generationPreferences,
     ),
+    documentDesign: normalizeApplicationDocumentDesign(current.documentDesign),
     activities: normalizeApplicationActivities(current.activities),
   };
 }
@@ -1562,8 +1572,14 @@ export function mergeApplicationResearch(
       contacts: normalizeApplicationContacts(application.contacts),
       jobDescriptionText: application.jobDescriptionText ?? "",
       tags: Array.isArray(application.tags) ? application.tags : [],
+      generationInputs: normalizeApplicationGenerationInputs(
+        application.generationInputs,
+      ),
       generationPreferences: normalizeApplicationGenerationPreferences(
         application.generationPreferences,
+      ),
+      documentDesign: normalizeApplicationDocumentDesign(
+        application.documentDesign,
       ),
       activities: normalizeApplicationActivities(application.activities),
     }));
@@ -1603,11 +1619,13 @@ export function createEmptyApplication(id: string): ApplicationProcess {
     notes: "",
     artifacts: [],
     vacancyResearch: null,
+    generationInputs: normalizeApplicationGenerationInputs(null),
     generationPreferences: {
       ...DEFAULT_APPLICATION_GENERATION_PREFERENCES,
       outputKinds: [...DEFAULT_APPLICATION_GENERATION_PREFERENCES.outputKinds],
       researchScopes: [...DEFAULT_APPLICATION_GENERATION_PREFERENCES.researchScopes],
     },
+    documentDesign: normalizeApplicationDocumentDesign(null),
     activities: [
       {
         id: `activity-vacancy-added-${id}`,

@@ -29,7 +29,9 @@ export async function GET(
 
     const name = object.customMetadata?.originalName || "unterlage";
     const encodedName = encodeURIComponent(name);
-    const download = new URL(request.url).searchParams.get("download") === "1";
+    const isSvg = name.toLowerCase().endsWith(".svg");
+    const download =
+      isSvg || new URL(request.url).searchParams.get("download") === "1";
     const headers = new Headers();
     object.writeHttpMetadata(headers);
     headers.set("cache-control", "private, no-store");

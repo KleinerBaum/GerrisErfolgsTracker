@@ -158,13 +158,17 @@ export function upsertDiaryEntry(
 }
 
 export function diaryRhythmDays(entries: JournalEntry[], today: string): number {
-  const todayAtNoon = new Date(`${today}T12:00:00`).getTime();
+  const dateNumber = (value: string): number => {
+    const [year, month, day] = value.split("-").map(Number);
+    return Date.UTC(year, month - 1, day, 12);
+  };
+  const todayAtNoon = dateNumber(today);
   const recentDates = new Set(
     entries
       .map((entry) => entry.date)
       .filter((entryDate) => {
         const difference =
-          todayAtNoon - new Date(`${entryDate}T12:00:00`).getTime();
+          todayAtNoon - dateNumber(entryDate);
         return difference >= 0 && difference < 7 * 86_400_000;
       }),
   );

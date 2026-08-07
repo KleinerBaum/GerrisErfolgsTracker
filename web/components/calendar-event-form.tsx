@@ -6,7 +6,12 @@ import {
   CalendarClientError,
   listGoogleCalendars,
 } from "../lib/google-calendar-client";
-import { APP_TIME_ZONE } from "../lib/format";
+import {
+  APP_TIME_ZONE,
+  isoDateInput,
+  zonedDateTimeToIso,
+} from "../lib/format";
+import { responsePayload } from "../lib/http-response";
 import type { CalendarEvent, GoogleCalendar } from "../lib/types";
 
 const EVENT_DURATION_OPTIONS = [
@@ -51,9 +56,7 @@ const EVENT_KIND_OPTIONS: Array<{
 ];
 
 function todayInput(): string {
-  const date = new Date();
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 10);
+  return isoDateInput();
 }
 
 function addDaysToInput(value: string, days: number): string {
@@ -109,10 +112,11 @@ function eventDurationLabel(minutes: number): string {
 }
 
 function eventEndLabel(date: string, time: string, duration: number): string {
-  const start = new Date(`${date}T${time}:00`);
-  if (Number.isNaN(start.getTime())) return "Ende wird automatisch berechnet";
-  const end = new Date(start.getTime() + duration * 60_000);
+  const startAt = zonedDateTimeToIso(date, time);
+  if (!startAt) return "Bitte eine gültige Berliner Uhrzeit wählen";
+  const end = new Date(new Date(startAt).getTime() + duration * 60_000);
   return new Intl.DateTimeFormat("de-DE", {
+    timeZone: APP_TIME_ZONE,
     weekday: "short",
     day: "2-digit",
     month: "2-digit",
@@ -220,10 +224,21 @@ export function CalendarEventForm({
     const eventDate = isBirthday ? birthdayOccurrence || date : date;
     const eventAllDay = isBirthday || allDay;
     const allDayEndDate = addDaysToInput(eventDate, 1);
-    const start = new Date(`${eventDate}T${eventAllDay ? "00:00" : time}:00`);
-    const end = eventAllDay
-      ? new Date(`${allDayEndDate}T00:00:00`)
-      : new Date(start.getTime() + duration * 60_000);
+    const startAt = zonedDateTimeToIso(
+      eventDate,
+      eventAllDay ? "00:00" : time,
+    );
+    const endAt = eventAllDay
+      ? zonedDateTimeToIso(allDayEndDate, "00:00")
+      : startAt
+        ? new Date(new Date(startAt).getTime() + duration * 60_000).toISOString()
+        : null;
+    if (!startAt || !endAt) {
+      setError(
+        "Diese Uhrzeit existiert in der Zeitzone Europe/Berlin nicht. Bitte wähle eine andere Uhrzeit.",
+      );
+      return;
+    }
     const birthdayNote = isBirthday
       ? [
           `Geburtsdatum: ${birthdayDateLabel(birthdayDate)}`,
@@ -236,8 +251,8 @@ export function CalendarEventForm({
       : note.trim();
     const calendarEvent = {
       title: isBirthday ? `Geburtstag: ${birthdayName.trim()}` : title.trim(),
-      startAt: start.toISOString(),
-      endAt: end.toISOString(),
+      startAt,
+      endAt,
       kind,
       private: isBirthday ? true : isPrivate,
       allDay: eventAllDay,
@@ -263,11 +278,11 @@ export function CalendarEventForm({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(calendarEvent),
       });
-      const payload = (await response.json()) as {
+      const payload = await responsePayload<{
         event?: CalendarEvent;
         error?: string;
         connectUrl?: string;
-      };
+      }>(response);
       if (!response.ok || !payload.event) {
         setConnectUrl(payload.connectUrl || "");
         throw new Error(

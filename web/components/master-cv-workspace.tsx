@@ -3,7 +3,11 @@
 import { useRef, useState } from "react";
 
 import { formatRelativeDate } from "../lib/format";
+import { responsePayload } from "../lib/http-response";
+import { documentOpenUrl } from "../lib/document-library";
 import {
+  classifyMasterCvSection,
+  masterCvCoverageStats,
   masterCvToPlainText,
   normalizeMasterCvContent,
 } from "../lib/master-cv";
@@ -42,6 +46,11 @@ function cloneContent(value: MasterCvContent): MasterCvContent {
   return {
     ...value,
     sections: value.sections.map((section) => ({ ...section })),
+    links: value.links.map((link) => ({ ...link })),
+    coverage: {
+      ...value.coverage,
+      sectionsByKind: { ...value.coverage.sectionsByKind },
+    },
     passport: {
       ...value.passport,
       targetDirections: [...value.passport.targetDirections],
@@ -100,6 +109,7 @@ export function MasterCvWorkspace({
   const masterCvDocument = documents.find(
     (document) => document.id === masterCvDocumentId,
   );
+  const masterCvOpenUrl = documentOpenUrl(masterCvDocument);
   const importBundle = async () => {
     if (!cvFile || busy) return;
     if (!cvFile.name.toLowerCase().endsWith(".docx")) {
@@ -114,7 +124,7 @@ export function MasterCvWorkspace({
         method: "POST",
         body: form,
       });
-      const payload = (await response.json()) as ImportResponse;
+      const payload = await responsePayload<ImportResponse>(response);
       const content = normalizeMasterCvContent(payload.masterCvContent);
       if (
         !response.ok ||
@@ -196,6 +206,7 @@ export function MasterCvWorkspace({
                 id: `custom-${crypto.randomUUID()}`,
                 heading: "Neuer Abschnitt",
                 content: "",
+                kind: "other",
               },
             ],
           }
@@ -211,6 +222,7 @@ export function MasterCvWorkspace({
         ...section,
         heading: section.heading.trim(),
         content: section.content.trim(),
+        kind: classifyMasterCvSection(section.heading),
       }))
       .filter((section) => section.heading && section.content);
     if (!name || !sections.length) {
@@ -224,6 +236,11 @@ export function MasterCvWorkspace({
       subheadline: draft.subheadline.trim(),
       contactLine: draft.contactLine.trim(),
       sections,
+      coverage: masterCvCoverageStats(
+        sections,
+        draft.links,
+        draft.passport.evidence.length,
+      ),
       updatedAt: new Date().toISOString(),
       editRevision: draft.editRevision + 1,
     };
@@ -276,10 +293,10 @@ export function MasterCvWorkspace({
           >
             {masterCvContent ? "Neue Version importieren" : "Import starten"}
           </button>
-          {masterCvDocument?.downloadUrl ? (
+          {masterCvOpenUrl ? (
             <a
               className="button button-ghost"
-              href={masterCvDocument.downloadUrl}
+              href={masterCvOpenUrl}
               rel="noreferrer"
               target="_blank"
             >

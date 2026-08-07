@@ -2,8 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
-import { contactIdentity, parseContactCsv, type ContactCsvRow } from "../lib/contacts";
+import {
+  contactIdentity,
+  mergeContactCsvRow,
+  parseContactCsv,
+  safeMailtoUrl,
+  safeTelephoneUrl,
+  safeWebsiteUrl,
+  type ContactCsvRow,
+} from "../lib/contacts";
 import type { Contact } from "../lib/types";
+import { useModalDialog } from "../lib/use-modal-dialog";
 
 type ContactsViewProps = {
   contacts: Contact[];
@@ -48,17 +57,6 @@ function initials(contact: Pick<Contact, "firstName" | "lastName" | "organizatio
     .join("");
 }
 
-function safeWebsite(value: string): string | null {
-  if (!value.trim()) return null;
-  try {
-    const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
-    const url = new URL(withProtocol);
-    return ["http:", "https:"].includes(url.protocol) ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
 function ContactEditor({
   contact,
   onClose,
@@ -68,15 +66,21 @@ function ContactEditor({
   onClose: () => void;
   onSave: (contact: Contact) => void;
 }) {
+  const dialogRef = useModalDialog<HTMLElement>(onClose);
   const now = new Date().toISOString();
   const [draft, setDraft] = useState<Contact>(() =>
     contact ?? { ...EMPTY_CONTACT, id: uid(), createdAt: now, updatedAt: now },
   );
+  const [error, setError] = useState("");
   const set = (field: keyof Contact, value: Contact[keyof Contact]) =>
     setDraft((current) => ({ ...current, [field]: value }));
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!displayName(draft).trim()) return;
+    if (draft.website.trim() && !safeWebsiteUrl(draft.website)) {
+      setError("Bitte gib eine gültige HTTP(S)-Webadresse ein.");
+      return;
+    }
     onSave({ ...draft, updatedAt: new Date().toISOString() });
   };
 
@@ -87,7 +91,9 @@ function ContactEditor({
         aria-modal="true"
         className="contact-dialog"
         onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
       >
         <header className="dialog-heading">
           <div>
@@ -96,9 +102,16 @@ function ContactEditor({
           </div>
           <button aria-label="Schließen" className="icon-button" onClick={onClose} type="button">×</button>
         </header>
-        <form className="contact-form" onSubmit={submit}>
+        <form
+          aria-describedby={error ? "contact-editor-error" : undefined}
+          className="contact-form"
+          onChange={() => {
+            if (error) setError("");
+          }}
+          onSubmit={submit}
+        >
           <div className="contact-form-grid">
-            <label><span>Vorname</span><input autoFocus value={draft.firstName} onChange={(e) => set("firstName", e.target.value)} /></label>
+            <label><span>Vorname</span><input data-dialog-initial-focus value={draft.firstName} onChange={(e) => set("firstName", e.target.value)} /></label>
             <label><span>Nachname</span><input value={draft.lastName} onChange={(e) => set("lastName", e.target.value)} /></label>
             <label><span>Organisation / Firma</span><input value={draft.organization} onChange={(e) => set("organization", e.target.value)} /></label>
             <label><span>Position / Rolle</span><input value={draft.role} onChange={(e) => set("role", e.target.value)} /></label>
@@ -114,6 +127,11 @@ function ContactEditor({
             <label className="wide"><span>Tags <small>mit Komma trennen</small></span><input value={draft.tags.join(", ")} onChange={(e) => set("tags", e.target.value.split(",").map((tag) => tag.trim()).filter(Boolean))} /></label>
             <label className="wide"><span>Notizen</span><textarea rows={4} value={draft.notes} onChange={(e) => set("notes", e.target.value)} /></label>
           </div>
+          {error ? (
+            <p className="form-error" id="contact-editor-error" role="alert">
+              {error}
+            </p>
+          ) : null}
           <label className="contact-favorite"><input checked={draft.favorite} onChange={(e) => set("favorite", e.target.checked)} type="checkbox" /> Als Favorit markieren</label>
           <div className="dialog-actions">
             <button className="button secondary" onClick={onClose} type="button">Abbrechen</button>
@@ -134,11 +152,13 @@ function CsvImportDialog({
   onClose: () => void;
   onImport: (rows: ContactCsvRow[], mode: DuplicateMode) => void;
 }) {
+  const dialogRef = useModalDialog<HTMLElement>(onClose);
   const inputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ContactCsvRow[]>([]);
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
   const [skipped, setSkipped] = useState(0);
+  const [invalidBirthdays, setInvalidBirthdays] = useState(0);
   const [mode, setMode] = useState<DuplicateMode>("skip");
   const existing = useMemo(() => new Set(contacts.map(contactIdentity)), [contacts]);
   const duplicates = rows.filter((row) => existing.has(contactIdentity(row))).length;
@@ -150,6 +170,7 @@ function CsvImportDialog({
       const result = parseContactCsv(await file.text());
       setRows(result.contacts);
       setSkipped(result.skippedRows);
+      setInvalidBirthdays(result.invalidBirthdays);
       setFileName(file.name);
     } catch (caught) {
       setRows([]);
@@ -159,7 +180,7 @@ function CsvImportDialog({
 
   return (
     <div className="dialog-backdrop" onMouseDown={onClose} role="presentation">
-      <section aria-labelledby="csv-import-title" aria-modal="true" className="contact-dialog csv-dialog" onMouseDown={(event) => event.stopPropagation()} role="dialog">
+      <section aria-labelledby="csv-import-title" aria-modal="true" className="contact-dialog csv-dialog" onMouseDown={(event) => event.stopPropagation()} ref={dialogRef} role="dialog" tabIndex={-1}>
         <header className="dialog-heading">
           <div><span className="eyebrow">Kontakte übernehmen</span><h2 id="csv-import-title">CSV-Datei importieren</h2></div>
           <button aria-label="Schließen" className="icon-button" onClick={onClose} type="button">×</button>
@@ -172,7 +193,7 @@ function CsvImportDialog({
         {error ? <p className="form-error" role="alert">{error}</p> : null}
         {rows.length ? (
           <>
-            <div className="csv-import-summary"><strong>{rows.length} Kontakte erkannt</strong><span>{duplicates} mögliche Duplikate{skipped ? ` · ${skipped} leere Zeilen übersprungen` : ""}</span></div>
+            <div className="csv-import-summary"><strong>{rows.length} Kontakte erkannt</strong><span>{duplicates} mögliche Duplikate{skipped ? ` · ${skipped} leere Zeilen übersprungen` : ""}{invalidBirthdays ? ` · ${invalidBirthdays} ungültige Geburtsdaten nicht übernommen` : ""}</span></div>
             <label className="csv-mode"><span>Bei Duplikaten</span><select value={mode} onChange={(e) => setMode(e.target.value as DuplicateMode)}><option value="skip">Vorhandene Kontakte behalten</option><option value="update">Vorhandene Kontakte aktualisieren</option></select></label>
             <div className="csv-preview" aria-label="Importvorschau">
               {rows.slice(0, 5).map((row, index) => <div key={`${contactIdentity(row)}-${index}`}><strong>{displayName(row)}</strong><span>{row.email || row.mobile || row.phone || "Keine Kontaktdaten"}</span>{existing.has(contactIdentity(row)) ? <small>Duplikat</small> : null}</div>)}
@@ -205,7 +226,8 @@ export function ContactsView({ contacts, createRequest, onChange, toast }: Conta
     const haystack = [displayName(contact), contact.organization, contact.role, contact.email, contact.phone, contact.mobile, contact.city, ...contact.tags].join(" ").toLocaleLowerCase("de-DE");
     return haystack.includes(query.trim().toLocaleLowerCase("de-DE")) && (tag === "alle" || contact.tags.includes(tag)) && (!favoritesOnly || contact.favorite);
   }).sort((a, b) => Number(b.favorite) - Number(a.favorite) || displayName(a).localeCompare(displayName(b), "de")), [contacts, favoritesOnly, query, tag]);
-  const selected = contacts.find((contact) => contact.id === selectedId) ?? filtered[0] ?? null;
+  const selected =
+    filtered.find((contact) => contact.id === selectedId) ?? filtered[0] ?? null;
 
   const save = (contact: Contact) => {
     onChange(contacts.some((candidate) => candidate.id === contact.id) ? contacts.map((candidate) => candidate.id === contact.id ? contact : candidate) : [...contacts, contact]);
@@ -214,7 +236,11 @@ export function ContactsView({ contacts, createRequest, onChange, toast }: Conta
     toast("Kontakt gespeichert");
   };
   const remove = (contact: Contact) => {
-    if (!window.confirm(`${displayName(contact)} wirklich löschen?`)) return;
+    if (
+      !window.confirm(
+        `${displayName(contact)} wirklich aus dem Adressbuch löschen? Bewerbungsnotizen und andere Fachakten bleiben erhalten.`,
+      )
+    ) return;
     onChange(contacts.filter((candidate) => candidate.id !== contact.id));
     setSelectedId(null);
     toast("Kontakt gelöscht");
@@ -228,7 +254,7 @@ export function ContactsView({ contacts, createRequest, onChange, toast }: Conta
       const index = next.findIndex((contact) => contactIdentity(contact) === contactIdentity(row));
       if (index >= 0) {
         if (mode === "update") {
-          next[index] = { ...next[index], ...row, favorite: next[index].favorite, updatedAt: now };
+          next[index] = mergeContactCsvRow(next[index], row, now);
           updated += 1;
         }
         continue;
@@ -241,12 +267,15 @@ export function ContactsView({ contacts, createRequest, onChange, toast }: Conta
     toast(`${imported} Kontakte importiert${updated ? ` · ${updated} aktualisiert` : ""}`);
   };
   const toggleFavorite = (contact: Contact) => onChange(contacts.map((candidate) => candidate.id === contact.id ? { ...candidate, favorite: !candidate.favorite, updatedAt: new Date().toISOString() } : candidate));
-  const website = selected ? safeWebsite(selected.website) : null;
+  const website = selected ? safeWebsiteUrl(selected.website) : null;
+  const email = selected ? safeMailtoUrl(selected.email) : null;
+  const mobile = selected ? safeTelephoneUrl(selected.mobile) : null;
+  const phone = selected ? safeTelephoneUrl(selected.phone) : null;
 
   return (
     <div className="contacts-view">
       <section className="contacts-hero">
-        <div><span className="eyebrow">Adressbuch</span><h1>Kontakte</h1><p>Kontaktdaten, Geburtstage und Notizen.</p></div>
+        <div><span className="eyebrow">Adressbuch</span><h1 tabIndex={-1}>Kontakte</h1><p>Kontaktdaten, Geburtstage und Notizen.</p></div>
         <div className="contacts-hero-actions"><button className="button secondary" onClick={() => setImportOpen(true)} type="button">CSV importieren</button><button className="button primary" onClick={() => setEditing(null)} type="button">Kontakt anlegen</button></div>
       </section>
       <section className="contact-kpis" aria-label="Kontaktübersicht"><article><strong>{contacts.length}</strong><span>Kontakte gesamt</span></article><article><strong>{contacts.filter((contact) => contact.favorite).length}</strong><span>Favoriten</span></article><article><strong>{contacts.filter((contact) => contact.email).length}</strong><span>mit E-Mail</span></article><article><strong>{tags.length}</strong><span>Tags</span></article></section>
@@ -259,7 +288,7 @@ export function ContactsView({ contacts, createRequest, onChange, toast }: Conta
           </div>
         </div>
         <div className="contact-detail-pane">
-          {selected ? <><header><span className="contact-avatar large">{initials(selected) || "K"}</span><div><span className="eyebrow">Kontakt</span><h2>{displayName(selected)}</h2><p>{[selected.role, selected.organization].filter(Boolean).join(" · ") || "Persönlicher Kontakt"}</p></div><button aria-label={selected.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"} className="favorite-button" onClick={() => toggleFavorite(selected)} type="button">{selected.favorite ? "★" : "☆"}</button></header><div className="contact-detail-grid"><div><span>E-Mail</span>{selected.email ? <a href={`mailto:${selected.email}`}>{selected.email}</a> : <small>Nicht hinterlegt</small>}</div><div><span>Mobil</span>{selected.mobile ? <a href={`tel:${selected.mobile}`}>{selected.mobile}</a> : <small>Nicht hinterlegt</small>}</div><div><span>Telefon</span>{selected.phone ? <a href={`tel:${selected.phone}`}>{selected.phone}</a> : <small>Nicht hinterlegt</small>}</div><div><span>Geburtstag</span><strong>{selected.birthday ? new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${selected.birthday}T12:00:00Z`)) : "Nicht hinterlegt"}</strong></div><div className="wide"><span>Adresse</span><strong>{[selected.street, [selected.postalCode, selected.city].filter(Boolean).join(" "), selected.country].filter(Boolean).join(", ") || "Nicht hinterlegt"}</strong></div>{website ? <div className="wide"><span>Webseite</span><a href={website} rel="noreferrer" target="_blank">{selected.website}</a></div> : null}</div>{selected.tags.length ? <div className="contact-tags">{selected.tags.map((value) => <span key={value}>{value}</span>)}</div> : null}{selected.notes ? <div className="contact-notes"><span>Notizen</span><p>{selected.notes}</p></div> : null}<footer><button className="button secondary danger" onClick={() => remove(selected)} type="button">Löschen</button><button className="button primary" onClick={() => setEditing(selected)} type="button">Bearbeiten</button></footer></> : <div className="contacts-empty"><strong>Kontakt auswählen</strong><p>Wähle links einen Kontakt.</p></div>}
+          {selected ? <><header><span className="contact-avatar large">{initials(selected) || "K"}</span><div><span className="eyebrow">Kontakt</span><h2>{displayName(selected)}</h2><p>{[selected.role, selected.organization].filter(Boolean).join(" · ") || "Persönlicher Kontakt"}</p></div><button aria-label={selected.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"} className="favorite-button" onClick={() => toggleFavorite(selected)} type="button">{selected.favorite ? "★" : "☆"}</button></header><div className="contact-detail-grid"><div><span>E-Mail</span>{email ? <a href={email}>{selected.email}</a> : selected.email ? <small>Ungültiges Format – bitte bearbeiten</small> : <small>Nicht hinterlegt</small>}</div><div><span>Mobil</span>{mobile ? <a href={mobile}>{selected.mobile}</a> : selected.mobile ? <small>Ungültiges Format – bitte bearbeiten</small> : <small>Nicht hinterlegt</small>}</div><div><span>Telefon</span>{phone ? <a href={phone}>{selected.phone}</a> : selected.phone ? <small>Ungültiges Format – bitte bearbeiten</small> : <small>Nicht hinterlegt</small>}</div><div><span>Geburtstag</span><strong>{selected.birthday ? new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${selected.birthday}T12:00:00Z`)) : "Nicht hinterlegt"}</strong></div><div className="wide"><span>Adresse</span><strong>{[selected.street, [selected.postalCode, selected.city].filter(Boolean).join(" "), selected.country].filter(Boolean).join(", ") || "Nicht hinterlegt"}</strong></div>{website ? <div className="wide"><span>Webseite</span><a href={website} rel="noreferrer" target="_blank">{selected.website}</a></div> : selected.website ? <div className="wide"><span>Webseite</span><small>Ungültiger Link – bitte bearbeiten</small></div> : null}</div>{selected.tags.length ? <div className="contact-tags">{selected.tags.map((value) => <span key={value}>{value}</span>)}</div> : null}{selected.notes ? <div className="contact-notes"><span>Notizen</span><p>{selected.notes}</p></div> : null}<footer><button className="button secondary danger" onClick={() => remove(selected)} type="button">Löschen</button><button className="button primary" onClick={() => setEditing(selected)} type="button">Bearbeiten</button></footer></> : <div className="contacts-empty"><strong>Kontakt auswählen</strong><p>Wähle links einen Kontakt.</p></div>}
         </div>
       </section>
       {editing !== undefined ? <ContactEditor contact={editing} onClose={() => setEditing(undefined)} onSave={save} /> : null}

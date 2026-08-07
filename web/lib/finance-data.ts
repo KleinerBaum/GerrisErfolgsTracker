@@ -1,9 +1,51 @@
 import type {
+  AccountBalances,
   CostCadence,
   CostCategory,
   CostPriority,
   CostType,
 } from "./types";
+
+const finiteNumberOrNull = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+export function normalizeAccountBalances(value: unknown): AccountBalances {
+  if (!value || typeof value !== "object") {
+    return { paypal: null, revolut: null, updatedAt: null };
+  }
+  const candidate = value as Partial<AccountBalances>;
+  return {
+    paypal: finiteNumberOrNull(candidate.paypal),
+    revolut: finiteNumberOrNull(candidate.revolut),
+    updatedAt:
+      typeof candidate.updatedAt === "string" && candidate.updatedAt.trim()
+        ? candidate.updatedAt
+        : null,
+  };
+}
+
+export type EuroInputResult =
+  | { valid: true; value: number | null }
+  | { valid: false; value: null };
+
+export function parseEuroInput(raw: string): EuroInputResult {
+  const input = raw.trim().replace(/\s/g, "");
+  if (!input) return { valid: true, value: null };
+
+  const germanFormat = /^-?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?$/;
+  const decimalPointFormat = /^-?\d+(?:\.\d{1,2})?$/;
+  if (!germanFormat.test(input) && !decimalPointFormat.test(input)) {
+    return { valid: false, value: null };
+  }
+
+  const normalized = input.includes(",")
+    ? input.replace(/\./g, "").replace(",", ".")
+    : input;
+  const value = Number(normalized);
+  return Number.isFinite(value)
+    ? { valid: true, value }
+    : { valid: false, value: null };
+}
 
 export const COST_CATEGORIES: CostCategory[] = [
   "Wohnen",

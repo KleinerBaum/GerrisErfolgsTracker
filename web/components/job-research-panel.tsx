@@ -8,6 +8,7 @@ import {
   researchWithDecision,
 } from "../lib/job-research";
 import { APPLICATION_RESEARCH_SCOPE_DEFINITIONS } from "../lib/application-workflow";
+import { responsePayload } from "../lib/http-response";
 import type {
   ApplicationResearchScope,
   JobResearchClaim,
@@ -71,6 +72,7 @@ const EVIDENCE_STATUS_LABELS: Record<JobResearchEvidenceStatus, string> = {
 
 const RETRIEVAL_LABELS: Record<VacancyResearch["retrievalStatus"], string> = {
   exact_page_accessed: "Exakte Anzeige erreicht",
+  provided_text: "Eingefügter Anzeigentext verwendet",
   snippet_only: "Nur Ausschnitte auffindbar",
   blocked_or_login: "Anzeige blockiert oder Anmeldung nötig",
   not_found: "Anzeige nicht gefunden",
@@ -107,6 +109,7 @@ type JobResearchPanelProps = {
   compact?: boolean;
   initialJobPostingText?: string;
   researchScopes?: ApplicationResearchScope[];
+  onJobPostingTextChange?: (value: string) => void;
   onChange: (
     research: VacancyResearch,
     decidedClaim?: JobResearchClaim,
@@ -241,7 +244,8 @@ export function JobResearchPanel({
   roleTitle,
   compact = false,
   initialJobPostingText = "",
-  researchScopes = ["job_posting", "company", "salary"],
+  researchScopes = ["job_posting", "company"],
+  onJobPostingTextChange,
   onChange,
 }: JobResearchPanelProps) {
   const [busy, setBusy] = useState(false);
@@ -265,8 +269,8 @@ export function JobResearchPanel({
   );
 
   const runResearch = async () => {
-    if (!sourceUrl.trim() || busy) {
-      setError("Bitte zuerst den öffentlichen Link zur Stellenanzeige eintragen.");
+    if ((!sourceUrl.trim() && !jobPostingText.trim()) || busy) {
+      setError("Bitte einen Stellenlink angeben oder den Anzeigentext einfügen.");
       return;
     }
     setBusy(true);
@@ -286,7 +290,7 @@ export function JobResearchPanel({
       });
       const startedAt = Date.now();
       for (;;) {
-        const payload = (await response.json()) as ResearchApiPayload;
+        const payload = await responsePayload<ResearchApiPayload>(response);
         if (!response.ok) {
           throw new Error(
             payload.error || "Die Vakanzrecherche ist nicht erreichbar.",
@@ -367,7 +371,7 @@ export function JobResearchPanel({
         </div>
         <button
           className="button button-primary"
-          disabled={busy || !sourceUrl.trim()}
+          disabled={busy || (!sourceUrl.trim() && !jobPostingText.trim())}
           onClick={() => void runResearch()}
           type="button"
         >
@@ -384,21 +388,29 @@ export function JobResearchPanel({
           Öffentlichen Ausschreibungstext ergänzen
           <textarea
             maxLength={30_000}
-            onChange={(event) => setJobPostingText(event.target.value)}
+            onChange={(event) => {
+              setJobPostingText(event.target.value);
+              onJobPostingTextChange?.(event.target.value);
+            }}
             placeholder="Nur den veröffentlichten Anzeigentext einfügen – keine privaten Notizen, Gehaltsgrenzen oder personenbezogenen Daten."
             rows={5}
             value={jobPostingText}
           />
         </label>
       </details>
-      <div className="research-scope-summary" aria-label="Gewählter Rechercheumfang">
-        <span>Recherche:</span>
-        {APPLICATION_RESEARCH_SCOPE_DEFINITIONS.filter((definition) =>
-          researchScopes.includes(definition.key),
-        ).map((definition) => (
-          <b key={definition.key}>{definition.label}</b>
-        ))}
-      </div>
+      {!compact ? (
+        <div
+          className="research-scope-summary"
+          aria-label="Gewählter Rechercheumfang"
+        >
+          <span>Recherche:</span>
+          {APPLICATION_RESEARCH_SCOPE_DEFINITIONS.filter((definition) =>
+            researchScopes.includes(definition.key),
+          ).map((definition) => (
+            <b key={definition.key}>{definition.label}</b>
+          ))}
+        </div>
+      ) : null}
       {error ? <p className="research-error" role="alert">{error}</p> : null}
       {busy && progress ? (
         <p className="research-progress" role="status">{progress}</p>
@@ -526,6 +538,9 @@ export function JobResearchPanel({
           <p className="research-audit-copy">
             Stand {new Date(research.researchedAt).toLocaleString("de-DE")} · Nur
             bestätigte Aussagen fließen in Unterlagen ein.
+            {research.usage
+              ? ` · ${research.usage.webSearchCalls} Websuchen · ${research.usage.inputTokens.toLocaleString("de-DE")} Eingabe- und ${research.usage.outputTokens.toLocaleString("de-DE")} Ausgabetokens`
+              : ""}
           </p>
         </div>
       ) : null}
@@ -535,8 +550,10 @@ export function JobResearchPanel({
   return compact ? (
     <details className="job-research-panel compact" open={!research || pendingCount > 0}>
       <summary>
-        Vakanzrecherche
-        {research ? ` · ${confirmedCount} bestätigt, ${pendingCount} offen` : " · noch offen"}
+        Vakanzrecherche · {researchScopes.length} Bereiche
+        {research
+          ? ` · ${confirmedCount} bestätigt, ${pendingCount} offen`
+          : " · noch offen"}
       </summary>
       {content}
     </details>
