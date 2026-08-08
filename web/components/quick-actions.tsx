@@ -31,6 +31,10 @@ import {
 } from "../lib/docx-template-profile";
 import { responsePayload } from "../lib/http-response";
 import {
+  applicationGenerationStartPayload,
+  isApplicationMasterCvReady,
+} from "../lib/application-generation-api";
+import {
   markApplicationPackageNeedsReview,
   type ApplicationPackage,
 } from "../lib/application-package";
@@ -56,6 +60,7 @@ import {
   type DocumentKind,
   type DocumentRef,
   type IntegrationConfig,
+  type MasterCvContent,
   type VacancyResearch,
 } from "../lib/types";
 
@@ -103,6 +108,9 @@ type QuickActionDialogProps = {
   kind: QuickActionKind;
   documents: DocumentRef[];
   applicationDraft: ApplicationProcess | null;
+  masterCvDocumentId: string | null;
+  masterCvContent: MasterCvContent | null;
+  masterCvPersisted: boolean;
   integrations: IntegrationConfig;
   onClose: () => void;
   onSaveDocument: (document: DocumentRef) => void;
@@ -132,6 +140,9 @@ export function QuickActionDialog({
   kind,
   documents,
   applicationDraft,
+  masterCvDocumentId,
+  masterCvContent,
+  masterCvPersisted,
   integrations,
   onClose,
   onSaveDocument,
@@ -182,6 +193,9 @@ export function QuickActionDialog({
             account={integrations.gmailAccount}
             documents={documents}
             initialApplication={applicationDraft}
+            masterCvDocumentId={masterCvDocumentId}
+            masterCvContent={masterCvContent}
+            masterCvPersisted={masterCvPersisted}
             onSaveDocument={onSaveDocument}
             onUpdateApplication={onUpdateApplication}
             toast={toast}
@@ -979,7 +993,7 @@ type ApplicationGenerationApiPayload = {
   };
 };
 
-const APPLICATION_GENERATION_POLL_DEADLINE_MS = 21 * 60_000;
+const APPLICATION_GENERATION_POLL_DEADLINE_MS = 9 * 60_000;
 
 function applicationGenerationProgress(
   stage: ApplicationGenerationJobReference["stage"],
@@ -1147,6 +1161,9 @@ function ApplicationStudio({
   account,
   documents,
   initialApplication,
+  masterCvDocumentId,
+  masterCvContent,
+  masterCvPersisted,
   onSaveDocument,
   onUpdateApplication,
   toast,
@@ -1154,6 +1171,9 @@ function ApplicationStudio({
   account: string;
   documents: DocumentRef[];
   initialApplication: ApplicationProcess | null;
+  masterCvDocumentId: string | null;
+  masterCvContent: MasterCvContent | null;
+  masterCvPersisted: boolean;
   onSaveDocument: (document: DocumentRef) => void;
   onUpdateApplication: (application: ApplicationProcess) => void;
   toast: (message: string) => void;
@@ -1162,7 +1182,6 @@ function ApplicationStudio({
   const [jobText, setJobText] = useState(
     initialApplication?.jobDescriptionText ?? "",
   );
-  const [masterCvFile, setMasterCvFile] = useState<File | null>(null);
   const [companyName, setCompanyName] = useState(
     initialApplication?.company ?? "",
   );
@@ -1221,7 +1240,15 @@ function ApplicationStudio({
   >(null);
   const activeGenerationJobIdRef = useRef<string | null>(null);
   const generationCancelRequested = useRef(false);
-  const masterCvInputRef = useRef<HTMLInputElement | null>(null);
+  const storedMasterCvDocument = documents.find(
+    (document) => document.id === masterCvDocumentId,
+  );
+  const masterCvReady = isApplicationMasterCvReady({
+    document: storedMasterCvDocument,
+    documentId: masterCvDocumentId,
+    content: masterCvContent,
+    persisted: masterCvPersisted,
+  });
   const confirmedClaims = useMemo(
     () =>
       research
@@ -1398,8 +1425,6 @@ function ApplicationStudio({
       setActiveGenerationJobId(null);
       setGenerationProgress("");
       setBusy(false);
-      setMasterCvFile(null);
-      if (masterCvInputRef.current) masterCvInputRef.current.value = "";
       toast("Bewerbungserstellung abgebrochen");
     } catch (error) {
       generationCancelRequested.current = false;
@@ -1423,22 +1448,15 @@ function ApplicationStudio({
       return;
     }
     if (
-      !masterCvFile ||
+      !masterCvReady ||
       (!jobUrl.trim() && !jobText.trim()) ||
       busy
     ) {
-      if (!masterCvFile) {
-        toast("Bitte den Master-CV für diesen Auftrag als DOCX auswählen");
+      if (!masterCvReady) {
+        toast("Der gespeicherte Master-CV fehlt oder wird noch synchronisiert");
       } else if (!jobUrl.trim() && !jobText.trim()) {
         toast("Bitte Stellen-URL oder vollständigen Anzeigentext angeben");
       }
-      return;
-    }
-    if (
-      masterCvFile.size > 16 * 1024 * 1024 ||
-      !masterCvFile.name.toLocaleLowerCase("de-DE").endsWith(".docx")
-    ) {
-      toast("Der Master-CV muss eine DOCX-Datei mit höchstens 16 MB sein");
       return;
     }
     const normalizedPreferences = {
@@ -1480,7 +1498,6 @@ function ApplicationStudio({
     setEditingResult(false);
     generationCancelRequested.current = false;
     try {
-      const form = new FormData();
       const values = {
         jobUrl,
         jobText,
@@ -1519,15 +1536,18 @@ function ApplicationStudio({
         researchContext: JSON.stringify(research),
         generationAction: action,
         generationRequestId: crypto.randomUUID(),
+        draftPackage: draft ? JSON.stringify(draft) : "",
       };
-      Object.entries(values).forEach(([key, value]) => form.append(key, value));
-      form.append("kind", "application");
-      form.append("masterCvFile", masterCvFile);
-      if (draft) form.append("draftPackage", JSON.stringify(draft));
+      const startPayload = applicationGenerationStartPayload(values, {
+        masterCvDocumentId: masterCvDocumentId!,
+        masterCvFingerprint: masterCvContent!.sourceFingerprint,
+        masterCvEditRevision: masterCvContent!.editRevision,
+      });
 
       let packageResponse = await fetch("/api/assistant", {
         method: "POST",
-        body: form,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(startPayload),
       });
       const pollingStartedAt = Date.now();
       let pollingDelay = 2_000;
@@ -1739,8 +1759,6 @@ function ApplicationStudio({
           <button
             onClick={() => {
               setResult(null);
-              setMasterCvFile(null);
-              if (masterCvInputRef.current) masterCvInputRef.current.value = "";
               setGenerationUsage(undefined);
             }}
             type="button"
@@ -2177,29 +2195,18 @@ function ApplicationStudio({
           />
         </label>
       </div>
-      <label className="master-cv-choice active">
+      <div className="master-cv-choice active">
         <span aria-hidden="true">M</span>
         <div>
-          <strong>Master-CV für diesen Auftrag auswählen</strong>
+          <strong>Gespeicherter Master-CV</strong>
           <small>
-            {masterCvFile
-              ? `${masterCvFile.name} · ${(masterCvFile.size / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`
-              : "DOCX · höchstens 16 MB · wird nicht in der Dokumentbibliothek gespeichert"}
+            {masterCvReady
+              ? `${storedMasterCvDocument!.name} · Version ${masterCvContent!.editRevision + 1}`
+              : "Master-CV fehlt, ist ungültig oder wird noch synchronisiert"}
           </small>
-          <input
-            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null;
-              setMasterCvFile(file);
-              setGenerationError([]);
-            }}
-            ref={masterCvInputRef}
-            required
-            type="file"
-          />
         </div>
-        <b>{masterCvFile ? "Ausgewählt" : "Pflicht"}</b>
-      </label>
+        <b>{masterCvReady ? "Bereit" : "Nicht bereit"}</b>
+      </div>
 
       <div className="studio-step">
         <span>2</span>
@@ -2604,7 +2611,7 @@ function ApplicationStudio({
           className="button button-primary"
           disabled={
             busy ||
-            !masterCvFile ||
+            !masterCvReady ||
             (!jobUrl.trim() && !jobText.trim())
           }
           type="submit"

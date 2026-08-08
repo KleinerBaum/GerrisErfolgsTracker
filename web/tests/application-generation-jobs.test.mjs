@@ -280,7 +280,7 @@ test("verwendet eine übergebene Startkennung idempotent und startet nur einen M
   assert.equal(model.starts[0].jobId, "client-request-0001");
 });
 
-test("löscht ein terminales Ergebnis nach zehn Minuten", async () => {
+test("löscht ein terminales Ergebnis nach neun Minuten", async () => {
   const { store, model, service, advance } = harness();
   await service.start("owner-a", generationRequestFixture());
   model.queue("resp_test_1", {
@@ -288,7 +288,7 @@ test("löscht ein terminales Ergebnis nach zehn Minuten", async () => {
     output: makeValidDraft(),
   });
   await service.poll("owner-a", "application-job-1");
-  advance(10 * 60_000 + 1);
+  advance(9 * 60_000 + 1);
 
   await assert.rejects(
     () => service.poll("owner-a", "application-job-1"),

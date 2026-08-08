@@ -10,8 +10,8 @@ import {
   type ApplicationModelStage,
 } from "./application-generation.ts";
 
-export const APPLICATION_JOB_LIFETIME_MS = 20 * 60_000;
-export const APPLICATION_TERMINAL_LIFETIME_MS = 10 * 60_000;
+export const APPLICATION_JOB_LIFETIME_MS = 9 * 60_000;
+export const APPLICATION_TERMINAL_LIFETIME_MS = 9 * 60_000;
 
 export type ApplicationModelUsage = {
   stage: ApplicationModelStage;

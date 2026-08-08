@@ -1,7 +1,8 @@
+import { env } from "cloudflare:workers";
 import { and, eq, lt } from "drizzle-orm";
 
 import { getDb } from "../../../db";
-import { applicationGenerationJobs } from "../../../db/schema";
+import { applicationGenerationJobs, userStates } from "../../../db/schema";
 import { ownerEmail, ownerHash, sameOrigin } from "../../../lib/server-auth";
 import { localComplexityAssessment } from "../../../lib/gamification";
 import {
@@ -13,7 +14,6 @@ import type { GeneratedApplicationPackage } from "../../../lib/application-packa
 import { normalizeApplicationGenerationPreferences } from "../../../lib/application-workflow";
 import {
   ApplicationGenerationError,
-  applicationMasterCvUploadIssue,
   applicationModelBudget,
   APPLICATION_PACKAGE_SCHEMA,
   applicationGenerationInstructions,
@@ -28,7 +28,10 @@ import {
   type ApplicationJobResult,
   type ApplicationJobStore,
 } from "../../../lib/server/application-generation-jobs";
-import { parseMasterCvDocument } from "../../../lib/server/master-cv-import";
+import {
+  ApplicationMasterCvReferenceError,
+  resolveApplicationMasterCv,
+} from "../../../lib/server/application-master-cv";
 import { DIFFICULTY_BANDS } from "../../../lib/types";
 import type {
   ApplicationGenerationInputs,
@@ -179,6 +182,9 @@ type ApplicationInput = {
   generationAction: string;
   draftPackage: string;
   generationRequestId: string;
+  masterCvDocumentId: string;
+  masterCvFingerprint: string;
+  masterCvEditRevision: number;
 };
 
 type JournalAnalysisInput = {
@@ -203,7 +209,7 @@ type GamificationAssessmentInput = {
   assigned: boolean;
 };
 
-const text = (value: FormDataEntryValue | null, max: number): string =>
+const text = (value: unknown, max: number): string =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
 
 function jsonStringList(value: string, maximumItems: number): string[] {
@@ -1095,40 +1101,55 @@ function generatedApplicationPackage(
   return candidate as GeneratedApplicationPackage;
 }
 
-async function handleApplication(form: FormData): Promise<ApplicationGenerationRequest> {
+async function handleApplication(
+  value: unknown,
+  email: string,
+): Promise<ApplicationGenerationRequest> {
+  const source =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
   const input: ApplicationInput = {
     kind: "application",
-    jobUrl: text(form.get("jobUrl"), 2_000),
-    jobText: redactObviousCredentials(text(form.get("jobText"), 30_000)),
-    companyName: text(form.get("companyName"), 300),
-    roleTitle: text(form.get("roleTitle"), 300),
-    contactPerson: text(form.get("contactPerson"), 300),
-    motivation: text(form.get("motivation"), 4_000),
-    achievements: text(form.get("achievements"), 6_000),
-    strengths: text(form.get("strengths"), 4_000),
-    constraints: text(form.get("constraints"), 4_000),
-    availability: text(form.get("availability"), 2_000),
-    style: text(form.get("style"), 100),
-    formality: text(form.get("formality"), 40),
-    addressStyle: text(form.get("addressStyle"), 40),
-    language: text(form.get("language"), 100),
-    cvLength: text(form.get("cvLength"), 40),
-    focusThemes: text(form.get("focusThemes"), 4_000),
-    customFocus: text(form.get("customFocus"), 2_000),
-    outputKinds: text(form.get("outputKinds"), 1_000),
-    researchScopes: text(form.get("researchScopes"), 1_000),
-    researchSelectionMode: text(form.get("researchSelectionMode"), 40),
-    selectedResearchClaimIds: text(form.get("selectedResearchClaimIds"), 20_000),
-    desiredSalaryAnnual: text(form.get("desiredSalaryAnnual"), 20),
-    minimumSalaryAnnual: text(form.get("minimumSalaryAnnual"), 20),
-    publishedCompensation: text(form.get("publishedCompensation"), 1_000),
-    salaryOutlook: text(form.get("salaryOutlook"), 20),
-    salaryFlexibility: text(form.get("salaryFlexibility"), 40),
-    mentionSalary: text(form.get("mentionSalary"), 40),
-    researchContext: text(form.get("researchContext"), 100_000),
-    generationAction: text(form.get("generationAction"), 40),
-    draftPackage: text(form.get("draftPackage"), 250_000),
-    generationRequestId: text(form.get("generationRequestId"), 200),
+    jobUrl: text(source.jobUrl, 2_000),
+    jobText: redactObviousCredentials(text(source.jobText, 30_000)),
+    companyName: text(source.companyName, 300),
+    roleTitle: text(source.roleTitle, 300),
+    contactPerson: text(source.contactPerson, 300),
+    motivation: text(source.motivation, 4_000),
+    achievements: text(source.achievements, 6_000),
+    strengths: text(source.strengths, 4_000),
+    constraints: text(source.constraints, 4_000),
+    availability: text(source.availability, 2_000),
+    style: text(source.style, 100),
+    formality: text(source.formality, 40),
+    addressStyle: text(source.addressStyle, 40),
+    language: text(source.language, 100),
+    cvLength: text(source.cvLength, 40),
+    focusThemes: text(source.focusThemes, 4_000),
+    customFocus: text(source.customFocus, 2_000),
+    outputKinds: text(source.outputKinds, 1_000),
+    researchScopes: text(source.researchScopes, 1_000),
+    researchSelectionMode: text(source.researchSelectionMode, 40),
+    selectedResearchClaimIds: text(source.selectedResearchClaimIds, 20_000),
+    desiredSalaryAnnual: text(source.desiredSalaryAnnual, 20),
+    minimumSalaryAnnual: text(source.minimumSalaryAnnual, 20),
+    publishedCompensation: text(source.publishedCompensation, 1_000),
+    salaryOutlook: text(source.salaryOutlook, 20),
+    salaryFlexibility: text(source.salaryFlexibility, 40),
+    mentionSalary: text(source.mentionSalary, 40),
+    researchContext: text(source.researchContext, 100_000),
+    generationAction: text(source.generationAction, 40),
+    draftPackage: text(source.draftPackage, 250_000),
+    generationRequestId: text(source.generationRequestId, 200),
+    masterCvDocumentId: text(source.masterCvDocumentId, 200),
+    masterCvFingerprint: text(source.masterCvFingerprint, 200),
+    masterCvEditRevision:
+      typeof source.masterCvEditRevision === "number" &&
+      Number.isSafeInteger(source.masterCvEditRevision) &&
+      source.masterCvEditRevision >= 0
+        ? source.masterCvEditRevision
+        : -1,
   };
   if (!input.jobUrl && !input.jobText) {
     throw new ApplicationGenerationError(
@@ -1148,57 +1169,45 @@ async function handleApplication(form: FormData): Promise<ApplicationGenerationR
     }
   }
 
-  const masterCvFile =
-    form.get("masterCvFile") ?? form.get("masterCv") ?? form.get("cv");
-  if (!(masterCvFile instanceof File) || masterCvFile.size === 0) {
+  if (
+    !input.masterCvDocumentId ||
+    !input.masterCvFingerprint ||
+    input.masterCvEditRevision < 0
+  ) {
     throw new ApplicationGenerationError(
-      applicationMasterCvUploadIssue(null) ??
-        "Ein neu ausgewählter Master-CV als DOCX ist erforderlich.",
+      "Ein gespeicherter Master-CV ist erforderlich.",
       400,
     );
   }
-  const masterCvUploadIssue = applicationMasterCvUploadIssue(masterCvFile);
-  if (masterCvUploadIssue) {
-    throw new ApplicationGenerationError(
-      masterCvUploadIssue,
-      400,
-    );
-  }
-
   const parsedAt = new Date().toISOString();
-  let parsedMasterCv: Awaited<ReturnType<typeof parseMasterCvDocument>>;
-  try {
-    parsedMasterCv = await parseMasterCvDocument(
-      new Uint8Array(await masterCvFile.arrayBuffer()),
-      parsedAt,
-    );
-  } catch (error) {
-    throw new ApplicationGenerationError(
-      error instanceof Error
-        ? error.message
-        : "Der Original-Master-CV konnte nicht strukturell geprüft werden.",
-      400,
-    );
-  }
-  const masterCv: MasterCvContent = {
-    schemaVersion: 2,
-    sourceDocumentId:
-      "fresh-master:" + parsedMasterCv.sourceFingerprint.slice(0, 16),
-    passportDocumentId: null,
-    name: parsedMasterCv.name,
-    headline: parsedMasterCv.headline,
-    subheadline: parsedMasterCv.subheadline,
-    contactLine: parsedMasterCv.contactLine,
-    language: parsedMasterCv.language,
-    sections: parsedMasterCv.sections,
-    links: parsedMasterCv.links,
-    sourceFingerprint: parsedMasterCv.sourceFingerprint,
-    coverage: parsedMasterCv.coverage,
-    passport: parsedMasterCv.passport,
-    importedAt: parsedAt,
-    updatedAt: parsedAt,
-    editRevision: 0,
-  };
+  const hash = await ownerHash(email);
+  const masterCv: MasterCvContent = await resolveApplicationMasterCv(
+    {
+      documentId: input.masterCvDocumentId,
+      fingerprint: input.masterCvFingerprint,
+      editRevision: input.masterCvEditRevision,
+      ownerHash: hash,
+    },
+    {
+      async loadState() {
+        const [row] = await getDb()
+          .select({ stateJson: userStates.stateJson })
+          .from(userStates)
+          .where(eq(userStates.ownerEmail, email))
+          .limit(1);
+        if (!row) return null;
+        try {
+          return JSON.parse(row.stateJson) as unknown;
+        } catch {
+          return null;
+        }
+      },
+      async headObject(fileId) {
+        if (!env.FILES) return null;
+        return env.FILES.head(`${hash}/${fileId}`);
+      },
+    },
+  );
 
   let research: VacancyResearch | null = null;
   if (input.researchContext && input.researchContext !== "null") {
@@ -1339,9 +1348,20 @@ export async function POST(request: Request) {
 
   try {
     const contentType = request.headers.get("content-type") ?? "";
+    if (contentType.includes("multipart/form-data")) {
+      return Response.json(
+        { error: "Bewerbungsaufträge akzeptieren nur gespeicherte Master-CV-Referenzen." },
+        { status: 415 },
+      );
+    }
     let result: unknown;
     let mode = "ai";
-    if (contentType.includes("multipart/form-data")) {
+    const input: unknown = await request.json();
+    if (
+      input &&
+      typeof input === "object" &&
+      (input as Record<string, unknown>).kind === "application"
+    ) {
       const apiKey = process.env.OPENAI_API_KEY?.trim();
       if (!apiKey) {
         throw new ApplicationGenerationError(
@@ -1349,8 +1369,10 @@ export async function POST(request: Request) {
           503,
         );
       }
-      const form = await request.formData();
-      const generationRequestId = text(form.get("generationRequestId"), 200);
+      const generationRequestId = text(
+        (input as Record<string, unknown>).generationRequestId,
+        200,
+      );
       if (
         generationRequestId &&
         !/^[a-z0-9][a-z0-9_-]{15,199}$/i.test(generationRequestId)
@@ -1360,7 +1382,7 @@ export async function POST(request: Request) {
           400,
         );
       }
-      const generationRequest = await handleApplication(form);
+      const generationRequest = await handleApplication(input, email);
       const service = new ApplicationGenerationJobService(
         new D1ApplicationJobStore(),
         applicationBackgroundModel(apiKey),
@@ -1373,7 +1395,6 @@ export async function POST(request: Request) {
         ),
       );
     } else {
-      const input: unknown = await request.json();
       if (
         input &&
         typeof input === "object" &&
@@ -1449,10 +1470,15 @@ export async function POST(request: Request) {
       error instanceof Error ? error.message : "Der Entwurf konnte nicht erstellt werden.";
     if (
       error instanceof ApplicationGenerationError ||
-      error instanceof ApplicationJobError
+      error instanceof ApplicationJobError ||
+      error instanceof ApplicationMasterCvReferenceError
     ) {
       return Response.json(
-        { error: message, issues: error.issues, fallback: false },
+        {
+          error: message,
+          issues: "issues" in error ? error.issues : [],
+          fallback: false,
+        },
         { status: error.status },
       );
     }

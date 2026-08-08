@@ -120,6 +120,9 @@ function writeLocalState(state: AppState) {
 export function useGerriState(initialState: AppState) {
   const [state, setState] = useState(() => normalizeState(initialState));
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("lade");
+  const [persistedRevision, setPersistedRevision] = useState<number | null>(
+    null,
+  );
   const [ready, setReady] = useState(false);
   const remoteAvailable = useRef(false);
   const remoteRevision = useRef<number | null>(null);
@@ -140,6 +143,7 @@ export function useGerriState(initialState: AppState) {
             writeLocalState(normalized);
             remoteAvailable.current = true;
             remoteRevision.current = normalized.revision;
+            setPersistedRevision(normalized.revision);
             setSyncStatus("synchronisiert");
           }
         } else if (response.status === 204) {
@@ -147,6 +151,7 @@ export function useGerriState(initialState: AppState) {
           if (local) setState(local);
           remoteAvailable.current = true;
           remoteRevision.current = 0;
+          setPersistedRevision(0);
           setSyncStatus("synchronisiert");
         } else {
           const local = readLocalState();
@@ -185,6 +190,7 @@ export function useGerriState(initialState: AppState) {
         if (response.ok) {
           remoteAvailable.current = true;
           remoteRevision.current = state.revision;
+          setPersistedRevision(state.revision);
           setSyncStatus("synchronisiert");
         } else if (response.status === 409) {
           setSyncStatus("konflikt");
@@ -263,6 +269,7 @@ export function useGerriState(initialState: AppState) {
       writeLocalState(normalized);
       remoteAvailable.current = true;
       remoteRevision.current = normalized.revision;
+      setPersistedRevision(normalized.revision);
       setSyncStatus("synchronisiert");
     } catch (error) {
       setSyncStatus("konflikt");
@@ -274,6 +281,7 @@ export function useGerriState(initialState: AppState) {
     state,
     ready,
     syncStatus,
+    persistedRevision,
     updateState,
     replaceState: setState,
     exportBackup,

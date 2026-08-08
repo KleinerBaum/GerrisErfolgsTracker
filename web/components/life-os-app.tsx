@@ -458,6 +458,7 @@ export function LifeOsApp({
     state,
     ready,
     syncStatus,
+    persistedRevision,
     updateState,
     exportBackup,
     importBackup,
@@ -2115,6 +2116,12 @@ export function LifeOsApp({
           integrations={integrations}
           kind={quickAction}
           applicationDraft={applicationDraft}
+          masterCvDocumentId={state.masterCvDocumentId}
+          masterCvContent={state.masterCvContent}
+          masterCvPersisted={
+            syncStatus === "synchronisiert" &&
+            persistedRevision === state.revision
+          }
           onClose={() => {
             setQuickAction(null);
             setApplicationDraft(null);

@@ -3,8 +3,6 @@ import test from "node:test";
 
 import {
   ApplicationGenerationError,
-  APPLICATION_MASTER_CV_MAX_BYTES,
-  applicationMasterCvUploadIssue,
   applicationModelBudget,
   applicationModelInput,
   buildApplicationEvidenceRegister,
@@ -136,28 +134,6 @@ test("API-Logik liefert bei fehlendem Master-CV 400", async () => {
       assert.equal(error.status, 400);
       return true;
     },
-  );
-});
-
-test("verlangt für jeden Auftrag eine gültige DOCX-Datei bis 16 MB", () => {
-  assert.match(applicationMasterCvUploadIssue(null), /neu ausgewählter Master-CV/);
-  assert.match(
-    applicationMasterCvUploadIssue({ name: "master-cv.pdf", size: 2_000 }),
-    /DOCX-Format/,
-  );
-  assert.match(
-    applicationMasterCvUploadIssue({
-      name: "master-cv.docx",
-      size: APPLICATION_MASTER_CV_MAX_BYTES + 1,
-    }),
-    /höchstens 16 MB/,
-  );
-  assert.equal(
-    applicationMasterCvUploadIssue({
-      name: "master-cv.docx",
-      size: APPLICATION_MASTER_CV_MAX_BYTES,
-    }),
-    null,
   );
 });
 

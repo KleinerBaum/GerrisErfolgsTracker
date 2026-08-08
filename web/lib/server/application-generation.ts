@@ -14,23 +14,6 @@ import type {
   MasterCvSectionKind,
 } from "../types";
 
-export const APPLICATION_MASTER_CV_MAX_BYTES = 16 * 1024 * 1024;
-
-export function applicationMasterCvUploadIssue(
-  file: { name: string; size: number } | null,
-): string | null {
-  if (!file || file.size <= 0) {
-    return "Ein neu ausgewählter Master-CV als DOCX ist erforderlich.";
-  }
-  if (file.size > APPLICATION_MASTER_CV_MAX_BYTES) {
-    return "Der Master-CV darf höchstens 16 MB groß sein.";
-  }
-  if (!file.name.toLocaleLowerCase("de-DE").endsWith(".docx")) {
-    return "Die Bewerbungserzeugung benötigt einen Master-CV im DOCX-Format.";
-  }
-  return null;
-}
-
 export type ConfirmedApplicationResearchFact = {
   id: string;
   factKey: JobResearchFactKey;
