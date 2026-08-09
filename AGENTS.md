@@ -28,13 +28,20 @@ Lokales Dev-Setup:
     python -m venv .venv
     source .venv/bin/activate  # Windows: .venv\Scripts\activate
     pip install --upgrade pip
-    pip install -r requirements.txt -r requirements-dev.txt
+    pip install --require-hashes -r requirements-dev.txt
     streamlit run app.py
 
 Runtime-only (z. B. Deployment):
 
-    pip install -r requirements.txt
+    pip install --require-hashes -r requirements.txt
     streamlit run app.py
+
+Abhängigkeiten aktualisieren (nur bei bewusster Dependency-Änderung):
+
+    uv pip compile --python-version 3.12 --generate-hashes -o requirements.txt requirements.in
+    uv pip compile --python-version 3.12 --generate-hashes -o requirements-dev.txt requirements-dev.in
+
+`requirements.in` und `requirements-dev.in` sind editierbare Quellen. Die beiden `.txt`-Dateien sind die eingecheckten, gehashten Lockdateien; `requirements.txt` bleibt damit für Streamlit-Deployments erkennbar.
 
 ---
 

@@ -6,6 +6,8 @@ Diese Anleitung gilt für die Streamlit-Laufzeit. Der kanonische lokale Fallback
 .data/GerrisErfolgsTracker/gerris_state.json
 ```
 
+> **Laufzeitgrenze:** Diese JSON-Datei gehört ausschließlich zur Streamlit-App. Sie darf nicht in `/api/state` der Sites-Webapp importiert werden; umgekehrt ist ein Sites-AppState kein Streamlit-Backup. Siehe den [`Python-und-Sites-Laufzeitvertrag`](cross-runtime-contract.md).
+
 ## Verhalten bei Fehlern
 
 - Fehlt die Datei, startet die App mit Defaults.

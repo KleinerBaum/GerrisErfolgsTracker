@@ -134,6 +134,7 @@ Im Bewerbungsstudio wird die Konfiguration je ausgewähltem Ergebnis gespeichert
 - Backup-Upload: Im Header-Dropdown **⚙️ Einstellungen** → **Sicherheit & Daten** kannst du eine `gerris_state.json` hochladen und den aktuellen Stand ersetzen; der Import-Button nutzt den Formular-Submit, damit Upload und Bestätigung zuverlässig funktionieren / Backup upload: use **⚙️ Settings** → **Safety & data** in the header dropdown to upload a `gerris_state.json` and replace the current state; the import button uses the form submit so uploads and confirmations work reliably.
 - Recovery bei defekter Datei: Benenne `gerris_state.json` in `gerris_state.bak` um, starte die App neu (sie legt eine frische Datei an) und kopiere anschließend gültige Teile aus dem Backup zurück.
 - Reset: Löschen oder Umbenennen der Datei setzt den Zustand komplett zurück; hilfreich, wenn die UI nicht mehr lädt oder JSON-Strukturen geändert wurden.
+- **Getrennte Laufzeiten:** Ein Streamlit-Backup darf nicht in die Sites-Webapp importiert werden – und umgekehrt. Die Formate, IDs und Zeitsemantik sind bewusst getrennt; Details stehen im [`Laufzeitvertrag`](docs/cross-runtime-contract.md).
 
 ## Lokale Einrichtung
 
@@ -141,12 +142,19 @@ Im Bewerbungsstudio wird die Konfiguration je ausgewähltem Ergebnis gespeichert
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 pip install --upgrade pip
-pip install -r requirements.txt -r requirements-dev.txt  # Dev-Setup / development setup
+pip install --require-hashes -r requirements-dev.txt  # Dev-Setup / development setup
 streamlit run app.py
 
 # Runtime-only / nur Laufzeit (z. B. Deployment):
-# pip install -r requirements.txt
+# pip install --require-hashes -r requirements.txt
 # streamlit run app.py
+```
+
+Die editierbaren Abhängigkeitsquellen liegen in `requirements.in` und `requirements-dev.in`. Nach einer bewussten Änderung werden die gehashten Lockdateien unter Python 3.12 neu erzeugt:
+
+```bash
+uv pip compile --python-version 3.12 --generate-hashes -o requirements.txt requirements.in
+uv pip compile --python-version 3.12 --generate-hashes -o requirements-dev.txt requirements-dev.in
 ```
 
 ## Code-Struktur / Code structure
@@ -246,7 +254,7 @@ OPENAI_API_KEY = "sk-..."
    - `OPENAI_API_KEY = sk-...`
    - Optional `OPENAI_BASE_URL = https://eu.api.openai.com/v1`
    - Optional `OPENAI_MODEL = gpt-5.6-luna`
-3. Deploy starten; die Abhängigkeiten werden über `requirements.txt` installiert.
+3. Deploy starten; die gehashte Laufzeit-Lockdatei `requirements.txt` wird installiert.
 
 > **Wichtig:** API-Keys niemals in das Repository einchecken. Nutze lokal `.streamlit/secrets.toml` und auf der Streamlit
 > Community Cloud die Secrets UI. API-Keys werden nicht in der Persistenzdatei gespeichert; entferne sensible Inhalte aus
@@ -254,8 +262,9 @@ OPENAI_API_KEY = "sk-..."
 
 ## Entwicklung
 
-- Runtime-Abhängigkeiten: `pip install -r requirements.txt` (für Deployment oder minimale lokale Nutzung).
-- Entwicklungs-Setup: `pip install -r requirements.txt -r requirements-dev.txt` installiert zusätzlich `ruff`, `mypy` und `pytest`.
+- Runtime-Abhängigkeiten: `pip install --require-hashes -r requirements.txt` (für Deployment oder minimale lokale Nutzung).
+- Entwicklungs-Setup: `pip install --require-hashes -r requirements-dev.txt` installiert zusätzlich `ruff`, `mypy` und `pytest`.
+- Abhängigkeiten ändern: nur `requirements.in` bzw. `requirements-dev.in` bearbeiten und anschließend beide Lockdateien mit `uv pip compile --python-version 3.12 --generate-hashes` erneuern.
 - Format/Lint: `ruff format` und `ruff check .`
 - Typprüfung: `mypy`
 - Tests: `pytest -q`

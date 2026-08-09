@@ -172,5 +172,4 @@ marimo/_lsp/
 __marimo__/
 .data/
 secrets.toml
-.envkpi_venv/
 kpi_venv/

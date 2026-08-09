@@ -63,6 +63,7 @@ def test_corrupt_state_is_quarantined_without_replacement(tmp_path) -> None:
 
 def test_failed_atomic_replace_cleans_temporary_file(monkeypatch, tmp_path) -> None:
     backend = FileStorageBackend(tmp_path / "state.json")
+    backend.path.write_text('{"existing": true}', encoding="utf-8")
 
     def fail_replace(*_args, **_kwargs):
         raise OSError("simulated replace failure")
@@ -71,6 +72,7 @@ def test_failed_atomic_replace_cleans_temporary_file(monkeypatch, tmp_path) -> N
     with pytest.raises(OSError, match="simulated replace failure"):
         backend.save_state({"todos": []})
 
+    assert backend.path.read_text(encoding="utf-8") == '{"existing": true}'
     assert not list(tmp_path.glob(".state.json.*.tmp"))
 
 
@@ -95,6 +97,14 @@ def test_resolve_path_without_double_folder() -> None:
     resolved = resolve_state_file_path(env=env)
 
     assert resolved == custom_tracker_dir / DEFAULT_STATE_FILENAME
+
+
+def test_resolve_path_without_onedrive_hint_uses_project_fallback(monkeypatch) -> None:
+    monkeypatch.setattr(storage_module, "_candidate_onedrive_roots", lambda _env: ())
+
+    resolved = resolve_state_file_path(env={})
+
+    assert resolved == Path(".data") / TRACKER_FOLDER_NAME / DEFAULT_STATE_FILENAME
 
 
 def test_attachment_directory_respects_onedrive_root(tmp_path, monkeypatch) -> None:
