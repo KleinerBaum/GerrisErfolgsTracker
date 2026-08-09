@@ -1,6 +1,7 @@
 import type {
   ApplicationActivity,
   ApplicationActivityType,
+  ApplicationArtifactModelSettings,
   ApplicationContact,
   ApplicationDocumentDesign,
   ApplicationDocumentKind,
@@ -16,7 +17,11 @@ import type {
   ApplicationResearchScope,
   DocumentRef,
   SalaryOutlook,
-} from "./types";
+} from "./types.ts";
+import {
+  applicationModelSetting,
+  DEFAULT_APPLICATION_MODEL_SETTINGS,
+} from "./llm-config.ts";
 
 export const APPLICATION_FOCUS_THEMES = [
   "KI & Automatisierung",
@@ -104,6 +109,17 @@ export const DEFAULT_APPLICATION_GENERATION_PREFERENCES: ApplicationGenerationPr
   focusThemes: [],
   customFocus: "",
   outputKinds: ["tailored-cv", "cover-letter"],
+  modelSettings: {
+    "tailored-cv": { ...DEFAULT_APPLICATION_MODEL_SETTINGS["tailored-cv"] },
+    "cover-letter": { ...DEFAULT_APPLICATION_MODEL_SETTINGS["cover-letter"] },
+    "application-email": {
+      ...DEFAULT_APPLICATION_MODEL_SETTINGS["application-email"],
+    },
+    "company-brief": { ...DEFAULT_APPLICATION_MODEL_SETTINGS["company-brief"] },
+    "interview-prep": {
+      ...DEFAULT_APPLICATION_MODEL_SETTINGS["interview-prep"],
+    },
+  },
   researchScopes: ["job_posting", "company"],
   researchSelectionMode: "all_confirmed",
   selectedResearchClaimIds: [],
@@ -348,6 +364,10 @@ export function normalizeApplicationGenerationPreferences(
     (item): item is ApplicationResearchScope =>
       RESEARCH_SCOPES.has(item as ApplicationResearchScope),
   );
+  const modelSettingsCandidate =
+    candidate.modelSettings && typeof candidate.modelSettings === "object"
+      ? (candidate.modelSettings as Partial<ApplicationArtifactModelSettings>)
+      : ({} as Partial<ApplicationArtifactModelSettings>);
   return {
     formality: ["modern", "balanced", "formal"].includes(candidate.formality ?? "")
       ? (candidate.formality as ApplicationGenerationPreferences["formality"])
@@ -368,6 +388,28 @@ export function normalizeApplicationGenerationPreferences(
       outputKinds.length > 0
         ? outputKinds
         : [...DEFAULT_APPLICATION_GENERATION_PREFERENCES.outputKinds],
+    modelSettings: {
+      "tailored-cv": applicationModelSetting(
+        "tailored-cv",
+        modelSettingsCandidate["tailored-cv"],
+      ),
+      "cover-letter": applicationModelSetting(
+        "cover-letter",
+        modelSettingsCandidate["cover-letter"],
+      ),
+      "application-email": applicationModelSetting(
+        "application-email",
+        modelSettingsCandidate["application-email"],
+      ),
+      "company-brief": applicationModelSetting(
+        "company-brief",
+        modelSettingsCandidate["company-brief"],
+      ),
+      "interview-prep": applicationModelSetting(
+        "interview-prep",
+        modelSettingsCandidate["interview-prep"],
+      ),
+    },
     researchScopes:
       researchScopes.length > 0
         ? researchScopes

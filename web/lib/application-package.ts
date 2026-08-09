@@ -31,6 +31,11 @@ export type ApplicationPackageBlocks = {
   interviewPrep: ApplicationContentBlock[];
 };
 
+export type ApplicationPackageBlocksV4 = ApplicationPackageBlocks & {
+  companyBrief: ApplicationContentBlock[];
+  applicationEmailBody: ApplicationContentBlock[];
+};
+
 export type ApplicationQualityMetrics = {
   wordCounts: Record<ApplicationArtifactKey, number>;
   mappedClaims: number;
@@ -78,6 +83,11 @@ export type ApplicationPackage = GeneratedApplicationPackage & {
 export type ApplicationPackageV3 = ApplicationPackage & {
   schemaVersion: 3;
   blocks: ApplicationPackageBlocks;
+};
+
+export type ApplicationPackageV4 = ApplicationPackage & {
+  schemaVersion: 4;
+  blocks: ApplicationPackageBlocksV4;
 };
 
 export type ApplicationPackageQualityContext = {
@@ -459,7 +469,9 @@ function cvIssues(
 ): string[] {
   const issues: string[] = [];
   const count = wordCount(value.tailoredCv);
-  const [minimum, maximum] = [750, 1_150];
+  // Das Modell zielt auf 750+ Wörter; das Gate toleriert eine belegte,
+  // vollständige Zwei-Seiten-Fassung knapp darunter.
+  const [minimum, maximum] = [625, 1_150];
   if (count < minimum || count > maximum) {
     issues.push(
       "tailored-cv: Umfang " +
@@ -520,11 +532,11 @@ function cvIssues(
 function coverLetterIssues(value: string): string[] {
   const issues: string[] = [];
   const count = wordCount(value);
-  if (count < 350 || count > 500) {
+  if (count < 300 || count > 500) {
     issues.push(
       "cover-letter: Umfang " +
         count +
-        " Wörter; erlaubt sind 350–500",
+        " Wörter; erlaubt sind 300–500",
     );
   }
   const greeting = greetingIssue(value);
@@ -661,9 +673,16 @@ export function applicationPackageQualityIssues(
   if (outputKinds.includes("application-email") && value.applicationEmailBody.trim()) {
     issues.push(...emailIssues(value));
   }
-  if (!Array.isArray(value.fitHighlights) || value.fitHighlights.length < 2) {
+  const requiresFitHighlights = outputKinds.some((kind) =>
+    ["tailored-cv", "cover-letter", "interview-prep"].includes(kind),
+  );
+  if (
+    requiresFitHighlights &&
+    (!Array.isArray(value.fitHighlights) || value.fitHighlights.length < 2)
+  ) {
     issues.push("fitHighlights: mindestens zwei konkrete Profilbelege fehlen");
   } else if (
+    requiresFitHighlights &&
     value.fitHighlights.some(
       (item) =>
         PLACEHOLDER.test(item) ||

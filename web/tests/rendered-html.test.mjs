@@ -863,7 +863,8 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(assistantRoute, /ApplicationGenerationJobService/);
   assert.match(assistantRoute, /background: true/);
   assert.match(assistantRoute, /action === "poll"/);
-  assert.match(applicationGenerationJobs, /evaluateApplicationModelOutput/);
+  assert.match(applicationGenerationJobs, /evaluateApplicationArtifactDraft/);
+  assert.match(applicationGenerationJobs, /evaluateApplicationArtifactSet/);
   assert.match(applicationGenerationJobs, /stage: "repair"/);
   assert.match(assistantRoute, /ApplicationGenerationError/);
   assert.match(applicationGeneration, /keinen Webzugriff/);

@@ -136,7 +136,7 @@ test("verwirft grammatisch falsche Anreden und Arbeitgeberbedingungen im Kandida
   assert.ok(issues.some((issue) => /Arbeitgeberbedingungen/.test(issue)));
 });
 
-test("wendet den festen 750-bis-1150-Wort-Vertrag auch auf alte Längeneinstellungen an", () => {
+test("wendet den festen Zwei-Seiten-Vertrag auch auf alte Längeneinstellungen an", () => {
   const draft = makeValidDraft();
 
   for (const legacyLength of ["compact", "detailed"]) {

@@ -57,6 +57,20 @@
       "when": 1786029105684,
       "tag": "0007_serious_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1786233296174,
+      "tag": "0008_outgoing_rhodey",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1786272844206,
+      "tag": "0009_serious_nehzno",
+      "breakpoints": true
     }
   ]
 }

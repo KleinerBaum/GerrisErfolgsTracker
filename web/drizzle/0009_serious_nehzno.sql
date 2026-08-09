@@ -1,0 +1,1 @@
+ALTER TABLE `application_generation_jobs` ADD `work_json` text DEFAULT '[]' NOT NULL;

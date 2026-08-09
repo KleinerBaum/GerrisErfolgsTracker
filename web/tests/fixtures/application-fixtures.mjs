@@ -487,6 +487,13 @@ export const preferencesFixture = {
   focusThemes: ["Prozessoptimierung", "Stakeholder-Management"],
   customFocus: "",
   outputKinds: allOutputKinds,
+  modelSettings: {
+    "tailored-cv": { model: "terra", effort: "medium" },
+    "cover-letter": { model: "terra", effort: "medium" },
+    "application-email": { model: "luna", effort: "low" },
+    "company-brief": { model: "luna", effort: "low" },
+    "interview-prep": { model: "luna", effort: "medium" },
+  },
   researchScopes: ["job_posting", "company"],
   researchSelectionMode: "all_confirmed",
   selectedResearchClaimIds: [],

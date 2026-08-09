@@ -12,7 +12,7 @@ from gerris_erfolgs_tracker.eisenhower import EisenhowerQuadrant, ensure_quadran
 from gerris_erfolgs_tracker.kpis import get_kpi_stats
 from gerris_erfolgs_tracker.llm import (
     LLMError,
-    get_default_model,
+    get_llm_config,
     get_openai_client,
     request_structured_response,
 )
@@ -58,13 +58,16 @@ def suggest_quadrant(todo_title: str, client: Optional[OpenAI] = None) -> AISugg
         return AISuggestion(_fallback_quadrant(todo_title), from_ai=False)
 
     client_to_use = client or get_openai_client()
-    model = get_default_model(reasoning=False)
+    config = get_llm_config("todo_quadrant")
 
     if client_to_use:
         try:
             result = request_structured_response(
                 client=client_to_use,
-                model=model,
+                model=config.model,
+                reasoning_effort=config.reasoning_effort,
+                max_output_tokens=config.max_output_tokens,
+                timeout=config.timeout_seconds,
                 messages=[
                     {
                         "role": "system",
@@ -107,13 +110,16 @@ def _fallback_goals(stats: KpiStats) -> GoalSuggestion:
 def suggest_goals(stats: Optional[KpiStats] = None, client: Optional[OpenAI] = None) -> AISuggestion[GoalSuggestion]:
     active_stats = stats or get_kpi_stats()
     client_to_use = client or get_openai_client()
-    model = get_default_model(reasoning=True)
+    config = get_llm_config("goal_suggestion")
 
     if client_to_use:
         try:
             result = request_structured_response(
                 client=client_to_use,
-                model=model,
+                model=config.model,
+                reasoning_effort=config.reasoning_effort,
+                max_output_tokens=config.max_output_tokens,
+                timeout=config.timeout_seconds,
                 messages=[
                     {
                         "role": "system",
@@ -244,13 +250,16 @@ def suggest_daily_plan(
     mood_note = _recent_mood_hint(journal_entries)
 
     client_to_use = client or get_openai_client()
-    model = get_default_model(reasoning=True)
+    config = get_llm_config("daily_plan")
 
     if client_to_use and open_tasks:
         try:
             suggestion = request_structured_response(
                 client=client_to_use,
-                model=model,
+                model=config.model,
+                reasoning_effort=config.reasoning_effort,
+                max_output_tokens=config.max_output_tokens,
+                timeout=config.timeout_seconds,
                 messages=[
                     {
                         "role": "system",
@@ -414,12 +423,15 @@ def suggest_email_draft(
         )
 
     client_to_use = client or get_openai_client()
-    model = get_default_model(reasoning=False)
+    config = get_llm_config("email_draft")
     if client_to_use:
         try:
             result = request_structured_response(
                 client=client_to_use,
-                model=model,
+                model=config.model,
+                reasoning_effort=config.reasoning_effort,
+                max_output_tokens=config.max_output_tokens,
+                timeout=config.timeout_seconds,
                 messages=[
                     {
                         "role": "system",
@@ -477,13 +489,16 @@ def suggest_milestones(
         return AISuggestion(_fallback_milestones(todo_title), from_ai=False)
 
     client_to_use = client or get_openai_client()
-    model = get_default_model(reasoning=True)
+    config = get_llm_config("milestones")
 
     if client_to_use:
         try:
             result = request_structured_response(
                 client=client_to_use,
-                model=model,
+                model=config.model,
+                reasoning_effort=config.reasoning_effort,
+                max_output_tokens=config.max_output_tokens,
+                timeout=config.timeout_seconds,
                 messages=[
                     {
                         "role": "system",
@@ -513,13 +528,16 @@ def suggest_milestones(
 def generate_motivation(stats: Optional[KpiStats] = None, client: Optional[OpenAI] = None) -> AISuggestion[str]:
     active_stats = stats or get_kpi_stats()
     client_to_use = client or get_openai_client()
-    model = get_default_model(reasoning=False)
+    config = get_llm_config("motivation")
 
     if client_to_use:
         try:
             result = request_structured_response(
                 client=client_to_use,
-                model=model,
+                model=config.model,
+                reasoning_effort=config.reasoning_effort,
+                max_output_tokens=config.max_output_tokens,
+                timeout=config.timeout_seconds,
                 messages=[
                     {
                         "role": "system",

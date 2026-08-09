@@ -11,21 +11,11 @@ import { isoDateInput } from "./format";
 import { ledgerTotals, normalizeGamificationState } from "./gamification";
 import { normalizeMasterCvContent } from "./master-cv";
 import type { AppState, CostCategory, SyncStatus } from "./types";
+import { isPersistedAppState } from "./state-validation";
 
 const STORAGE_KEY = "gerris-kompass-state-v1";
 
-const isAppState = (value: unknown): value is AppState => {
-  if (!value || typeof value !== "object") return false;
-  const state = value as Partial<AppState>;
-  return (
-    state.schemaVersion === 1 &&
-    Array.isArray(state.tasks) &&
-    Array.isArray(state.costs) &&
-    Array.isArray(state.documents) &&
-    Array.isArray(state.calendarEvents) &&
-    Array.isArray(state.journal)
-  );
-};
+const isAppState = isPersistedAppState;
 
 const finiteOrZero = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;

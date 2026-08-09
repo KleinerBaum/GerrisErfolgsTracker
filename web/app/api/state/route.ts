@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { userStates } from "../../../db/schema";
 import { ownerEmail, sameOrigin } from "../../../lib/server-auth";
+import { isPersistedAppState } from "../../../lib/state-validation";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,21 @@ function conflictResponse(currentRevision: number) {
   );
 }
 
+function corruptStateResponse() {
+  return Response.json(
+    {
+      error:
+        "Der private Zustand ist beschädigt. Automatischer Abgleich und Planung bleiben bis zur Wiederherstellung blockiert.",
+      code: "state_storage_corrupt",
+      fallback: "local",
+    },
+    {
+      status: 503,
+      headers: { "cache-control": "private, no-store" },
+    },
+  );
+}
+
 function errorResponse(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   const storageUnavailable =
@@ -70,7 +86,14 @@ export async function GET(request: Request) {
       .limit(1);
 
     if (!row) return new Response(null, { status: 204 });
-    return new Response(row.stateJson, {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(row.stateJson);
+    } catch {
+      return corruptStateResponse();
+    }
+    if (!isPersistedAppState(payload) || payload.revision !== row.stateVersion) return corruptStateResponse();
+    return new Response(JSON.stringify(payload), {
       headers: {
         "content-type": "application/json; charset=utf-8",
         "cache-control": "private, no-store",
@@ -101,40 +124,26 @@ export async function PUT(request: Request) {
       );
     }
 
-    const payload: unknown = JSON.parse(raw);
-    if (!payload || typeof payload !== "object") {
-      return Response.json({ error: "Ungültiger Zustand." }, { status: 400 });
+    let payload: unknown;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return Response.json(
+        { error: "Ungültiger Zustand." },
+        { status: 400 },
+      );
     }
-    const state = payload as {
-      schemaVersion?: unknown;
-      revision?: unknown;
-      tasks?: unknown;
-      costs?: unknown;
-      documents?: unknown;
-    };
-    if (
-      state.schemaVersion !== 1 ||
-      typeof state.revision !== "number" ||
-      !Array.isArray(state.tasks) ||
-      !Array.isArray(state.costs) ||
-      !Array.isArray(state.documents)
-    ) {
+    if (!isPersistedAppState(payload)) {
       return Response.json(
         { error: "Nicht unterstütztes Datenformat." },
         { status: 400 },
       );
     }
+    const state = payload;
 
     const persistedPayload = {
-      ...(payload as Record<string, unknown>),
-      tasks: state.tasks.filter(
-        (task) =>
-          !task ||
-          typeof task !== "object" ||
-          !("taskListId" in task) ||
-          typeof task.taskListId !== "string" ||
-          !task.taskListId,
-      ),
+      ...payload,
+      tasks: state.tasks.filter((task) => !task.taskListId),
     };
     const stateJson = JSON.stringify(persistedPayload);
     const updatedAt = new Date().toISOString();

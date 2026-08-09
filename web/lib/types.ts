@@ -784,12 +784,31 @@ export type ApplicationResearchScope =
   | "publications"
   | "salary";
 
+export type LlmModelTier = "luna" | "terra" | "sol";
+
+export type LlmReasoningEffort =
+  | "none"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
+
 export type ApplicationOutputKind =
   | "tailored-cv"
   | "cover-letter"
   | "application-email"
   | "company-brief"
   | "interview-prep";
+
+export type ApplicationArtifactModelSetting = {
+  model: LlmModelTier;
+  effort: LlmReasoningEffort;
+};
+
+export type ApplicationArtifactModelSettings = Record<
+  ApplicationOutputKind,
+  ApplicationArtifactModelSetting
+>;
 
 export type ApplicationDocumentKind = Exclude<
   ApplicationOutputKind,
@@ -834,6 +853,7 @@ export type ApplicationGenerationPreferences = {
   focusThemes: string[];
   customFocus: string;
   outputKinds: ApplicationOutputKind[];
+  modelSettings: ApplicationArtifactModelSettings;
   researchScopes: ApplicationResearchScope[];
   researchSelectionMode: ApplicationResearchSelectionMode;
   selectedResearchClaimIds: string[];

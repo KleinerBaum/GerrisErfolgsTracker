@@ -7476,6 +7476,32 @@ body.dialog-open {
   overflow-wrap: anywhere;
 }
 
+.quality-check-panel .model-usage-summary {
+  gap: 8px;
+}
+
+.model-usage-list {
+  display: grid;
+  gap: 6px;
+}
+
+.model-usage-list > div {
+  align-items: baseline;
+  background: rgba(255, 255, 255, 0.018);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(0, 1.5fr);
+  padding: 7px 8px;
+}
+
+.model-usage-list span {
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
 .settings-dialog {
   max-width: 860px;
 }
@@ -14366,6 +14392,47 @@ body.dialog-open {
   padding: 14px;
 }
 
+.model-settings-intro {
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.model-settings-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.model-setting-row {
+  align-items: end;
+  background: rgba(255, 255, 255, 0.018);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(130px, 0.75fr) minmax(180px, 1.35fr) minmax(150px, 1fr);
+  padding: 10px;
+}
+
+.model-setting-row > strong {
+  align-self: center;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+}
+
+.model-setting-row label {
+  color: var(--text-faint);
+  display: grid;
+  font-size: 0.72rem;
+  gap: 4px;
+}
+
+.model-setting-row select {
+  min-width: 0;
+  width: 100%;
+}
+
 .studio-research-options {
   border-color: rgba(126, 175, 232, 0.2);
 }
@@ -14611,6 +14678,11 @@ body.dialog-open {
 
 @media (max-width: 540px) {
   .application-kpi-targets {
+    grid-template-columns: 1fr;
+  }
+
+  .model-setting-row {
+    align-items: stretch;
     grid-template-columns: 1fr;
   }
 }

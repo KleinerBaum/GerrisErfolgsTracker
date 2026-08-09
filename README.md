@@ -90,7 +90,7 @@ Die Sidebar konzentriert sich auf die Navigation; Schalter, Build-Infos sowie Si
   - Buttons und Popover-Trigger behalten die Standard-Zeilenhöhe und erlauben Zeilenumbrüche, sodass Quick-Actions auf breiten und schmaleren Viewports vollständig lesbar bleiben / Buttons and popover triggers keep the default line height and allow wrapping so quick actions stay fully readable on wide and narrower viewports.
   - **Misc KPIs** im Workload-Bereich sind nun direkt unter der Liste „Überfällig & Nächste 3 Tage“ platziert, damit Aufgaben und Kennzahlen zusammenbleiben / **Misc KPIs** in the workload section now sit directly under the “Overdue & next 3 days” list to keep tasks and metrics together.
 
-Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI aktiv / AI enabled** gesetzt ist, nutzt die App GPT-Modelle (Standard: `gpt-5-nano`, per Einstellung überschreibbar), um z. B. automatisch den Eisenhower-Quadranten zu empfehlen oder kurze Motivationsnachrichten basierend auf den jüngsten KPIs zu erstellen. Ist kein API-Key hinterlegt oder die AI-Option deaktiviert, werden statische, vorgefertigte Texte verwendet, sodass die Anwendung weiterhin vollständig nutzbar bleibt.
+Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI aktiv / AI enabled** gesetzt ist, nutzt die App standardmäßig Luna (`gpt-5.6-luna`, per Betreiber-Einstellung überschreibbar), um z. B. automatisch den Eisenhower-Quadranten zu empfehlen oder kurze Motivationsnachrichten basierend auf den jüngsten KPIs zu erstellen. Ist kein API-Key hinterlegt oder die AI-Option deaktiviert, werden statische, vorgefertigte Texte verwendet, sodass die Anwendung weiterhin vollständig nutzbar bleibt.
 
 **Neu (optional, AI):**
 
@@ -102,11 +102,17 @@ Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI
 - Tagebuch-Einträge werden semantisch gegen Ziele abgeglichen; erkannte Teilfortschritte (Meilensteine, Fortschritt in %) erscheinen als zweisprachige Vorschläge zur Bestätigung.
 - Tagebuch und Aufgaben verlinken sich gegenseitig: Tages-Einträge listen die verknüpften Ziele/Tasks und die Aufgaben-Detailansicht zeigt, wann sie im Journal erwähnt wurden; beim Abschließen einer Aufgabe kannst du direkt eine kurze Reflexion für das heutige Journal notieren / Journal and tasks are now linked both ways: daily entries show their connected goals/tasks and task details highlight the journal dates mentioning them; completing a task optionally opens a short reflection box for today's journal entry.
 
+### Modellrouting
+
+Luna (`gpt-5.6-luna`) ist der Standard für Streamlit sowie allgemeine Sites-Funktionen. Kurze Einstufungen laufen ohne zusätzlichen Denkaufwand, Planung und Mailentwürfe mit niedrigem, Journal- und Aufgabenanalysen mit mittlerem Aufwand. Alle strukturierten Streamlit-Aufrufe setzen zweckbezogene Ausgabelimits und `store=False`; `OPENAI_MODEL` bleibt ein bewusster Betreiber-Override.
+
+Im Bewerbungsstudio wird die Konfiguration je ausgewähltem Ergebnis gespeichert. CV und Anschreiben starten mit Terra (`gpt-5.6-terra`) und mittlerem Aufwand. Bewerbungs-Mail und Unternehmensbriefing starten mit Luna und niedrigem, die Interviewvorbereitung mit Luna und mittlerem Aufwand. Sol (`gpt-5.6-sol`) sowie die Stufen Hoch und Sehr hoch sind bewusst wählbar, werden aber nie automatisch vorbelegt. Neue Browseraufträge akzeptieren ausschließlich Luna, Terra oder Sol und die Aufwandstufen Ohne, Niedrig, Mittel, Hoch oder Sehr hoch.
+
 ## Voraussetzungen
 
 - Python >= 3.11
 - Ein OpenAI API Key, falls du Modellantworten erzeugen möchtest (`OPENAI_API_KEY`).
-- Optional: Modell-Override via `OPENAI_MODEL` (Standard: `gpt-5-nano`) und benutzerdefinierte Basis-URL z. B. EU-Endpunkt.
+- Optional: Modell-Override via `OPENAI_MODEL` (Standard: `gpt-5.6-luna`) und benutzerdefinierte Basis-URL z. B. EU-Endpunkt.
 - Optionale Persistenz & Sync: Die App schreibt standardmäßig in einen OneDrive-Sync-Ordner (z. B. `~/OneDrive/GerrisErfolgsTracker/gerris_state.json` oder `C:\\Users\\gerri\\OneDrive\\GerrisErfolgsTracker`). Über `GERRIS_ONEDRIVE_DIR` kannst du den Pfad explizit setzen; das Verzeichnis wird bei Bedarf angelegt. Anhänge (PNG/JPG) landen in `attachments/<todo_id>/` unterhalb des gleichen Stammordners, der JSON-State speichert nur Dateireferenzen.
 - Alle Zeitstempel werden intern als timezone-aware UTC-Datetimes gespeichert, um Sortierungen konsistent zu halten / All timestamps are stored as timezone-aware UTC datetimes to keep sorting consistent.
 - Optionale E-Mail-Erinnerungen über Brevo: `BREVO_API_KEY` + `BREVO_SENDER` (und optional `BREVO_SENDER_NAME`) in der Umgebung setzen.
@@ -114,7 +120,7 @@ Die einzige externe Integration ist derzeit die OpenAI API. Wenn die Option **AI
 ## Datenhaltung & Backup/Recovery
 
 - Standardpfad: `gerris_state.json` im OneDrive-Sync-Ordner `~/OneDrive/GerrisErfolgsTracker/` bzw. `C:\\Users\\<name>\\OneDrive\\GerrisErfolgsTracker`. Anhänge werden parallel im Unterordner `attachments/<todo_id>/` abgelegt.
-- Fallback: Wenn kein OneDrive-Hinweis gefunden wird, legt die App `.data/gerris_state.json` im Projektverzeichnis an.
+- Fallback: Wenn kein OneDrive-Hinweis gefunden wird, legt die App `.data/GerrisErfolgsTracker/gerris_state.json` im Projektverzeichnis an.
 - Override: Über `GERRIS_ONEDRIVE_DIR` kannst du den Pfad explizit setzen; der Ordner wird bei Bedarf erstellt.
 - Backup: Kopiere `gerris_state.json` regelmäßig in einen sicheren Ordner (z. B. OneDrive-Versionierung oder ein manuelles Backup).
 - Backup-Upload: Im Header-Dropdown **⚙️ Einstellungen** → **Sicherheit & Daten** kannst du eine `gerris_state.json` hochladen und den aktuellen Stand ersetzen; der Import-Button nutzt den Formular-Submit, damit Upload und Bestätigung zuverlässig funktionieren / Backup upload: use **⚙️ Settings** → **Safety & data** in the header dropdown to upload a `gerris_state.json` and replace the current state; the import button uses the form submit so uploads and confirmations work reliably.
@@ -147,7 +153,7 @@ Hinweise:
 
 - **Lokal / Local:** `streamlit run app.py` öffnet die App im Browser unter `localhost:8501`. ToDos, KPIs und Einstellungen
   landen automatisch als `gerris_state.json` im OneDrive-Sync-Ordner `~/OneDrive/GerrisErfolgsTracker/` (oder dem Pfad aus
-  `GERRIS_ONEDRIVE_DIR`). Falls weder OneDrive noch ein Hinweis vorhanden ist, nutzt die App `.data/gerris_state.json`.
+  `GERRIS_ONEDRIVE_DIR`). Falls weder OneDrive noch ein Hinweis vorhanden ist, nutzt die App `.data/GerrisErfolgsTracker/gerris_state.json`.
   Ein Löschen der Datei setzt den Zustand zurück; für Backups genügt das Kopieren der JSON-Datei.
 - **Streamlit Cloud:** Repository mit dem Streamlit Cloud Dashboard verbinden und die Secrets wie unten beschrieben hinterlegen;
   danach kann die App unter der bereitgestellten URL genutzt werden (z. B. https://gerriserfolgstracker.streamlit.app/). Die
@@ -165,7 +171,7 @@ Die App sucht nach dem OpenAI Key in `st.secrets` oder der Umgebung:
 
 - `OPENAI_API_KEY` (erforderlich für Modellaufrufe)
 - `OPENAI_BASE_URL` (optional, z. B. EU-Endpunkt)
-- `OPENAI_MODEL` (optional, z. B. `gpt-5-nano`)
+- `OPENAI_MODEL` (optional, Standard `gpt-5.6-luna`)
 - `GERRIS_ONEDRIVE_DIR` (optional: expliziter OneDrive-Sync-Ordner für die JSON-Datei)
 - `GOOGLE_CALENDARS_JSON` (optional: JSON-Liste mit Google-Kalendern, um mehrere Kalender ohne viele ENV-Variablen zu konfigurieren)
 - `CAL_GERRI_ID`, `CAL_GERRI_ICAL_URL`, `CAL_GERRI_NAME` (optional: Kalender-ID, iCal-Link und Anzeigename für Gerri)
@@ -222,7 +228,7 @@ Erstelle `.streamlit/secrets.toml` (siehe `.streamlit/secrets.toml.example`):
 ```toml
 OPENAI_API_KEY = "sk-..."
 # OPENAI_BASE_URL = "https://eu.api.openai.com/v1"
-# OPENAI_MODEL = "gpt-5-nano"
+# OPENAI_MODEL = "gpt-5.6-luna"
 ```
 
 ### Streamlit Cloud
@@ -231,7 +237,7 @@ OPENAI_API_KEY = "sk-..."
 2. Unter **App settings → Secrets** folgende Einträge hinzufügen:
    - `OPENAI_API_KEY = sk-...`
    - Optional `OPENAI_BASE_URL = https://eu.api.openai.com/v1`
-   - Optional `OPENAI_MODEL = gpt-5-nano`
+   - Optional `OPENAI_MODEL = gpt-5.6-luna`
 3. Deploy starten; die Abhängigkeiten werden über `requirements.txt` installiert.
 
 > **Wichtig:** API-Keys niemals in das Repository einchecken. Nutze lokal `.streamlit/secrets.toml` und auf der Streamlit
@@ -248,12 +254,12 @@ OPENAI_API_KEY = "sk-..."
 - CI: GitHub Actions Workflow (`.github/workflows/ci.yml`) führt `ruff check .` und `pytest -q` bei Push/PR aus.
 - Streamlit-Widgets: Verwende `width="stretch"` statt `use_container_width=True` (deprecated nach 2025-12-31).
 - Setup-Templates: `.env.example` und `.streamlit/secrets.toml.example` enthalten sichere Vorlagen ohne Secrets.
-- Google Workspace Setup: siehe [`docs/google_setup.md`](docs/google_setup.md).
+- Google Workspace Setup: siehe [`docs/google-workspace-sites.md`](docs/google-workspace-sites.md). Die Python-OAuth-Integration ist separat in `docs/python-google-workspace.md` beschrieben.
 
 ## Troubleshooting
 
 - **OneDrive-Pfad wird nicht gefunden:** `GERRIS_ONEDRIVE_DIR` explizit setzen und prüfen, ob der Ordner existiert; ansonsten
-  legt die App `.data/gerris_state.json` an.
+  legt die App `.data/GerrisErfolgsTracker/gerris_state.json` an. Bei einer beschädigten Datei blockiert die App automatische Defaults; siehe `docs/storage-recovery.md`.
 - **Streamlit Cloud verliert Daten:** Community-Instanzen speichern Dateien nur temporär. Lege die JSON-Datei in OneDrive ab
   oder halte lokale Backups bereit.
 - **JSON defekt:** Datei in `gerris_state.bak` umbenennen, App starten (frische Datei), alte Datei mit einem JSON-Validator

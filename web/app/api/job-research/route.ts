@@ -5,6 +5,7 @@ import {
   researchOpenAIRequest,
   validResearchJobSource,
 } from "../../../lib/job-research";
+import { WEB_LLM_PURPOSE_CONFIGS } from "../../../lib/llm-config";
 import { ownerEmail, ownerHash, sameOrigin } from "../../../lib/server-auth";
 import type {
   ApplicationResearchScope,
@@ -598,7 +599,8 @@ export async function POST(request: Request) {
       : ["job_posting", "company"] satisfies ApplicationResearchScope[];
     const researchedAt = new Date().toISOString();
     const model =
-      process.env.OPENAI_RESEARCH_MODEL?.trim() || "gpt-5.6-luna";
+      process.env.OPENAI_RESEARCH_MODEL?.trim() ||
+      WEB_LLM_PURPOSE_CONFIGS.vacancy_research.model;
     const prompt = [
       `Recherchezeitpunkt: ${researchedAt}`,
       `Exakte Stellen-URL: ${requestedUrl || "nicht angegeben"}`,

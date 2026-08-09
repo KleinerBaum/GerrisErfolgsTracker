@@ -280,3 +280,15 @@ test("klassifiziert verschachtelte D1-Startfehler als vorbereitenden Speicher", 
     code: "planning_storage_preparing",
   });
 });
+
+test("blockiert Planung bei beschädigtem AppState", async () => {
+  const { planningErrorResponse } = await importTypeScriptModule(
+    "lib/planning-api.ts",
+  );
+  const response = planningErrorResponse({ code: "planning_state_corrupt" });
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    error: "Der gespeicherte Planungszustand ist beschädigt. Automatischer Abgleich bleibt bis zur Wiederherstellung blockiert.",
+    code: "planning_state_corrupt",
+  });
+});

@@ -1,0 +1,1 @@
+ALTER TABLE `sync_outbox_items` ADD `claim_token` text;

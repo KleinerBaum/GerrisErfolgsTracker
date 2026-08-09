@@ -9,7 +9,7 @@ from openai import OpenAI
 from gerris_erfolgs_tracker.ai_features import AISuggestion
 from gerris_erfolgs_tracker.llm import (
     LLMError,
-    get_default_model,
+    get_llm_config,
     get_openai_client,
     request_structured_response,
 )
@@ -243,12 +243,15 @@ def suggest_journal_alignment(
         return AISuggestion(JournalAlignmentSuggestion(actions=[], summary=summary), from_ai=False)
 
     client_to_use = client or get_openai_client()
-    model = get_default_model(reasoning=True)
+    config = get_llm_config("journal_alignment")
     if client_to_use:
         try:
             result = request_structured_response(
                 client=client_to_use,
-                model=model,
+                model=config.model,
+                reasoning_effort=config.reasoning_effort,
+                max_output_tokens=config.max_output_tokens,
+                timeout=config.timeout_seconds,
                 messages=[
                     {
                         "role": "system",

@@ -10,7 +10,7 @@ from gerris_erfolgs_tracker.coach.events import CoachEvent, CoachTrigger
 from gerris_erfolgs_tracker.coach.models import CoachMessage
 from gerris_erfolgs_tracker.coach.templates import select_template
 from gerris_erfolgs_tracker.constants import AI_ENABLED_KEY
-from gerris_erfolgs_tracker.llm import LLMError, get_default_model, get_openai_client, request_structured_response
+from gerris_erfolgs_tracker.llm import LLMError, get_llm_config, get_openai_client, request_structured_response
 
 
 class CoachMessagePayload(BaseModel):
@@ -120,11 +120,14 @@ def _compose_weekly(event: CoachEvent) -> CoachMessage:
     if not client or not ai_enabled:
         return select_template(event)
 
-    model = get_default_model(reasoning=True)
+    config = get_llm_config("weekly_coach")
     try:
         parsed = request_structured_response(
             client=client,
-            model=model,
+            model=config.model,
+            reasoning_effort=config.reasoning_effort,
+            max_output_tokens=config.max_output_tokens,
+            timeout=config.timeout_seconds,
             messages=_prepare_weekly_prompt(event),
             response_model=CoachMessagePayload,
         )

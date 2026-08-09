@@ -6,6 +6,11 @@ import { applicationGenerationJobs, userStates } from "../../../db/schema";
 import { ownerEmail, ownerHash, sameOrigin } from "../../../lib/server-auth";
 import { localComplexityAssessment } from "../../../lib/gamification";
 import {
+  strictApplicationModelSettings,
+  WEB_LLM_PURPOSE_CONFIGS,
+  type WebLlmPurpose,
+} from "../../../lib/llm-config";
+import {
   confirmedResearchContext,
   confirmedResearchSources,
   isVacancyResearch,
@@ -14,9 +19,7 @@ import type { GeneratedApplicationPackage } from "../../../lib/application-packa
 import { normalizeApplicationGenerationPreferences } from "../../../lib/application-workflow";
 import {
   ApplicationGenerationError,
-  applicationModelBudget,
-  APPLICATION_PACKAGE_SCHEMA,
-  applicationGenerationInstructions,
+  APPLICATION_ARTIFACT_SCHEMA,
   type ApplicationGenerationRequest,
   type ConfirmedApplicationResearchFact,
 } from "../../../lib/server/application-generation";
@@ -34,6 +37,7 @@ import {
 } from "../../../lib/server/application-master-cv";
 import { DIFFICULTY_BANDS } from "../../../lib/types";
 import type {
+  ApplicationArtifactModelSettings,
   ApplicationGenerationInputs,
   ApplicationOutputKind,
   MasterCvContent,
@@ -169,6 +173,8 @@ type ApplicationInput = {
   focusThemes: string;
   customFocus: string;
   outputKinds: string;
+  modelSettings: string;
+  editedOutputKinds: string;
   researchScopes: string;
   researchSelectionMode: string;
   selectedResearchClaimIds: string;
@@ -405,29 +411,29 @@ async function callOpenAI({
   schemaName,
   schema,
   instructions,
-  maxOutputTokens,
+  purpose,
 }: {
   request: Request;
   input: Array<Record<string, unknown>>;
   schemaName: string;
   schema:
     | typeof emailSchema
-    | typeof APPLICATION_PACKAGE_SCHEMA
     | typeof journalAnalysisSchema
     | typeof gamificationAssessmentSchema;
   instructions: string;
-  maxOutputTokens: number;
+  purpose: Exclude<WebLlmPurpose, "vacancy_research">;
 }): Promise<unknown> {
   const email = ownerEmail(request);
   if (!email) throw new Error("Anmeldung erforderlich.");
+  const config = WEB_LLM_PURPOSE_CONFIGS[purpose];
 
   const response = await fetchOpenAI(
     JSON.stringify({
-      model: process.env.OPENAI_MODEL?.trim() || "gpt-5.6-sol",
+      model: process.env.OPENAI_MODEL?.trim() || config.model,
       instructions,
       input,
-      reasoning: { effort: "medium" },
-      max_output_tokens: maxOutputTokens,
+      reasoning: { effort: config.effort },
+      max_output_tokens: config.maxOutputTokens,
       store: false,
       safety_identifier: await ownerHash(email),
       text: {
@@ -466,6 +472,11 @@ type OpenAIBackgroundPayload = {
     input_tokens?: unknown;
     output_tokens?: unknown;
     total_tokens?: unknown;
+    input_tokens_details?: {
+      cached_tokens?: unknown;
+      cache_write_tokens?: unknown;
+    };
+    output_tokens_details?: { reasoning_tokens?: unknown };
   };
 };
 
@@ -508,28 +519,36 @@ async function backgroundFetch(
 
 function applicationBackgroundModel(apiKey: string): ApplicationBackgroundModel {
   return {
-    async start({ jobId, ownerHash: owner, stage, prompt }) {
-      const repair = stage === "repair" || stage === "manual_review";
-      const budget = applicationModelBudget(stage);
-      const model = repair
-        ? process.env.OPENAI_APPLICATION_REPAIR_MODEL?.trim() || budget.defaultModel
-        : process.env.OPENAI_APPLICATION_MODEL?.trim() || budget.defaultModel;
+    async start({
+      jobId,
+      ownerHash: owner,
+      artifact,
+      stage,
+      prompt,
+      instructions,
+      model,
+      effort,
+      maxOutputTokens,
+      legacyModel,
+    }) {
+      const selectedModel = legacyModel?.trim() || model;
       const body = JSON.stringify({
-        model,
+        model: selectedModel,
         background: true,
-        instructions: applicationGenerationInstructions(),
+        instructions,
         input: [
           {
             role: "user",
             content: [{ type: "input_text", text: prompt }],
           },
         ],
-        reasoning: { effort: budget.reasoningEffort },
-        max_output_tokens: budget.maxOutputTokens,
+        reasoning: { effort },
+        max_output_tokens: maxOutputTokens,
         store: false,
         safety_identifier: owner,
         metadata: {
-          workflow: "gerris_application_generation_v3",
+          workflow: "gerris_application_generation_v4",
+          artifact,
           stage,
           job_id: jobId.slice(0, 64),
         },
@@ -537,13 +556,14 @@ function applicationBackgroundModel(apiKey: string): ApplicationBackgroundModel 
           verbosity: "medium",
           format: {
             type: "json_schema",
-            name: "bewerbungspaket_v3",
+            name: "bewerbungsartefakt_v4",
             strict: true,
-            schema: APPLICATION_PACKAGE_SCHEMA,
+            schema: APPLICATION_ARTIFACT_SCHEMA,
           },
         },
       });
-      const idempotencyKey = `gerris-application:${owner.slice(0, 16)}:${jobId}:${stage}`;
+      const idempotencyKey =
+        `gerris-application:${owner.slice(0, 16)}:${jobId}:${artifact}:${stage}`;
       let response: Response | null = null;
       for (
         let attempt = 0;
@@ -661,17 +681,38 @@ function applicationBackgroundModel(apiKey: string): ApplicationBackgroundModel 
           typeof payload.usage?.total_tokens === "number"
             ? payload.usage.total_tokens
             : inputTokens + outputTokens;
+        const reasoningTokens =
+          typeof payload.usage?.output_tokens_details?.reasoning_tokens ===
+          "number"
+            ? payload.usage.output_tokens_details.reasoning_tokens
+            : 0;
+        const cachedInputTokens =
+          typeof payload.usage?.input_tokens_details?.cached_tokens === "number"
+            ? payload.usage.input_tokens_details.cached_tokens
+            : 0;
+        const cacheWriteTokens =
+          typeof payload.usage?.input_tokens_details?.cache_write_tokens ===
+          "number"
+            ? payload.usage.input_tokens_details.cache_write_tokens
+            : 0;
         return {
           status: "completed",
           output: JSON.parse(raw),
           model: typeof payload.model === "string" ? payload.model : "unbekannt",
-          usage: { inputTokens, outputTokens, totalTokens },
+          usage: {
+            inputTokens,
+            outputTokens,
+            reasoningTokens,
+            cachedInputTokens,
+            cacheWriteTokens,
+            totalTokens,
+          },
         };
       } catch {
         return {
           status: "failed",
           message:
-            "Die Textassistenz hat kein gültiges Bewerbungspaket geliefert.",
+            "Die Textassistenz hat kein gültiges Bewerbungsartefakt geliefert.",
         };
       }
     },
@@ -698,6 +739,7 @@ function parsedStoredJob(
     const draft = row.draftJson
       ? (JSON.parse(row.draftJson) as GeneratedApplicationPackage)
       : null;
+    const work = JSON.parse(row.workJson) as unknown;
     const issues = JSON.parse(row.issuesJson) as unknown;
     const usage = JSON.parse(row.usageJson) as unknown;
     const result = row.resultJson
@@ -715,6 +757,25 @@ function parsedStoredJob(
       !request.masterCv ||
       !request.masterCv.sourceFingerprint ||
       !Array.isArray(request.masterCv.sections) ||
+      !Array.isArray(work) ||
+      !work.every((item) => {
+        if (!item || typeof item !== "object") return false;
+        const candidate = item as Record<string, unknown>;
+        return (
+          APPLICATION_OUTPUT_KINDS.includes(
+            candidate.artifact as ApplicationOutputKind,
+          ) &&
+          ["pending", "running", "ready", "repair_pending"].includes(
+            String(candidate.status),
+          ) &&
+          ["draft", "repair", "manual_review"].includes(
+            String(candidate.stage),
+          ) &&
+          typeof candidate.responseId === "string" &&
+          (candidate.error === null || typeof candidate.error === "string") &&
+          [1, 2].includes(Number(candidate.attempt))
+        );
+      }) ||
       !Array.isArray(issues) ||
       !issues.every((issue) => typeof issue === "string") ||
       !Array.isArray(usage)
@@ -726,7 +787,13 @@ function parsedStoredJob(
       ownerHash: row.ownerHash,
       stage: row.stage as ApplicationGenerationJob["stage"],
       responseId: row.responseId,
-      request,
+      request: {
+        ...request,
+        preferences: normalizeApplicationGenerationPreferences(
+          request.preferences,
+        ),
+      },
+      work: work as ApplicationGenerationJob["work"],
       draft,
       issues,
       usage: usage as ApplicationGenerationJob["usage"],
@@ -753,6 +820,7 @@ class D1ApplicationJobStore implements ApplicationJobStore {
         responseId: job.responseId,
         requestJson: JSON.stringify(job.request),
         draftJson: job.draft ? JSON.stringify(job.draft) : null,
+        workJson: JSON.stringify(job.work),
         issuesJson: JSON.stringify(job.issues),
         usageJson: JSON.stringify(job.usage),
         resultJson: job.result ? JSON.stringify(job.result) : null,
@@ -783,14 +851,25 @@ class D1ApplicationJobStore implements ApplicationJobStore {
     return row ? parsedStoredJob(row) : null;
   }
 
-  async update(job: ApplicationGenerationJob): Promise<void> {
-    await getDb()
+  async update(job: ApplicationGenerationJob, expectedUpdatedAt?: string): Promise<boolean> {
+    const condition = expectedUpdatedAt
+      ? and(
+          eq(applicationGenerationJobs.jobId, job.jobId),
+          eq(applicationGenerationJobs.ownerHash, job.ownerHash),
+          eq(applicationGenerationJobs.updatedAt, expectedUpdatedAt),
+        )
+      : and(
+          eq(applicationGenerationJobs.jobId, job.jobId),
+          eq(applicationGenerationJobs.ownerHash, job.ownerHash),
+        );
+    const updated = await getDb()
       .update(applicationGenerationJobs)
       .set({
         stage: job.stage,
         responseId: job.responseId,
         requestJson: JSON.stringify(job.request),
         draftJson: job.draft ? JSON.stringify(job.draft) : null,
+        workJson: JSON.stringify(job.work),
         issuesJson: JSON.stringify(job.issues),
         usageJson: JSON.stringify(job.usage),
         resultJson: job.result ? JSON.stringify(job.result) : null,
@@ -801,12 +880,9 @@ class D1ApplicationJobStore implements ApplicationJobStore {
         updatedAt: job.updatedAt,
         expiresAt: job.expiresAt,
       })
-      .where(
-        and(
-          eq(applicationGenerationJobs.jobId, job.jobId),
-          eq(applicationGenerationJobs.ownerHash, job.ownerHash),
-        ),
-      );
+      .where(condition)
+      .returning({ jobId: applicationGenerationJobs.jobId });
+    return Boolean(updated[0]);
   }
 
   async delete(jobId: string, owner: string): Promise<void> {
@@ -971,7 +1047,7 @@ async function handleJournalAnalysis(
     schemaName: "journal_analyse",
     schema: journalAnalysisSchema,
     instructions: journalAnalysisInstructions(),
-    maxOutputTokens: 4_000,
+    purpose: "journal_analysis",
   });
 }
 
@@ -1015,7 +1091,7 @@ async function handleGamificationAssessment(
     schemaName: "aufgaben_einstufung",
     schema: gamificationAssessmentSchema,
     instructions: gamificationAssessmentInstructions(),
-    maxOutputTokens: 900,
+    purpose: "gamification_assessment",
   });
 }
 
@@ -1043,13 +1119,46 @@ async function handleEmail(request: Request, input: EmailInput) {
     schemaName: "email_entwurf",
     schema: emailSchema,
     instructions: emailInstructions(),
-    maxOutputTokens: 2_400,
+    purpose: "email_draft",
   });
 }
 
 function numberOrNull(value: string): number | null {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+const APPLICATION_OUTPUT_KINDS = [
+  "tailored-cv",
+  "cover-letter",
+  "application-email",
+  "company-brief",
+  "interview-prep",
+] as const satisfies readonly ApplicationOutputKind[];
+
+function explicitApplicationModelSettings(
+  value: string,
+): ApplicationArtifactModelSettings | undefined {
+  if (!value) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new ApplicationGenerationError(
+      "Die Modellkonfiguration ist ungültig.",
+      400,
+    );
+  }
+  try {
+    return strictApplicationModelSettings(parsed);
+  } catch (error) {
+    throw new ApplicationGenerationError(
+      error instanceof Error
+        ? error.message
+        : "Die Modellkonfiguration ist ungültig.",
+      400,
+    );
+  }
 }
 
 function generatedApplicationPackage(
@@ -1129,6 +1238,8 @@ async function handleApplication(
     focusThemes: text(source.focusThemes, 4_000),
     customFocus: text(source.customFocus, 2_000),
     outputKinds: text(source.outputKinds, 1_000),
+    modelSettings: text(source.modelSettings, 5_000),
+    editedOutputKinds: text(source.editedOutputKinds, 1_000),
     researchScopes: text(source.researchScopes, 1_000),
     researchSelectionMode: text(source.researchSelectionMode, 40),
     selectedResearchClaimIds: text(source.selectedResearchClaimIds, 20_000),
@@ -1224,13 +1335,7 @@ async function handleApplication(
   }
   const requestedOutputKinds = jsonStringList(input.outputKinds, 5).filter(
     (kind): kind is ApplicationOutputKind =>
-      [
-        "tailored-cv",
-        "cover-letter",
-        "application-email",
-        "company-brief",
-        "interview-prep",
-      ].includes(kind),
+      APPLICATION_OUTPUT_KINDS.includes(kind as ApplicationOutputKind),
   );
   const outputKinds: ApplicationOutputKind[] = [
     "tailored-cv",
@@ -1282,6 +1387,7 @@ async function handleApplication(
     constraints: redactObviousCredentials(input.constraints),
     availability: redactObviousCredentials(input.availability),
   };
+  const modelSettings = explicitApplicationModelSettings(input.modelSettings);
   const preferences = normalizeApplicationGenerationPreferences({
     formality: input.formality,
     addressStyle: input.addressStyle,
@@ -1290,6 +1396,7 @@ async function handleApplication(
     focusThemes: jsonStringList(input.focusThemes, 12),
     customFocus: input.customFocus,
     outputKinds,
+    modelSettings,
     researchScopes: jsonStringList(input.researchScopes, 6),
     researchSelectionMode: input.researchSelectionMode,
     selectedResearchClaimIds,
@@ -1300,6 +1407,10 @@ async function handleApplication(
   });
   preferences.language = "Deutsch";
   preferences.cvLength = "two_pages";
+  const editedOutputKinds = jsonStringList(input.editedOutputKinds, 5).filter(
+    (kind): kind is ApplicationOutputKind =>
+      outputKinds.includes(kind as ApplicationOutputKind),
+  );
 
   let manualDraft: GeneratedApplicationPackage | null = null;
   if (input.generationAction === "manual_review") {
@@ -1311,6 +1422,12 @@ async function handleApplication(
     if (!manualDraft) {
       throw new ApplicationGenerationError(
         "Die manuell bearbeitete Fassung ist strukturell ungültig.",
+        400,
+      );
+    }
+    if (input.editedOutputKinds && editedOutputKinds.length === 0) {
+      throw new ApplicationGenerationError(
+        "Es wurde kein tatsächlich bearbeitetes Ergebnis zur erneuten Prüfung angegeben.",
         400,
       );
     }
@@ -1335,6 +1452,14 @@ async function handleApplication(
     confirmedSources,
     masterCv,
     manualDraft,
+    editedOutputKinds: input.editedOutputKinds ? editedOutputKinds : undefined,
+    modelSettingsExplicit: Boolean(modelSettings),
+    legacyModel: modelSettings
+      ? undefined
+      : process.env.OPENAI_APPLICATION_MODEL?.trim() || undefined,
+    legacyRepairModel: modelSettings
+      ? undefined
+      : process.env.OPENAI_APPLICATION_REPAIR_MODEL?.trim() || undefined,
   };
 }
 export async function POST(request: Request) {

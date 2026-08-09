@@ -63,7 +63,7 @@ from gerris_erfolgs_tracker.journal import (
     get_journal_links_by_todo,
     upsert_journal_entry,
 )
-from gerris_erfolgs_tracker.llm import LLMError, get_default_model, get_openai_client, request_structured_response
+from gerris_erfolgs_tracker.llm import LLMError, get_llm_config, get_openai_client, request_structured_response
 from gerris_erfolgs_tracker.llm_schemas import (
     DailyPlanningSuggestion,
     MilestoneSuggestionItem,
@@ -165,11 +165,14 @@ def _request_task_proposal(
         return AISuggestion(_fallback_task_proposal(title, due_date=due_date), from_ai=False)
 
     today = date.today()
-    model = get_default_model(reasoning=True)
+    config = get_llm_config("task_analysis")
     try:
         proposal = request_structured_response(
             client=client,
-            model=model,
+            model=config.model,
+            reasoning_effort=config.reasoning_effort,
+            max_output_tokens=config.max_output_tokens,
+            timeout=config.timeout_seconds,
             messages=[
                 {
                     "role": "system",

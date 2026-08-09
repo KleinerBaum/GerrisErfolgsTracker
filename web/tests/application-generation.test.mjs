@@ -7,6 +7,7 @@ import {
   applicationModelInput,
   buildApplicationEvidenceRegister,
   generateApplicationPackageWithRepair,
+  normalizeApplicationArtifactOutput,
 } from "../lib/server/application-generation.ts";
 import {
   generationRequestFixture,
@@ -206,7 +207,7 @@ test("übernimmt Unternehmen und Rolle bei einem Textauftrag aus dem strukturier
   );
 });
 
-test("erzeugt Briefing und Bewerbungs-Mail lokal und Interview nur auf ausdrückliche Auswahl", async () => {
+test("hält im Legacy-V3-Adapter die lokal abgeleiteten Zusatzfelder kompatibel", async () => {
   const request = generationRequestFixture();
   const result = await generateApplicationPackageWithRepair(
     request,
@@ -265,5 +266,35 @@ test("hält Modellrouting und repräsentatives Eingabebudget schlank", () => {
   assert.ok(
     Math.ceil(prompt.length / 4) < 12_000,
     "Der repräsentative Prompt bleibt unter 12.000 geschätzten Eingabetokens.",
+  );
+});
+
+test("bindet exakt übernommene CV-Metadaten deterministisch an ihre Quellen", () => {
+  const request = generationRequestFixture();
+  const normalized = normalizeApplicationArtifactOutput(
+    request,
+    "tailored-cv",
+    {
+      schemaVersion: 4,
+      artifact: "tailored-cv",
+      roleTitle: request.roleTitle,
+      companyName: request.companyName,
+      subject: "",
+      blocks: [
+        {
+          text: "01/2024 – heute | Beispiel Beratung GmbH | Nordrhein-Westfalen",
+          evidenceIds: [],
+          researchIds: [],
+        },
+      ],
+      fitHighlights: [],
+      openQuestions: [],
+    },
+  );
+
+  assert.ok(normalized);
+  assert.ok(normalized.blocks[0].evidenceIds.length >= 2);
+  assert.ok(
+    normalized.blocks[0].evidenceIds.every((id) => id.startsWith("CV-")),
   );
 });

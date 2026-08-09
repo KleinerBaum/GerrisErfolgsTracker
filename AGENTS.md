@@ -88,7 +88,7 @@ Wenn du Dateien nicht findest:
 
 ### Speicherort
 - Standard: `~/OneDrive/GerrisErfolgsTracker/gerris_state.json` (oder Pfad aus `GERRIS_ONEDRIVE_DIR`)
-- Fallback: `.data/gerris_state.json`
+- Fallback: `.data/GerrisErfolgsTracker/gerris_state.json`
 
 ### Recovery / Reset
 - Bei defekter Datei: `gerris_state.json` → `gerris_state.bak` umbenennen, App neu starten (legt neue Datei an), dann valide Teile zurückkopieren.

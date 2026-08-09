@@ -28,6 +28,7 @@ from gerris_erfolgs_tracker.models import (
 )
 from gerris_erfolgs_tracker.notifications.reminders import calculate_reminder_at
 from gerris_erfolgs_tracker.state_persistence import (
+    clear_persistence_block,
     configure_storage,
     load_persisted_state,
     persist_state,
@@ -41,6 +42,7 @@ __all__ = [
     "configure_storage",
     "load_persisted_state",
     "persist_state",
+    "clear_persistence_block",
 ]
 
 
@@ -205,6 +207,7 @@ def save_todos(todos: Sequence[TodoItem]) -> None:
 def reset_state() -> None:
     """Clear managed keys and restore defaults."""
 
+    clear_persistence_block()
     for key in (SS_TODOS, SS_STATS, SS_GAMIFICATION, SS_SETTINGS, SS_JOURNAL, SS_COACH):
         if key in st.session_state:
             del st.session_state[key]

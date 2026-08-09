@@ -5,13 +5,17 @@ import {
   parseCreateTaskInput,
   saveTaskReminderMetadata,
 } from "../../../lib/google-tasks-server";
-import { createCalendarEvent } from "../../../lib/google-calendar-server";
+import {
+  createCalendarEvent,
+  deleteCalendarEvent,
+} from "../../../lib/google-calendar-server";
 import {
   googleErrorResponse,
   GoogleApiError,
   GoogleValidationError,
   requireGoogleConnection,
   sameOrigin,
+  type GoogleConnection,
 } from "../../../lib/google-workspace-server";
 
 export const dynamic = "force-dynamic";
@@ -53,8 +57,10 @@ export async function POST(request: Request) {
     const result = await createGerrisTask(connection, input);
     let task = result.task;
     if (input.reminderAt) {
+      let calendarConnection: GoogleConnection | null = null;
+      let reminderEvent: { calendarId: string; eventId: string } | null = null;
       try {
-        const calendarConnection = await requireGoogleConnection(request, {
+        calendarConnection = await requireGoogleConnection(request, {
           capability: "calendar",
         });
         const start = new Date(input.reminderAt);
@@ -82,12 +88,30 @@ export async function POST(request: Request) {
             502,
           );
         }
+        reminderEvent = { calendarId: event.calendarId, eventId: event.googleEventId };
         task = await saveTaskReminderMetadata(connection, task, {
           reminderAt: input.reminderAt,
           calendarId: event.calendarId,
           eventId: event.googleEventId,
         });
       } catch (error) {
+        let compensationFailed = false;
+        if (reminderEvent && calendarConnection) {
+          try {
+            await deleteCalendarEvent(
+              calendarConnection,
+              reminderEvent.calendarId,
+              reminderEvent.eventId,
+            );
+          } catch (cleanupError) {
+            if (
+              !(cleanupError instanceof GoogleApiError) ||
+              cleanupError.status !== 404
+            ) {
+              compensationFailed = true;
+            }
+          }
+        }
         if (result.created) {
           try {
             await deleteGerrisTask(
@@ -98,12 +122,15 @@ export async function POST(request: Request) {
               task.taskListId,
             );
           } catch {
-            throw new GoogleApiError(
-              "Die Aufgabe wurde angelegt, aber die Erinnerung konnte nicht vollständig eingerichtet werden. Bitte prüfe Google Tasks und Google Kalender.",
-              502,
-              true,
-            );
+            compensationFailed = true;
           }
+        }
+        if (compensationFailed) {
+          throw new GoogleApiError(
+            "Die Aufgabe oder ihre Erinnerung konnte nach einem Teilfehler nicht vollständig zurückgerollt werden. Bitte prüfe Google Tasks und Google Kalender.",
+            502,
+            true,
+          );
         }
         throw error;
       }

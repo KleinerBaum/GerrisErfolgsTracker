@@ -9,6 +9,7 @@ import type {
   JobResearchSource,
   VacancyResearch,
 } from "./types";
+import { WEB_LLM_PURPOSE_CONFIGS } from "./llm-config.ts";
 
 export const JOB_RESEARCH_PROMPT_VERSION = "job-research-v3-lean";
 
@@ -174,10 +175,11 @@ export function researchOpenAIRequest({
   prompt: string;
   providedAdText: boolean;
 }) {
+  const config = WEB_LLM_PURPOSE_CONFIGS.vacancy_research;
   return {
     model,
     background: true,
-    reasoning: { effort: "low" },
+    reasoning: { effort: config.effort },
     instructions: JOB_RESEARCH_INSTRUCTIONS,
     input: prompt,
     tools: [
@@ -190,7 +192,7 @@ export function researchOpenAIRequest({
     tool_choice: "required",
     max_tool_calls: providedAdText ? 2 : 3,
     include: ["web_search_call.action.sources"],
-    max_output_tokens: 5_000,
+    max_output_tokens: config.maxOutputTokens,
     store: false,
     safety_identifier: owner,
     metadata: {

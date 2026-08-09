@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 
-import { ownerEmail, ownerHash } from "../../../../lib/server-auth";
+import { ownerEmail, ownerHash, sameOrigin } from "../../../../lib/server-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +42,40 @@ export async function GET(
     headers.set("x-content-type-options", "nosniff");
     headers.set("content-length", String(object.size));
     return new Response(object.body, { headers });
+  } catch {
+    return new Response("Datei derzeit nicht verfügbar.", { status: 503 });
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ fileId: string }> },
+) {
+  const email = ownerEmail(request);
+  if (!email) return new Response("Anmeldung erforderlich.", { status: 401 });
+  if (!sameOrigin(request)) {
+    return new Response("Ungültiger Ursprung.", { status: 403 });
+  }
+  const fileId = safeFileId((await context.params).fileId);
+  if (!fileId) return new Response("Datei nicht gefunden.", { status: 404 });
+
+  try {
+    if (!env.FILES) {
+      return new Response("Die private Dateiablage wird gerade vorbereitet.", {
+        status: 503,
+      });
+    }
+    const hash = await ownerHash(email);
+    const key = `${hash}/${fileId}`;
+    const object = await env.FILES.get(key);
+    if (!object || object.customMetadata?.owner !== hash) {
+      return new Response("Datei nicht gefunden.", { status: 404 });
+    }
+    await env.FILES.delete(key);
+    return new Response(null, {
+      status: 204,
+      headers: { "cache-control": "private, no-store" },
+    });
   } catch {
     return new Response("Datei derzeit nicht verfügbar.", { status: 503 });
   }

@@ -39,6 +39,10 @@ import {
   type ApplicationPackage,
 } from "../lib/application-package";
 import { applyConfirmedResearchClaim } from "../lib/job-research";
+import {
+  LLM_MODEL_OPTIONS,
+  LLM_REASONING_OPTIONS,
+} from "../lib/llm-config";
 import { useModalDialog } from "../lib/use-modal-dialog";
 import {
   addApplicationActivity,
@@ -60,6 +64,8 @@ import {
   type DocumentKind,
   type DocumentRef,
   type IntegrationConfig,
+  type LlmModelTier,
+  type LlmReasoningEffort,
   type MasterCvContent,
   type VacancyResearch,
 } from "../lib/types";
@@ -964,6 +970,21 @@ const OUTPUT_TAB_MAP: Record<ApplicationOutputKind, ApplicationTab> = {
   "application-email": "applicationEmailBody",
 };
 
+const TAB_OUTPUT_MAP: Record<ApplicationTab, ApplicationOutputKind> = {
+  coverLetter: "cover-letter",
+  tailoredCv: "tailored-cv",
+  companyBrief: "company-brief",
+  interviewPrep: "interview-prep",
+  applicationEmailBody: "application-email",
+};
+
+const applicationOutputLabel = (kind: ApplicationOutputKind): string =>
+  APPLICATION_OUTPUT_DEFINITIONS.find((definition) => definition.key === kind)
+    ?.label ?? kind;
+
+const reasoningEffortLabel = (effort: LlmReasoningEffort): string =>
+  LLM_REASONING_OPTIONS.find((option) => option.key === effort)?.label ?? effort;
+
 const TAB_DOCUMENT_KIND: Partial<Record<ApplicationTab, ApplicationDocumentKind>> = {
   coverLetter: "cover-letter",
   tailoredCv: "tailored-cv",
@@ -975,6 +996,9 @@ type ApplicationGenerationJobReference = {
   id: string;
   status: "queued" | "in_progress";
   stage: "draft" | "repair" | "manual_review";
+  artifact: ApplicationOutputKind | null;
+  completedArtifacts: number;
+  totalArtifacts: number;
   startedAt: string;
   expiresAt: string;
 };
@@ -989,22 +1013,41 @@ type ApplicationGenerationApiPayload = {
     calls: number;
     inputTokens: number;
     outputTokens: number;
+    reasoningTokens: number;
+    cachedInputTokens: number;
+    cacheWriteTokens: number;
     totalTokens: number;
+    durationMs: number;
+    stages: Array<{
+      artifact: ApplicationOutputKind;
+      stage: ApplicationGenerationJobReference["stage"];
+      model: string;
+      effort: LlmReasoningEffort;
+      inputTokens: number;
+      outputTokens: number;
+      reasoningTokens: number;
+      cachedInputTokens: number;
+      cacheWriteTokens: number;
+      totalTokens: number;
+      durationMs: number;
+    }>;
   };
 };
 
-const APPLICATION_GENERATION_POLL_DEADLINE_MS = 9 * 60_000;
+const APPLICATION_GENERATION_POLL_DEADLINE_MS = 20 * 60_000;
 
 function applicationGenerationProgress(
-  stage: ApplicationGenerationJobReference["stage"],
+  job: ApplicationGenerationJobReference,
 ): string {
-  if (stage === "repair") {
-    return "Gezielt korrigieren: Nur die beanstandeten Blöcke werden überarbeitet …";
+  const progress = `${job.completedArtifacts} von ${job.totalArtifacts}`;
+  const artifact = job.artifact ? applicationOutputLabel(job.artifact) : "Paket";
+  if (job.stage === "repair") {
+    return `${artifact} gezielt korrigieren · ${progress} Ergebnisse fertig …`;
   }
-  if (stage === "manual_review") {
-    return "Manuelle Änderungen werden mit KI und Evidenz geprüft …";
+  if (job.stage === "manual_review") {
+    return `${artifact}: manuelle Änderungen prüfen · ${progress} Ergebnisse fertig …`;
   }
-  return "Unterlagen entwerfen: Lebenslauf und Anschreiben entstehen im Hintergrund …";
+  return `${artifact} erstellen · ${progress} Ergebnisse fertig …`;
 }
 
 function previewInline(value: string) {
@@ -1228,6 +1271,9 @@ function ApplicationStudio({
   const [result, setResult] = useState<ApplicationPackage | null>(null);
   const [activeTab, setActiveTab] = useState<ApplicationTab>("coverLetter");
   const [editingResult, setEditingResult] = useState(false);
+  const [editedOutputKinds, setEditedOutputKinds] = useState<
+    ApplicationOutputKind[]
+  >([]);
   const [busy, setBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [generationError, setGenerationError] = useState<string[]>([]);
@@ -1351,6 +1397,23 @@ function ApplicationStudio({
         : current.outputKinds.filter((candidate) => candidate !== kind);
       return { ...current, outputKinds };
     });
+  };
+
+  const updateArtifactModel = (
+    kind: ApplicationOutputKind,
+    field: "model" | "effort",
+    value: LlmModelTier | LlmReasoningEffort,
+  ) => {
+    setPreferences((current) => ({
+      ...current,
+      modelSettings: {
+        ...current.modelSettings,
+        [kind]: {
+          ...current.modelSettings[kind],
+          [field]: value,
+        },
+      },
+    }));
   };
 
   const updateResearch = (nextResearch: VacancyResearch) => {
@@ -1496,6 +1559,7 @@ function ApplicationStudio({
         : "Anzeige und Unternehmen prüfen: Auftrag wird vorbereitet …",
     );
     setEditingResult(false);
+    if (action === "generate") setEditedOutputKinds([]);
     generationCancelRequested.current = false;
     try {
       const values = {
@@ -1522,6 +1586,10 @@ function ApplicationStudio({
         focusThemes: JSON.stringify(normalizedPreferences.focusThemes),
         customFocus: normalizedPreferences.customFocus,
         outputKinds: JSON.stringify(normalizedPreferences.outputKinds),
+        modelSettings: JSON.stringify(normalizedPreferences.modelSettings),
+        editedOutputKinds: JSON.stringify(
+          action === "manual_review" ? editedOutputKinds : [],
+        ),
         researchScopes: JSON.stringify(normalizedPreferences.researchScopes),
         researchSelectionMode: normalizedPreferences.researchSelectionMode,
         selectedResearchClaimIds: JSON.stringify(
@@ -1583,7 +1651,7 @@ function ApplicationStudio({
         }
         activeGenerationJobIdRef.current = payload.job.id;
         setActiveGenerationJobId(payload.job.id);
-        setGenerationProgress(applicationGenerationProgress(payload.job.stage));
+        setGenerationProgress(applicationGenerationProgress(payload.job));
         await new Promise((resolve) => setTimeout(resolve, pollingDelay));
         pollingDelay = Math.min(8_000, Math.ceil(pollingDelay * 1.5));
         if (generationCancelRequested.current) return;
@@ -1600,6 +1668,7 @@ function ApplicationStudio({
       setGenerationProgress("Qualität prüfen: Das verbindliche Gate ist bestanden …");
       setResult(payload.result);
       setGenerationUsage(payload.usage);
+      setEditedOutputKinds([]);
       toast(
         action === "manual_review"
           ? "Änderungen erneut geprüft und freigegeben"
@@ -1676,6 +1745,13 @@ function ApplicationStudio({
         current
           ? markApplicationPackageNeedsReview({ ...current, [key]: value })
           : current,
+      );
+      const outputKind =
+        key === "applicationEmailSubject"
+          ? "application-email"
+          : TAB_OUTPUT_MAP[key];
+      setEditedOutputKinds((current) =>
+        current.includes(outputKind) ? current : [...current, outputKind],
       );
       setGenerationError([]);
     };
@@ -1760,6 +1836,7 @@ function ApplicationStudio({
             onClick={() => {
               setResult(null);
               setGenerationUsage(undefined);
+              setEditedOutputKinds([]);
             }}
             type="button"
           >
@@ -1990,12 +2067,34 @@ function ApplicationStudio({
             {result.qualityReport.metrics.evidenceCoveragePercent}%
           </p>
           {generationUsage ? (
-            <p>
-              {generationUsage.calls} Modellaufruf
-              {generationUsage.calls === 1 ? "" : "e"} ·{" "}
-              {generationUsage.inputTokens.toLocaleString("de-DE")} Eingabe- ·{" "}
-              {generationUsage.outputTokens.toLocaleString("de-DE")} Ausgabetokens
-            </p>
+            <div className="model-usage-summary">
+              <p>
+                {generationUsage.calls} Modellaufruf
+                {generationUsage.calls === 1 ? "" : "e"} ·{" "}
+                {generationUsage.totalTokens.toLocaleString("de-DE")} Tokens ·{" "}
+                {(generationUsage.durationMs / 1_000).toLocaleString("de-DE", {
+                  maximumFractionDigits: 1,
+                })}{" "}
+                s Modelllaufzeit
+              </p>
+              <div className="model-usage-list">
+                {generationUsage.stages.map((usage, index) => (
+                  <div
+                    key={`${usage.artifact}-${usage.stage}-${index}`}
+                  >
+                    <strong>{applicationOutputLabel(usage.artifact)}</strong>
+                    <span>
+                      {usage.model} · {reasoningEffortLabel(usage.effort)} ·{" "}
+                      {usage.inputTokens.toLocaleString("de-DE")} ein /{" "}
+                      {usage.outputTokens.toLocaleString("de-DE")} aus
+                      {usage.reasoningTokens
+                        ? ` · ${usage.reasoningTokens.toLocaleString("de-DE")} Reasoning`
+                        : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : null}
           {generationError.length ? (
             <ul>
@@ -2327,6 +2426,69 @@ function ApplicationStudio({
             ))}
           </div>
         </fieldset>
+      </details>
+      <details className="studio-option-group model-settings-panel">
+        <summary>
+          <span>
+            <strong>Modell & Aufwand</strong>
+            <small>Für jedes ausgewählte Ergebnis separat festlegen</small>
+          </span>
+          <b aria-hidden="true">Anpassen</b>
+        </summary>
+        <div className="studio-option-content">
+          <p className="model-settings-intro">
+            Luna ist sparsam und schnell, Terra balanciert Qualität und Kosten,
+            Sol ist für besonders wichtige Texte gedacht. Sol wird nie automatisch
+            ausgewählt.
+          </p>
+          <div className="model-settings-grid">
+            {preferences.outputKinds.map((kind) => (
+              <div className="model-setting-row" key={kind}>
+                <strong>{applicationOutputLabel(kind)}</strong>
+                <label>
+                  Modell
+                  <select
+                    aria-label={`Modell für ${applicationOutputLabel(kind)}`}
+                    onChange={(event) =>
+                      updateArtifactModel(
+                        kind,
+                        "model",
+                        event.target.value as LlmModelTier,
+                      )
+                    }
+                    value={preferences.modelSettings[kind].model}
+                  >
+                    {LLM_MODEL_OPTIONS.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label} · {option.description}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Aufwand
+                  <select
+                    aria-label={`Aufwand für ${applicationOutputLabel(kind)}`}
+                    onChange={(event) =>
+                      updateArtifactModel(
+                        kind,
+                        "effort",
+                        event.target.value as LlmReasoningEffort,
+                      )
+                    }
+                    value={preferences.modelSettings[kind].effort}
+                  >
+                    {LLM_REASONING_OPTIONS.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
       </details>
       <details className="studio-option-group">
         <summary>

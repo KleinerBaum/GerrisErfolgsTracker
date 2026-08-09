@@ -2,15 +2,28 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Mapping, Protocol, Sequence
+from typing import Iterable, Protocol, Sequence
+
+try:  # pragma: no cover - fcntl is unavailable on native Windows
+    import fcntl
+except ImportError:  # pragma: no cover - exercised only outside POSIX
+    fcntl = None  # type: ignore[assignment]
 
 from pydantic_core import to_jsonable_python
 
 from gerris_erfolgs_tracker.models import AttachmentRef
 
 ATTACHMENTS_FOLDER_NAME = "attachments"
+
+
+class StateStorageError(RuntimeError):
+    """Raised when an existing state file cannot safely be restored."""
 
 
 class StorageBackend(Protocol):
@@ -142,27 +155,109 @@ class FileStorageBackend:
         self.path = resolve_state_file_path(path)
         self._last_fingerprint: str | None = None
 
+    @property
+    def _lock_path(self) -> Path:
+        return self.path.with_name(f".{self.path.name}.lock")
+
+    @contextmanager
+    def _lock(self) -> Iterator[None]:
+        """Serialize reads/writes without mutating the JSON file in place."""
+
+        lock_handle = os.open(self._lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            if fcntl is not None:
+                fcntl.flock(lock_handle, fcntl.LOCK_EX)
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(lock_handle, fcntl.LOCK_UN)
+            os.close(lock_handle)
+
+    def _quarantine_corrupt_file(self) -> Path | None:
+        """Move an unreadable existing file aside for explicit recovery."""
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        quarantine_path = self.path.with_name(f"{self.path.stem}.corrupt-{timestamp}{self.path.suffix}")
+        try:
+            os.replace(self.path, quarantine_path)
+        except OSError:
+            return None
+        return quarantine_path
+
+    @staticmethod
+    def _fsync_directory(directory: Path) -> None:
+        """Persist the directory entry when the platform supports directory fsync."""
+
+        directory_flag = getattr(os, "O_DIRECTORY", 0)
+        try:
+            directory_handle = os.open(directory, os.O_RDONLY | directory_flag)
+        except OSError:
+            return
+        try:
+            os.fsync(directory_handle)
+        except OSError:
+            # Directory fsync is not available on every supported platform.
+            pass
+        finally:
+            os.close(directory_handle)
+
     def load_state(self) -> Mapping[str, object]:
         if not self.path.exists():
             return {}
 
-        with self.path.open("r", encoding="utf-8") as file_handle:
-            return json.load(file_handle)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock():
+            try:
+                with self.path.open("r", encoding="utf-8") as file_handle:
+                    payload = json.load(file_handle)
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                quarantine_path = self._quarantine_corrupt_file()
+                location = f" ({quarantine_path})" if quarantine_path else ""
+                raise StateStorageError(
+                    f"Die vorhandene State-Datei ist nicht lesbar und wurde quarantänisiert{location}."
+                ) from exc
+
+            if not isinstance(payload, Mapping):
+                quarantine_path = self._quarantine_corrupt_file()
+                location = f" ({quarantine_path})" if quarantine_path else ""
+                raise StateStorageError(
+                    f"Die vorhandene State-Datei enthält kein JSON-Objekt und wurde quarantänisiert{location}."
+                )
+            return payload
 
     def save_state(self, state: Mapping[str, object]) -> None:
         serialized = json.dumps(state, default=to_jsonable_python, ensure_ascii=False, sort_keys=True)
-        if serialized == self._last_fingerprint:
-            return
-
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("w", encoding="utf-8") as file_handle:
-            file_handle.write(serialized)
+        with self._lock():
+            if serialized == self._last_fingerprint:
+                return
 
-        self._last_fingerprint = serialized
+            temporary_path: str | None = None
+            try:
+                file_descriptor, temporary_path = tempfile.mkstemp(
+                    prefix=f".{self.path.name}.",
+                    suffix=".tmp",
+                    dir=self.path.parent,
+                )
+                with os.fdopen(file_descriptor, "w", encoding="utf-8", newline="\n") as file_handle:
+                    file_handle.write(serialized)
+                    file_handle.flush()
+                    os.fsync(file_handle.fileno())
+                os.replace(temporary_path, self.path)
+                temporary_path = None
+                self._fsync_directory(self.path.parent)
+                self._last_fingerprint = serialized
+            finally:
+                if temporary_path is not None:
+                    try:
+                        os.unlink(temporary_path)
+                    except OSError:
+                        pass
 
 
 __all__ = [
     "StorageBackend",
+    "StateStorageError",
     "FileStorageBackend",
     "resolve_state_file_path",
     "resolve_tracker_directory",

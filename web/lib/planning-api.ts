@@ -24,6 +24,11 @@ function errorMessages(error: unknown): string[] {
 export function planningErrorResponse(error: unknown): Response {
   const message = errorMessages(error).join("\n");
   const normalizedMessage = message.toLowerCase();
+  const stateCorrupt =
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "planning_state_corrupt";
   const storageUnavailable =
     normalizedMessage.includes("d1-binding") ||
     normalizedMessage.includes("d1_") ||
@@ -42,19 +47,23 @@ export function planningErrorResponse(error: unknown): Response {
     message.includes("erst nach");
   return Response.json(
     {
-      error: storageUnavailable
-        ? "Der private Planungsspeicher wird gerade vorbereitet."
-        : inputError
-          ? message
-          : "Die Planung konnte momentan nicht verarbeitet werden.",
-      code: storageUnavailable
-        ? "planning_storage_preparing"
-        : inputError
-          ? "planning_invalid_request"
-          : "planning_unavailable",
+      error: stateCorrupt
+        ? "Der gespeicherte Planungszustand ist beschädigt. Automatischer Abgleich bleibt bis zur Wiederherstellung blockiert."
+        : storageUnavailable
+          ? "Der private Planungsspeicher wird gerade vorbereitet."
+          : inputError
+            ? message
+            : "Die Planung konnte momentan nicht verarbeitet werden.",
+      code: stateCorrupt
+        ? "planning_state_corrupt"
+        : storageUnavailable
+          ? "planning_storage_preparing"
+          : inputError
+            ? "planning_invalid_request"
+            : "planning_unavailable",
     },
     {
-      status: storageUnavailable ? 503 : inputError ? 400 : 502,
+      status: stateCorrupt ? 503 : storageUnavailable ? 503 : inputError ? 400 : 502,
       headers: PLANNING_NO_STORE_HEADERS,
     },
   );

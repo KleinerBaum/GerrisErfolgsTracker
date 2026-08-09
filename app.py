@@ -114,6 +114,7 @@ from gerris_erfolgs_tracker.models import (
     TodoItem,
 )
 from gerris_erfolgs_tracker.state import (
+    clear_persistence_block,
     configure_storage,
     get_todos,
     init_state,
@@ -121,7 +122,10 @@ from gerris_erfolgs_tracker.state import (
     persist_state,
     reset_state,
 )
-from gerris_erfolgs_tracker.state_persistence import PERSISTED_KEYS
+from gerris_erfolgs_tracker.state_persistence import (
+    PERSISTED_KEYS,
+    persistence_is_blocked,
+)
 from gerris_erfolgs_tracker.storage import FileStorageBackend
 from gerris_erfolgs_tracker.todos import (
     add_todo,
@@ -413,11 +417,18 @@ def _is_streamlit_cloud() -> bool:
 
 
 def _bootstrap_storage() -> FileStorageBackend:
+    storage_loaded = st.session_state.get("_storage_loaded", False)
     backend = FileStorageBackend()
     configure_storage(backend)
-    if not st.session_state.get("_storage_loaded", False):
+    if not storage_loaded:
         load_persisted_state()
         st.session_state["_storage_loaded"] = True
+    elif persistence_is_blocked():
+        st.error(
+            "Die Persistenz ist bis zur Wiederherstellung gesperrt. Importiere ein gültiges Backup "
+            "oder setze die Sitzung ausdrücklich zurück.",
+            icon="🛑",
+        )
     return backend
 
 
@@ -757,6 +768,7 @@ def _parse_backup_payload(raw_bytes: bytes) -> dict[str, object] | None:
 
 
 def _restore_backup_state(payload: Mapping[str, object]) -> None:
+    clear_persistence_block()
     for key in PERSISTED_KEYS:
         if key in payload:
             st.session_state[key] = payload[key]
@@ -3407,8 +3419,8 @@ def render_safety_panel(panel: Any, *, key_suffix: str = "") -> bool:
     if show_safety_notes:
         panel.info(
             (
-                "Optionale lokale Persistenz speichert Daten in .data/gerris_state.json; auf Streamlit Community Cloud können Dateien nach einem Neustart verschwinden.",
-                "Optional local persistence stores data in .data/gerris_state.json; on Streamlit Community Cloud files may disappear after a restart.",
+                "Optionale lokale Persistenz speichert Daten in .data/GerrisErfolgsTracker/gerris_state.json; auf Streamlit Community Cloud können Dateien nach einem Neustart verschwinden.",
+                "Optional local persistence stores data in .data/GerrisErfolgsTracker/gerris_state.json; on Streamlit Community Cloud files may disappear after a restart.",
             )
         )
         panel.warning(

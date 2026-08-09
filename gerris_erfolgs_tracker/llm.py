@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Iterable, Optional, Sequence, TypeVar
+from dataclasses import dataclass, replace
+from typing import Any, Iterable, Literal, Optional, Sequence, TypeVar
 
 import streamlit as st
 from openai import (
@@ -16,11 +17,48 @@ from openai import (
 from pydantic import BaseModel
 from streamlit.errors import StreamlitSecretNotFoundError
 
-DEFAULT_MODEL = "gpt-5-nano"
-DEFAULT_REASONING_MODEL = "gpt-5-nano"
+LUNA_MODEL = "gpt-5.6-luna"
+TERRA_MODEL = "gpt-5.6-terra"
+SOL_MODEL = "gpt-5.6-sol"
+DEFAULT_MODEL = LUNA_MODEL
+DEFAULT_REASONING_MODEL = LUNA_MODEL
 DEFAULT_TIMEOUT_SECONDS = 20.0
 DEFAULT_MAX_ATTEMPTS = 3
 _BACKOFF_FACTOR = 1.6
+
+ReasoningEffort = Literal["none", "low", "medium", "high", "xhigh"]
+LLMPurpose = Literal[
+    "todo_quadrant",
+    "motivation",
+    "goal_suggestion",
+    "daily_plan",
+    "email_draft",
+    "milestones",
+    "weekly_coach",
+    "journal_alignment",
+    "task_analysis",
+]
+
+
+@dataclass(frozen=True)
+class LLMPurposeConfig:
+    model: str
+    reasoning_effort: ReasoningEffort
+    max_output_tokens: int
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+
+
+LLM_PURPOSE_CONFIGS: dict[LLMPurpose, LLMPurposeConfig] = {
+    "todo_quadrant": LLMPurposeConfig(LUNA_MODEL, "none", 240),
+    "motivation": LLMPurposeConfig(LUNA_MODEL, "none", 180),
+    "goal_suggestion": LLMPurposeConfig(LUNA_MODEL, "low", 420),
+    "daily_plan": LLMPurposeConfig(LUNA_MODEL, "low", 1_000, 30.0),
+    "email_draft": LLMPurposeConfig(LUNA_MODEL, "low", 1_400, 30.0),
+    "milestones": LLMPurposeConfig(LUNA_MODEL, "low", 900),
+    "weekly_coach": LLMPurposeConfig(LUNA_MODEL, "low", 600),
+    "journal_alignment": LLMPurposeConfig(LUNA_MODEL, "medium", 1_800, 30.0),
+    "task_analysis": LLMPurposeConfig(LUNA_MODEL, "medium", 1_400, 30.0),
+}
 
 ParsedModelT = TypeVar("ParsedModelT", bound=BaseModel)
 
@@ -48,6 +86,14 @@ def get_default_model(reasoning: bool = False) -> str:
     return DEFAULT_REASONING_MODEL if reasoning else DEFAULT_MODEL
 
 
+def get_llm_config(purpose: LLMPurpose) -> LLMPurposeConfig:
+    """Return a validated purpose budget with an optional operator model override."""
+
+    config = LLM_PURPOSE_CONFIGS[purpose]
+    configured_model = _get_secret("OPENAI_MODEL")
+    return replace(config, model=configured_model) if configured_model else config
+
+
 def get_openai_client() -> Optional[OpenAI]:
     """Create an OpenAI client from secrets or environment variables."""
 
@@ -73,6 +119,8 @@ def request_structured_response(
     model: str,
     messages: Sequence[dict[str, object] | str],
     response_model: type[ParsedModelT],
+    reasoning_effort: ReasoningEffort = "low",
+    max_output_tokens: int = 300,
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     tools: Optional[Iterable[object]] = None,
@@ -92,7 +140,9 @@ def request_structured_response(
                 model=model,
                 input=list(messages),
                 text_format=response_model,
-                max_output_tokens=300,
+                reasoning={"effort": reasoning_effort},
+                max_output_tokens=max_output_tokens,
+                store=False,
                 **parse_kwargs,
             )
             parsed = response.output_parsed
@@ -118,8 +168,16 @@ __all__ = [
     "DEFAULT_MODEL",
     "DEFAULT_REASONING_MODEL",
     "DEFAULT_TIMEOUT_SECONDS",
+    "LLMPurpose",
+    "LLMPurposeConfig",
+    "LLM_PURPOSE_CONFIGS",
+    "LUNA_MODEL",
     "LLMError",
+    "ReasoningEffort",
+    "SOL_MODEL",
+    "TERRA_MODEL",
     "get_default_model",
+    "get_llm_config",
     "get_openai_client",
     "request_structured_response",
 ]

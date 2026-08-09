@@ -75,6 +75,7 @@ import {
 } from "./dashboard";
 import { normalizeMasterCvContent } from "./master-cv";
 import { normalizeApplicationKpiSettings } from "./application-workflow";
+import { isPersistedAppState } from "./state-validation";
 
 const NO_CALENDAR_ERROR = "Kalenderdaten konnten nicht geladen werden.";
 const MAX_CALENDARS_FOR_PLANNING = 12;
@@ -107,6 +108,17 @@ type DesiredCalendarEvent = CreateCalendarEventInput & {
 type CalendarLinkRow = typeof calendarLinks.$inferSelect;
 type OutboxRow = typeof syncOutboxItems.$inferSelect;
 
+export class PlanningStateCorruptionError extends Error {
+  readonly code = "planning_state_corrupt";
+
+  constructor() {
+    super(
+      "Der gespeicherte AppState ist beschädigt oder unvollständig; Planung und Automatik wurden blockiert.",
+    );
+    this.name = "PlanningStateCorruptionError";
+  }
+}
+
 function emptyState(): AppState {
   return {
     schemaVersion: 1,
@@ -135,23 +147,19 @@ function emptyState(): AppState {
   };
 }
 
-function parsedStoredState(value: string | null | undefined): AppState {
-  if (!value) return emptyState();
+function parsedStoredState(value: string | null | undefined, expectedRevision?: number): AppState {
+  if (value === null || value === undefined) return emptyState();
   try {
-    const state = JSON.parse(value) as Partial<AppState>;
-    if (
-      state.schemaVersion !== 1 ||
-      !Array.isArray(state.tasks) ||
-      !Array.isArray(state.costs) ||
-      !Array.isArray(state.documents) ||
-      !Array.isArray(state.calendarEvents) ||
-      !Array.isArray(state.applications) ||
-      !Array.isArray(state.journal)
-    ) {
-      return emptyState();
+    const parsed: unknown = JSON.parse(value);
+    if (!isPersistedAppState(parsed)) {
+      throw new PlanningStateCorruptionError();
+    }
+    const state = parsed;
+    if (expectedRevision !== undefined && state.revision !== expectedRevision) {
+      throw new PlanningStateCorruptionError();
     }
     return {
-      ...(state as AppState),
+      ...state,
       careerPassportDocumentId:
         typeof state.careerPassportDocumentId === "string"
           ? state.careerPassportDocumentId
@@ -166,8 +174,9 @@ function parsedStoredState(value: string | null | undefined): AppState {
         state.applicationKpiSettings,
       ),
     };
-  } catch {
-    return emptyState();
+  } catch (error) {
+    if (error instanceof PlanningStateCorruptionError) throw error;
+    throw new PlanningStateCorruptionError();
   }
 }
 
@@ -964,11 +973,16 @@ async function enqueueOutbox(
     .onConflictDoNothing();
 }
 
-async function outboxSuccess(ownerEmail: string, itemId: string) {
+async function outboxSuccess(
+  ownerEmail: string,
+  itemId: string,
+  claimToken: string,
+) {
   await getDb()
     .update(syncOutboxItems)
     .set({
       status: "done",
+      claimToken: null,
       lastError: null,
       updatedAt: new Date().toISOString(),
     })
@@ -976,11 +990,18 @@ async function outboxSuccess(ownerEmail: string, itemId: string) {
       and(
         eq(syncOutboxItems.ownerEmail, ownerEmail),
         eq(syncOutboxItems.itemId, itemId),
+        eq(syncOutboxItems.status, "processing"),
+        eq(syncOutboxItems.claimToken, claimToken),
       ),
     );
 }
 
-async function outboxFailure(ownerEmail: string, item: OutboxRow, error: unknown) {
+async function outboxFailure(
+  ownerEmail: string,
+  item: OutboxRow,
+  claimToken: string,
+  error: unknown,
+) {
   const attemptCount = item.attemptCount + 1;
   const retryable =
     error instanceof GoogleApiError ? error.retryable : attemptCount < 3;
@@ -989,10 +1010,11 @@ async function outboxFailure(ownerEmail: string, item: OutboxRow, error: unknown
     Date.now() + Math.min(2 ** attemptCount * 30_000, 6 * 60 * 60_000),
   ).toISOString();
   const storedAttemptCount = retry ? attemptCount : MAX_OUTBOX_ATTEMPTS;
-  await getDb()
+  const updated = await getDb()
     .update(syncOutboxItems)
     .set({
       status: "failed",
+      claimToken: null,
       attemptCount: storedAttemptCount,
       nextAttemptAt,
       lastError: errorMessage(error),
@@ -1002,9 +1024,12 @@ async function outboxFailure(ownerEmail: string, item: OutboxRow, error: unknown
       and(
         eq(syncOutboxItems.ownerEmail, ownerEmail),
         eq(syncOutboxItems.itemId, item.itemId),
+        eq(syncOutboxItems.status, "processing"),
+        eq(syncOutboxItems.claimToken, claimToken),
       ),
-    );
-  return retry;
+    )
+    .returning({ itemId: syncOutboxItems.itemId });
+  return retry && Boolean(updated[0]);
 }
 
 async function processOutbox(
@@ -1038,9 +1063,15 @@ async function processOutbox(
   let retries = 0;
   const conflicts: PlanningGap[] = [];
   for (const item of rows) {
+    const claimToken = crypto.randomUUID();
+    const claimedAt = new Date().toISOString();
     const claimed = await getDb()
       .update(syncOutboxItems)
-      .set({ status: "processing", updatedAt: new Date().toISOString() })
+      .set({
+        status: "processing",
+        claimToken,
+        updatedAt: claimedAt,
+      })
       .where(
         and(
           eq(syncOutboxItems.ownerEmail, ownerEmail),
@@ -1107,7 +1138,7 @@ async function processOutbox(
             ),
           );
       }
-      await outboxSuccess(ownerEmail, item.itemId);
+      await outboxSuccess(ownerEmail, item.itemId, claimToken);
       processed += 1;
     } catch (error) {
       if (error instanceof GoogleApiError && [404, 409, 412].includes(error.status)) {
@@ -1149,7 +1180,7 @@ async function processOutbox(
           dueAt: null,
         });
       }
-      if (await outboxFailure(ownerEmail, item, error)) retries += 1;
+      if (await outboxFailure(ownerEmail, item, claimToken, error)) retries += 1;
     }
   }
   return { processed, retries, conflicts };

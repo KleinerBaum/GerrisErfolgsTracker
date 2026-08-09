@@ -2,7 +2,7 @@
 
 ## Speicherpfad & OneDrive
 - Prüfe `GERRIS_ONEDRIVE_DIR`. Wenn der Ordner existiert, nutzt die App `gerris_state.json` genau dort.
-- Ohne OneDrive-Hinweis fällt die App auf `.data/gerris_state.json` im Projektverzeichnis zurück. Lege den Ordner an, falls er fehlt.
+- Ohne OneDrive-Hinweis fällt die App auf `.data/GerrisErfolgsTracker/gerris_state.json` im Projektverzeichnis zurück. Lege den Ordner an, falls er fehlt.
 - Auf Windows helfen `echo %OneDrive%` oder `echo %USERPROFILE%\OneDrive` beim Auffinden des Sync-Ordners.
 
 ## Typische Probleme

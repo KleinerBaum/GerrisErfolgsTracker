@@ -102,8 +102,8 @@ unter **Umgebungsvariablen** an:
 | `GOOGLE_DRIVE_ROOT_FOLDER_ID` | `1_XCyuIovFJQSQ80zVy3gVkBuM8Tutgwe` |
 | `GOOGLE_TASKS_LIST_NAME` | `Gerris Kompass` |
 | `GOOGLE_CALENDAR_ID` | `primary` |
-| `OPENAI_MODEL` | `gpt-5.6-sol` |
-| `OPENAI_RESEARCH_MODEL` | `gpt-5.6` (optional; nur für die öffentliche Vakanzrecherche) |
+| `OPENAI_MODEL` | `gpt-5.6-luna` |
+| `OPENAI_RESEARCH_MODEL` | `gpt-5.6-luna` (optional; nur für die öffentliche Vakanzrecherche) |
 
 Lege diese Werte ausschließlich unter **Geheimnisse** an:
 

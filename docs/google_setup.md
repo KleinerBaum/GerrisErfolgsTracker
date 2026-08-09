@@ -1,3 +1,7 @@
+> **Veraltet:** Diese Anleitung beschreibt den früheren iCal-/Drive-Aufbau. Für die aktuelle private Sites-Webapp gilt [google-workspace-sites.md](google-workspace-sites.md); für die Python-Laufzeit gilt [python-google-workspace.md](python-google-workspace.md).
+>
+> Die folgenden historischen Schritte werden nicht mehr als aktueller Setup-Vertrag verwendet.
+
 # Google Workspace Setup
 
 ## Sites-Webapp (`web/`)
