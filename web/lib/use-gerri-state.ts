@@ -3,14 +3,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { COST_CATEGORIES, normalizeAccountBalances } from "./finance-data";
-import { mergeApplicationResearch } from "./application-research";
+import {
+  mergeApplicationResearch,
+  normalizeApplicationResearchMigration,
+} from "./application-research";
 import { normalizeApplicationKpiSettings } from "./application-workflow";
 import { diaryRhythmDays, normalizeDiaryEntries } from "./diary";
 import { normalizeDashboardSettings } from "./dashboard";
 import { isoDateInput } from "./format";
 import { ledgerTotals, normalizeGamificationState } from "./gamification";
 import { normalizeMasterCvContent } from "./master-cv";
-import type { AppState, CostCategory, SyncStatus } from "./types";
+import {
+  createQaRoleFixtures,
+  QA_ROLE_FIXTURE_VERSION,
+} from "./role-pipeline-fixtures";
+import { normalizeJobSearchProfile } from "./role-pipeline";
+import type {
+  AppState,
+  CostCategory,
+  GerrisSiteRole,
+  SyncStatus,
+} from "./types";
 import { isPersistedAppState } from "./state-validation";
 
 const STORAGE_KEY = "gerris-kompass-state-v1";
@@ -20,7 +33,10 @@ const isAppState = isPersistedAppState;
 const finiteOrZero = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
 
-function normalizeState(value: AppState): AppState {
+export function normalizeState(
+  value: AppState,
+  siteRole: GerrisSiteRole = "production",
+): AppState {
   const candidate = value as AppState & {
     incomes?: AppState["incomes"];
     accountBalances?: Partial<AppState["accountBalances"]>;
@@ -29,6 +45,11 @@ function normalizeState(value: AppState): AppState {
     applicationKpiSettings?: AppState["applicationKpiSettings"];
   };
   const journal = normalizeDiaryEntries(candidate.journal);
+  const masterCvContent = normalizeMasterCvContent(candidate.masterCvContent);
+  const normalizedApplications =
+    siteRole === "qa" && candidate.qaFixtureVersion !== QA_ROLE_FIXTURE_VERSION
+      ? createQaRoleFixtures()
+      : mergeApplicationResearch(candidate.applications);
   const gamification = normalizeGamificationState(
     candidate.gamification,
     finiteOrZero(candidate.points),
@@ -53,7 +74,17 @@ function normalizeState(value: AppState): AppState {
     }),
     incomes: Array.isArray(candidate.incomes) ? candidate.incomes : [],
     accountBalances: normalizeAccountBalances(candidate.accountBalances),
-    applications: mergeApplicationResearch(candidate.applications),
+    applications: normalizedApplications,
+    jobSearchProfile: normalizeJobSearchProfile(
+      candidate.jobSearchProfile,
+      masterCvContent?.passport.targetDirections,
+    ),
+    applicationResearchMigration: normalizeApplicationResearchMigration(
+      candidate.applicationResearchMigration,
+      normalizedApplications,
+    ),
+    qaFixtureVersion:
+      siteRole === "qa" ? QA_ROLE_FIXTURE_VERSION : undefined,
     contacts: Array.isArray(candidate.contacts) ? candidate.contacts : [],
     dashboardSettings: normalizeDashboardSettings(
       candidate.dashboardSettings,
@@ -70,7 +101,7 @@ function normalizeState(value: AppState): AppState {
       typeof candidate.careerPassportDocumentId === "string"
         ? candidate.careerPassportDocumentId
         : null,
-    masterCvContent: normalizeMasterCvContent(candidate.masterCvContent),
+    masterCvContent,
     journal,
     gamification,
     points: ledgerTotals(gamification.ledger).balanceXp,
@@ -78,12 +109,12 @@ function normalizeState(value: AppState): AppState {
   };
 }
 
-function readLocalState(): AppState | null {
+function readLocalState(siteRole: GerrisSiteRole): AppState | null {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    return isAppState(parsed) ? normalizeState(parsed) : null;
+    return isAppState(parsed) ? normalizeState(parsed, siteRole) : null;
   } catch {
     return null;
   }
@@ -107,8 +138,11 @@ function writeLocalState(state: AppState) {
   }
 }
 
-export function useGerriState(initialState: AppState) {
-  const [state, setState] = useState(() => normalizeState(initialState));
+export function useGerriState(
+  initialState: AppState,
+  siteRole: GerrisSiteRole = "production",
+) {
+  const [state, setState] = useState(() => normalizeState(initialState, siteRole));
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("lade");
   const [persistedRevision, setPersistedRevision] = useState<number | null>(
     null,
@@ -128,7 +162,7 @@ export function useGerriState(initialState: AppState) {
         if (response.ok && response.status !== 204) {
           const payload: unknown = await response.json();
           if (isAppState(payload)) {
-            const normalized = normalizeState(payload);
+            const normalized = normalizeState(payload, siteRole);
             setState(normalized);
             writeLocalState(normalized);
             remoteAvailable.current = true;
@@ -137,19 +171,19 @@ export function useGerriState(initialState: AppState) {
             setSyncStatus("synchronisiert");
           }
         } else if (response.status === 204) {
-          const local = readLocalState();
+          const local = readLocalState(siteRole);
           if (local) setState(local);
           remoteAvailable.current = true;
           remoteRevision.current = 0;
           setPersistedRevision(0);
           setSyncStatus("synchronisiert");
         } else {
-          const local = readLocalState();
+          const local = readLocalState(siteRole);
           if (local) setState(local);
           setSyncStatus("lokal");
         }
       } catch {
-        const local = readLocalState();
+        const local = readLocalState(siteRole);
         if (local) setState(local);
         setSyncStatus("lokal");
       } finally {
@@ -160,7 +194,7 @@ export function useGerriState(initialState: AppState) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [siteRole]);
 
   useEffect(() => {
     if (!ready) return;
@@ -221,11 +255,14 @@ export function useGerriState(initialState: AppState) {
   }, [state]);
 
   const importBackup = useCallback((raw: string) => {
+    if (siteRole === "qa") {
+      throw new Error("Der QA-Kanal übernimmt keine produktiven Gerris-Backups.");
+    }
     const parsed: unknown = JSON.parse(raw);
     if (!isAppState(parsed)) {
       throw new Error("Das Backup hat kein unterstütztes Format.");
     }
-    const normalized = normalizeState(parsed);
+    const normalized = normalizeState(parsed, siteRole);
     const pendingTaskImports = [
       ...(normalized.pendingTaskImports ?? []),
       ...normalized.tasks.filter((task) => !task.taskListId),
@@ -239,7 +276,7 @@ export function useGerriState(initialState: AppState) {
       revision: Math.max(current.revision, parsed.revision) + 1,
       updatedAt: new Date().toISOString(),
     }));
-  }, []);
+  }, [siteRole]);
 
   const acceptRemoteState = useCallback(async () => {
     setSyncStatus("lade");
@@ -254,7 +291,7 @@ export function useGerriState(initialState: AppState) {
       if (!isAppState(payload)) {
         throw new Error("Der private Serverstand hat kein unterstütztes Format.");
       }
-      const normalized = normalizeState(payload);
+      const normalized = normalizeState(payload, siteRole);
       setState(normalized);
       writeLocalState(normalized);
       remoteAvailable.current = true;
@@ -265,7 +302,7 @@ export function useGerriState(initialState: AppState) {
       setSyncStatus("konflikt");
       throw error;
     }
-  }, []);
+  }, [siteRole]);
 
   return {
     state,

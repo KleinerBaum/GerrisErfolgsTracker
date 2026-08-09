@@ -11,7 +11,12 @@ import {
   normalizeApplicationGenerationInputs,
   normalizeApplicationGenerationPreferences,
 } from "./application-workflow.ts";
+import {
+  contentFingerprint,
+  normalizeApplicationRoleFields,
+} from "./role-pipeline.ts";
 import type {
+  ApplicationResearchMigration,
   ApplicationProcess,
   ApplicationResearchTier,
   JobResearchClaim,
@@ -960,6 +965,21 @@ function legacyVacancy(seed: VacancySeed): ApplicationProcess {
     researchSummary,
     sourceUrl: "",
     sourceVerifiedAt: LEGACY_VERIFIED_AT,
+    discoverySources: [],
+    checkedAt: `${LEGACY_VERIFIED_AT}T12:00:00.000Z`,
+    publishedAt: null,
+    contractType: publishedTerms,
+    salaryBasis: compensation ? "listed" : "unknown",
+    marketSalaryEstimate: "",
+    verificationStatus: "stale",
+    contentFingerprint: contentFingerprint({
+      employer: company,
+      title: jobTitle,
+      location,
+    }),
+    recommendation: "undecided",
+    assessment: null,
+    warmPath: null,
     status: "research",
     appliedAt: null,
     applicationChannel: "",
@@ -990,10 +1010,6 @@ function legacyVacancy(seed: VacancySeed): ApplicationProcess {
 
 export const LEGACY_APPLICATION_RESEARCH: ApplicationProcess[] =
   VACANCY_SEEDS.map(legacyVacancy);
-
-const LEGACY_APPLICATION_BY_ID = new Map(
-  LEGACY_APPLICATION_RESEARCH.map((application) => [application.id, application]),
-);
 
 const LEGACY_ID_BY_SOURCE_ID: Readonly<Record<string, string>> = {
   J001: "vacancy-1",
@@ -1257,6 +1273,18 @@ function importedVacancyResearch(
       record.deadline ?? "",
       "Steuert Priorität und Bewerbungsplanung.",
     ),
+    researchClaim(
+      record,
+      "process.published_at",
+      record.publishedAt ?? "",
+      "Hilft, Aktualität und mögliche Reposts einzuordnen.",
+    ),
+    researchClaim(
+      record,
+      "process.posting_status",
+      record.dailyStatus === "Frist verstrichen" ? "geschlossen" : "offen",
+      "Ist ein Freigabekriterium für Entscheidung und Unterlagenerstellung.",
+    ),
     researchClaim(record, "process.contact", contact, "Erleichtert gezielte fachliche Rückfragen."),
     researchClaim(
       record,
@@ -1371,6 +1399,23 @@ function jobRadarVacancy(record: JobRadarRecord, rank: number): ApplicationProce
     researchSummary,
     sourceUrl: record.jobUrl || record.applicationUrl,
     sourceVerifiedAt: record.fetchedAt ?? JOB_RADAR_VERIFIED_AT,
+    discoverySources: [],
+    checkedAt: `${record.fetchedAt ?? JOB_RADAR_VERIFIED_AT}T12:00:00.000Z`,
+    publishedAt: record.publishedAt,
+    contractType: knownPublishedValue(record.contractType),
+    salaryBasis: record.compensation ? "listed" : "unknown",
+    marketSalaryEstimate: "",
+    verificationStatus:
+      record.dailyStatus === "Frist verstrichen" ? "closed" : "stale",
+    contentFingerprint: contentFingerprint({
+      employer: record.company,
+      title: record.jobTitle,
+      location: record.location,
+      description: digitalJobDescription(record),
+    }),
+    recommendation: "undecided",
+    assessment: null,
+    warmPath: null,
     status: record.dailyStatus === "Frist verstrichen" ? "closed" : "research",
     appliedAt: null,
     applicationChannel: "",
@@ -1401,168 +1446,12 @@ export const APPLICATION_RESEARCH: ApplicationProcess[] = JOB_RADAR_RECORDS.map(
   jobRadarVacancy,
 );
 
-function refreshedSeedValue<K extends keyof ApplicationProcess>(
-  key: K,
-  seeded: ApplicationProcess,
-  current: ApplicationProcess,
-  legacy: ApplicationProcess | undefined,
-): ApplicationProcess[K] {
-  const value = current[key];
-  if (value === null || value === undefined || value === "") return seeded[key];
-  return legacy && Object.is(value, legacy[key]) ? seeded[key] : value;
-}
-
-function canonicalSourceUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    url.hash = "";
-    return url.toString();
-  } catch {
-    return "";
-  }
-}
-
-function normalizedIdentity(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("de-DE")
-    .replace(/(?:m|w|d)\s*[|/]\s*(?:m|w|d)(?:\s*[|/]\s*(?:m|w|d))?/g, " ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function sameVacancy(left: ApplicationProcess, right: ApplicationProcess): boolean {
-  const leftUrl = canonicalSourceUrl(left.sourceUrl);
-  const rightUrl = canonicalSourceUrl(right.sourceUrl);
-  if (leftUrl && rightUrl && leftUrl === rightUrl) return true;
-  return (
-    normalizedIdentity(left.jobTitle) === normalizedIdentity(right.jobTitle) &&
-    normalizedIdentity(left.company) === normalizedIdentity(right.company)
-  );
-}
-
-function mergeSeededApplication(
-  seeded: ApplicationProcess,
-  current: ApplicationProcess,
-): ApplicationProcess {
-  const legacy = LEGACY_APPLICATION_BY_ID.get(current.id);
-  const researchValue = <K extends keyof ApplicationProcess>(key: K) =>
-    refreshedSeedValue(key, seeded, current, legacy);
-  return {
-    ...seeded,
-    id: current.id,
-    shortlisted:
-      legacy && current.shortlisted === legacy.shortlisted
-        ? seeded.shortlisted
-        : current.shortlisted,
-    jobTitle: researchValue("jobTitle"),
-    company: researchValue("company"),
-    location: researchValue("location"),
-    deadline: researchValue("deadline"),
-    publishedTerms: researchValue("publishedTerms"),
-    compensation: researchValue("compensation"),
-    salaryOutlook: researchValue("salaryOutlook"),
-    fitRating: researchValue("fitRating"),
-    researchSummary: researchValue("researchSummary"),
-    sourceUrl: researchValue("sourceUrl"),
-    sourceVerifiedAt: researchValue("sourceVerifiedAt"),
-    status:
-      legacy && current.status === legacy.status ? seeded.status : current.status,
-    appliedAt: current.appliedAt ?? null,
-    applicationChannel: current.applicationChannel ?? "",
-    appliedTerms: current.appliedTerms ?? "",
-    contactPerson: researchValue("contactPerson"),
-    contactEmail: researchValue("contactEmail"),
-    contactPhone: current.contactPhone ?? seeded.contactPhone,
-    contacts: normalizeApplicationContacts(current.contacts).length
-      ? normalizeApplicationContacts(current.contacts)
-      : seeded.contacts,
-    jobDescriptionText: current.jobDescriptionText?.trim()
-      ? current.jobDescriptionText
-      : seeded.jobDescriptionText,
-    tags: Array.isArray(current.tags) && current.tags.length
-      ? current.tags
-      : seeded.tags,
-    nextStep: researchValue("nextStep"),
-    nextStepAt: researchValue("nextStepAt"),
-    notes: current.notes ?? "",
-    artifacts: Array.isArray(current.artifacts) ? current.artifacts : [],
-    vacancyResearch: isSavedVacancyResearch(current.vacancyResearch)
-      ? current.vacancyResearch
-      : seeded.vacancyResearch,
-    generationInputs: normalizeApplicationGenerationInputs(
-      current.generationInputs,
-    ),
-    generationPreferences: normalizeApplicationGenerationPreferences(
-      current.generationPreferences,
-    ),
-    documentDesign: normalizeApplicationDocumentDesign(current.documentDesign),
-    activities: normalizeApplicationActivities(current.activities),
-  };
-}
-
-const LEGACY_RESEARCH_FIELDS = [
-  "researchRank",
-  "researchTier",
-  "shortlisted",
-  "jobTitle",
-  "company",
-  "location",
-  "deadline",
-  "publishedTerms",
-  "compensation",
-  "salaryOutlook",
-  "fitRating",
-  "researchSummary",
-  "sourceUrl",
-  "sourceVerifiedAt",
-  "status",
-  "appliedAt",
-  "applicationChannel",
-  "appliedTerms",
-  "contactPerson",
-  "contactEmail",
-  "nextStep",
-  "nextStepAt",
-  "notes",
-] as const satisfies readonly (keyof ApplicationProcess)[];
-
-function isUntouchedLegacySeed(application: ApplicationProcess): boolean {
-  const legacy = LEGACY_APPLICATION_BY_ID.get(application.id);
-  return Boolean(
-    legacy &&
-      LEGACY_RESEARCH_FIELDS.every((key) =>
-        Object.is(application[key], legacy[key]),
-      ) &&
-      (!Array.isArray(application.artifacts) || application.artifacts.length === 0) &&
-      !isSavedVacancyResearch(application.vacancyResearch),
-  );
-}
-
 export function mergeApplicationResearch(
   existing: ApplicationProcess[] | undefined,
 ): ApplicationProcess[] {
   const saved = Array.isArray(existing) ? existing : [];
-  const savedById = new Map(saved.map((application) => [application.id, application]));
-  const usedSavedIds = new Set<string>();
-  const seeded = APPLICATION_RESEARCH.map((application) => {
-    const current =
-      savedById.get(application.id) ??
-      saved.find(
-        (candidate) =>
-          !usedSavedIds.has(candidate.id) && sameVacancy(application, candidate),
-      );
-    if (!current) return { ...application, artifacts: [] };
-    usedSavedIds.add(current.id);
-    return mergeSeededApplication(application, current);
-  });
-  const own = saved
-    .filter(
-      (application) =>
-        !usedSavedIds.has(application.id) && !isUntouchedLegacySeed(application),
-    )
-    .map((application) => ({
+  return saved.map((application) =>
+    normalizeApplicationRoleFields({
       ...application,
       artifacts: Array.isArray(application.artifacts) ? application.artifacts : [],
       vacancyResearch: isSavedVacancyResearch(application.vacancyResearch)
@@ -1582,8 +1471,119 @@ export function mergeApplicationResearch(
         application.documentDesign,
       ),
       activities: normalizeApplicationActivities(application.activities),
-    }));
-  return [...seeded, ...own];
+    }),
+  );
+}
+
+const SEEDED_APPLICATION_IDS = new Set([
+  ...LEGACY_APPLICATION_RESEARCH,
+  ...APPLICATION_RESEARCH,
+].map((application) => application.id));
+
+function hasPersonalGenerationInput(application: ApplicationProcess): boolean {
+  const input = normalizeApplicationGenerationInputs(application.generationInputs);
+  return Object.values(input).some((value) => value.trim());
+}
+
+function hasUserApplicationActivity(application: ApplicationProcess): boolean {
+  return Boolean(
+    application.appliedAt ||
+      application.applicationChannel?.trim() ||
+      application.appliedTerms?.trim() ||
+      application.notes?.trim() ||
+      application.artifacts?.length ||
+      application.activities?.length ||
+      hasPersonalGenerationInput(application) ||
+      !["research", "closed"].includes(application.status)
+  );
+}
+
+export function isSeededApplicationResearch(
+  application: ApplicationProcess,
+): boolean {
+  return SEEDED_APPLICATION_IDS.has(application.id);
+}
+
+export function legacyApplicationResearchSummary(
+  applications: readonly ApplicationProcess[],
+): { candidates: number; archive: number; retain: number } {
+  const candidates = applications.filter(isSeededApplicationResearch);
+  const retain = candidates.filter(hasUserApplicationActivity).length;
+  return {
+    candidates: candidates.length,
+    archive: candidates.length - retain,
+    retain,
+  };
+}
+
+export function archiveLegacyApplicationResearch(
+  applications: readonly ApplicationProcess[],
+): { applications: ApplicationProcess[]; archivedCount: number; retainedCount: number } {
+  let archivedCount = 0;
+  let retainedCount = 0;
+  const next: ApplicationProcess[] = [];
+  for (const application of applications) {
+    if (!isSeededApplicationResearch(application)) {
+      next.push(application);
+      continue;
+    }
+    if (!hasUserApplicationActivity(application)) {
+      archivedCount += 1;
+      continue;
+    }
+    retainedCount += 1;
+    next.push({
+      ...application,
+      researchRank: null,
+      researchTier: "own",
+      verificationStatus: "stale",
+      recommendation:
+        application.recommendation === "skip"
+          ? "skip"
+          : "undecided",
+      nextStep: "Originalanzeige erneut prüfen",
+      nextStepAt: null,
+    });
+  }
+  return { applications: next, archivedCount, retainedCount };
+}
+
+export function normalizeApplicationResearchMigration(
+  value: unknown,
+  applications: readonly ApplicationProcess[],
+): ApplicationResearchMigration {
+  if (value && typeof value === "object") {
+    const candidate = value as Partial<ApplicationResearchMigration>;
+    if (candidate.version === 1 && candidate.status === "completed") {
+      return {
+        version: 1,
+        status: "completed",
+        completedAt:
+          typeof candidate.completedAt === "string" &&
+          Number.isFinite(Date.parse(candidate.completedAt))
+            ? candidate.completedAt
+            : null,
+        archivedCount:
+          typeof candidate.archivedCount === "number" &&
+          Number.isSafeInteger(candidate.archivedCount)
+            ? Math.max(0, candidate.archivedCount)
+            : 0,
+        retainedCount:
+          typeof candidate.retainedCount === "number" &&
+          Number.isSafeInteger(candidate.retainedCount)
+            ? Math.max(0, candidate.retainedCount)
+            : 0,
+      };
+    }
+  }
+  const summary = legacyApplicationResearchSummary(applications);
+  return {
+    version: 1,
+    status: summary.candidates ? "pending" : "completed",
+    completedAt: null,
+    archivedCount: 0,
+    retainedCount: 0,
+  };
 }
 
 export function createEmptyApplication(id: string): ApplicationProcess {
@@ -1604,6 +1604,20 @@ export function createEmptyApplication(id: string): ApplicationProcess {
     researchSummary: "",
     sourceUrl: "",
     sourceVerifiedAt: createdAt.slice(0, 10),
+    discoverySources: [],
+    checkedAt: "",
+    publishedAt: null,
+    contractType: "",
+    salaryBasis: "unknown",
+    marketSalaryEstimate: "",
+    verificationStatus: "unverified",
+    contentFingerprint: contentFingerprint({
+      employer: "",
+      title: "Neue Bewerbung",
+    }),
+    recommendation: "undecided",
+    assessment: null,
+    warmPath: null,
     status: "draft",
     appliedAt: null,
     applicationChannel: "",

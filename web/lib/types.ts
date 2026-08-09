@@ -880,6 +880,89 @@ export type ApplicationContact = {
   note: string;
 };
 
+export type JobDiscoveryProvider =
+  | "indeed"
+  | "jooble"
+  | "linkedin"
+  | "employer"
+  | "recruiter"
+  | "manual";
+
+export type JobSearchProfile = {
+  schemaVersion: 1;
+  targetTracks: string[];
+  locations: string[];
+  remoteAllowed: boolean;
+  employmentTypes: string[];
+  minimumSalaryAnnual: number | null;
+  salaryCurrency: "EUR";
+  hardExclusions: {
+    employers: string[];
+    titles: string[];
+    keywords: string[];
+    contractTypes: string[];
+  };
+  reviewedAt: string | null;
+  updatedAt: string;
+};
+
+export type JobDiscoverySource = {
+  provider: JobDiscoveryProvider;
+  providerJobId: string | null;
+  url: string;
+  sourceKind: "discovery" | "claimed_original";
+  capturedAt: string;
+  checkedAt: string | null;
+};
+
+export type RoleVerificationStatus =
+  | "unverified"
+  | "verified"
+  | "stale"
+  | "closed";
+
+export type SalaryBasis =
+  | "listed"
+  | "not_listed"
+  | "market_estimate"
+  | "unknown";
+
+export type RoleRecommendation =
+  | "undecided"
+  | "apply"
+  | "maybe"
+  | "skip";
+
+export type RoleWarmPath = {
+  personName: string;
+  personRole: string;
+  sourceUrl: string;
+  publicContext: string;
+  commonContactsNote: string;
+  commonContactsConfirmedAt: string | null;
+};
+
+export type RoleAssessment = {
+  recommendation: Exclude<RoleRecommendation, "undecided">;
+  fitScore: number | null;
+  shortlistChancePercent: number | null;
+  mainMatch: string;
+  mainRisk: string;
+  cvAngle: string;
+  evidenceUrls: string[];
+  hardExclusionMatches: string[];
+  importedAt: string;
+  approvedAt: string | null;
+};
+
+export type ApplicationResearchMigration = {
+  version: 1;
+  status: "pending" | "completed";
+  completedAt: string | null;
+  archivedCount: number;
+  retainedCount: number;
+};
+
 export type CareerEvidenceConfidence =
   | "source_only"
   | "user_confirmed"
@@ -994,6 +1077,8 @@ export type JobResearchFactKey =
   | "offer.reporting_line"
   | "offer.benefits"
   | "process.deadline"
+  | "process.published_at"
+  | "process.posting_status"
   | "process.contact"
   | "process.selection"
   | "process.interview"
@@ -1113,6 +1198,17 @@ export type ApplicationProcess = {
   researchSummary: string;
   sourceUrl: string;
   sourceVerifiedAt: string;
+  discoverySources: JobDiscoverySource[];
+  checkedAt: string;
+  publishedAt: string | null;
+  contractType: string;
+  salaryBasis: SalaryBasis;
+  marketSalaryEstimate: string;
+  verificationStatus: RoleVerificationStatus;
+  contentFingerprint: string;
+  recommendation: RoleRecommendation;
+  assessment: RoleAssessment | null;
+  warmPath: RoleWarmPath | null;
   status: ApplicationStatus;
   appliedAt: string | null;
   applicationChannel: string;
@@ -1173,6 +1269,9 @@ export type AppState = {
   documents: DocumentRef[];
   calendarEvents: CalendarEvent[];
   applications: ApplicationProcess[];
+  jobSearchProfile?: JobSearchProfile;
+  applicationResearchMigration?: ApplicationResearchMigration;
+  qaFixtureVersion?: number;
   masterCvDocumentId: string | null;
   careerPassportDocumentId: string | null;
   masterCvContent: MasterCvContent | null;
@@ -1189,6 +1288,8 @@ export type IntegrationConfig = {
   driveLocalPath: string;
   gmailAccount: string;
 };
+
+export type GerrisSiteRole = "production" | "qa";
 
 export type SyncStatus =
   | "lade"

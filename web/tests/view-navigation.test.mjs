@@ -36,6 +36,14 @@ test("fällt bei unbekannten oder manipulierten Ansichten sicher auf die Zentral
   );
 });
 
+test("startet den privaten QA-Kanal ohne URL-Parameter direkt bei Bewerbungen", () => {
+  assert.equal(
+    viewFromUrl("https://studio.example.test/", "applications"),
+    "applications",
+  );
+  assert.equal(parseViewKey("../settings", "applications"), "applications");
+});
+
 test("erzeugt teilbare Bereichs-URLs und bewahrt andere Parameter", () => {
   assert.equal(
     urlForView(

@@ -8,12 +8,13 @@ import {
 } from "react";
 
 import { JobResearchPanel } from "./job-research-panel";
+import { JobDiscoveryPanel } from "./job-discovery-panel";
 import {
   MasterCvWorkspace,
 } from "./master-cv-workspace";
 import {
-  APPLICATION_RESEARCH,
   createEmptyApplication,
+  legacyApplicationResearchSummary,
 } from "../lib/application-research";
 import {
   addApplicationActivity,
@@ -28,6 +29,25 @@ import {
   formatRelativeDate,
 } from "../lib/format";
 import { applyConfirmedResearchClaim } from "../lib/job-research";
+import {
+  acceptRoleImportCandidates,
+  type RoleImportCandidatePreview,
+} from "../lib/role-import";
+import {
+  applyRecommendationGate,
+  contentFingerprint,
+  contractTypeFromResearch,
+  documentGenerationGate,
+  marketSalaryEstimateFromResearch,
+  normalizeDiscoverySources,
+  preferredRoleResearchUrl,
+  publishedAtFromResearch,
+  ROLE_VERIFICATION_LABELS,
+  safePublicUrl,
+  SALARY_BASIS_LABELS,
+  salaryBasisFromResearch,
+  verificationStatusFromResearch,
+} from "../lib/role-pipeline";
 import { responsePayload } from "../lib/http-response";
 import { documentOpenUrl } from "../lib/document-library";
 import {
@@ -41,7 +61,9 @@ import {
   type ApplicationStatus,
   type DocumentKind,
   type DocumentRef,
+  type GerrisSiteRole,
   type JobResearchClaim,
+  type JobSearchProfile,
   type MasterCvContent,
   type MasterCvImportBundle,
   type SalaryOutlook,
@@ -106,6 +128,11 @@ type ApplicationsViewProps = {
   ) => void;
   onRemoveArtifact: (applicationId: string, artifactId: string) => void;
   onOpenStudio: (application: ApplicationProcess) => void;
+  onReplaceApplications: (applications: ApplicationProcess[]) => void;
+  onUpdateJobSearchProfile: (profile: JobSearchProfile) => void;
+  onExportBackup: () => void;
+  onArchiveLegacyResearch: () => void;
+  siteRole: GerrisSiteRole;
   toast: (message: string) => void;
 };
 
@@ -138,13 +165,14 @@ function deadlineCopy(value: string | null): string {
   return `${formatDate(value)} · noch ${days} Tage`;
 }
 
-function safeHttpUrl(value: string): string | null {
-  try {
-    const url = new URL(value);
-    return ["http:", "https:"].includes(url.protocol) ? url.toString() : null;
-  } catch {
-    return null;
-  }
+function hasNamedWarmPathPerson(value: string): boolean {
+  const normalized = value.trim();
+  return Boolean(
+    normalized.length >= 2 &&
+      !/^(?:(?:hr|human resources|recruiting|personal(?:abteilung)?|kontakt|team|ansprechperson)(?: team)?|nicht veröffentlicht)$/i.test(
+        normalized,
+      ),
+  );
 }
 
 async function uploadPrivateFile({
@@ -216,12 +244,29 @@ export function ApplicationsView({
   onAttachArtifact,
   onRemoveArtifact,
   onOpenStudio,
+  onReplaceApplications,
+  onUpdateJobSearchProfile,
+  onExportBackup,
+  onArchiveLegacyResearch,
+  siteRole,
   toast,
 }: ApplicationsViewProps) {
   const { applications } = state;
-  const researchPoolCount = APPLICATION_RESEARCH.length;
+  const researchPoolCount = applications.filter(
+    (application) => application.status === "research",
+  ).length;
   const researchVerifiedAt =
-    APPLICATION_RESEARCH[0]?.sourceVerifiedAt ?? new Date().toISOString();
+    applications
+      .map((application) => application.checkedAt || application.sourceVerifiedAt)
+      .filter(Boolean)
+      .sort()
+      .at(-1) ?? state.updatedAt;
+  const legacyMigration = legacyApplicationResearchSummary(applications);
+  const migrationPending =
+    siteRole === "production" &&
+    state.applicationResearchMigration?.status !== "completed" &&
+    legacyMigration.candidates > 0;
+  const [backupDownloaded, setBackupDownloaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(
     applications.find((application) => application.shortlisted)?.id ??
       applications[0]?.id ??
@@ -234,7 +279,7 @@ export function ApplicationsView({
   const [salaryFilter, setSalaryFilter] = useState<SalaryOutlook | "all">("all");
   const [poolFilter, setPoolFilter] = useState<
     "shortlist" | "all" | "top" | "plausible" | "stretch" | "own"
-  >("shortlist");
+  >("all");
 
   const visible = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -259,6 +304,9 @@ export function ApplicationsView({
 
   const selected =
     applications.find((application) => application.id === selectedId) ?? null;
+  const selectedDocumentGate = selected
+    ? documentGenerationGate(selected)
+    : { allowed: false, reasons: ["Wähle zuerst eine geprüfte Rolle aus."] };
   const kpiProgress = useMemo(
     () => applicationKpiProgress(applications, state.applicationKpiSettings),
     [applications, state.applicationKpiSettings],
@@ -275,6 +323,18 @@ export function ApplicationsView({
     setPoolFilter("all");
     setSelectedId(application.id);
     toast("Neue Bewerbungsakte angelegt");
+  };
+
+  const acceptImportedCandidates = (
+    candidates: RoleImportCandidatePreview[],
+  ) => {
+    const result = acceptRoleImportCandidates(applications, candidates);
+    onReplaceApplications(result.applications);
+    setPoolFilter("all");
+    setStatusFilter("all");
+    setSalaryFilter("all");
+    setSelectedId(result.createdIds[0] ?? result.mergedIds[0] ?? selectedId);
+    return { createdIds: result.createdIds, mergedIds: result.mergedIds };
   };
 
   return (
@@ -301,12 +361,9 @@ export function ApplicationsView({
             </button>
             <button
               className="button button-primary"
-              onClick={() =>
-                onOpenStudio(
-                  selected ??
-                    createEmptyApplication(`application-${crypto.randomUUID()}`),
-                )
-              }
+              disabled={!selectedDocumentGate.allowed}
+              onClick={() => (selected ? onOpenStudio(selected) : undefined)}
+              title={selectedDocumentGate.reasons[0]}
               type="button"
             >
               Bewerbung erstellen
@@ -314,6 +371,59 @@ export function ApplicationsView({
           </div>
         </div>
       </section>
+
+      {siteRole === "qa" ? (
+        <section className="qa-channel-note" role="status">
+          <strong>Privater QA-Kanal</strong>
+          <span>
+            Nur synthetische Rollenfälle; keine Synchronisation mit Gerris Kompass.
+          </span>
+        </section>
+      ) : null}
+
+      {migrationPending ? (
+        <section className="legacy-research-migration" role="status">
+          <div>
+            <span className="eyebrow">Einmalige Bereinigung</span>
+            <h2>Alten Recherchepool archivieren</h2>
+            <p>
+              {legacyMigration.archive} unberührte Rechercheeinträge werden aus der
+              aktiven Ansicht entfernt. {legacyMigration.retain} bearbeitete Prozesse
+              bleiben erhalten und werden als veraltet markiert.
+            </p>
+          </div>
+          <div className="button-group">
+            <button
+              className="button button-soft"
+              onClick={() => {
+                onExportBackup();
+                setBackupDownloaded(true);
+                toast("Backup heruntergeladen");
+              }}
+              type="button"
+            >
+              Backup herunterladen
+            </button>
+            <button
+              className="button button-primary"
+              disabled={!backupDownloaded}
+              onClick={onArchiveLegacyResearch}
+              type="button"
+            >
+              Altbestand archivieren
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      <JobDiscoveryPanel
+        applications={applications}
+        masterCvContent={state.masterCvContent}
+        onAccept={acceptImportedCandidates}
+        onProfileChange={onUpdateJobSearchProfile}
+        profile={state.jobSearchProfile}
+        toast={toast}
+      />
 
       <section className="application-kpi-grid" aria-label="Bewerbungskennzahlen">
         {kpiProgress
@@ -448,7 +558,7 @@ export function ApplicationsView({
 
           <div className="application-table-head" aria-hidden="true">
             <span>Vakanz</span>
-            <span>Status</span>
+            <span>Prozess · Quelle</span>
             <span>Frist</span>
             <span>Nächster Schritt</span>
           </div>
@@ -483,8 +593,13 @@ export function ApplicationsView({
                         </small>
                       </p>
                     </div>
-                    <span className={`application-status ${statusClass(application.status)}`}>
-                      {APPLICATION_STATUS_LABELS[application.status]}
+                    <span className="application-status-stack">
+                      <span className={`application-status ${statusClass(application.status)}`}>
+                        {APPLICATION_STATUS_LABELS[application.status]}
+                      </span>
+                      <span className={`role-verification-mini ${application.verificationStatus}`}>
+                        {ROLE_VERIFICATION_LABELS[application.verificationStatus]}
+                      </span>
                     </span>
                     <span className={`application-deadline ${
                       application.deadline && dayDistance(application.deadline) <= 7
@@ -559,6 +674,9 @@ function ApplicationDetail({
 }) {
   const attachmentRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(application);
+  const [researchUrl, setResearchUrl] = useState(() =>
+    preferredRoleResearchUrl(application),
+  );
   const [artifactKind, setArtifactKind] =
     useState<ApplicationArtifactKind>("job-posting");
   const [uploading, setUploading] = useState(false);
@@ -570,9 +688,71 @@ function ApplicationDetail({
   const screenshotArtifacts = draft.artifacts.filter(
     (artifact) => artifact.kind === "job-screenshot",
   );
+  const generationGate = documentGenerationGate(draft);
+  const applyGate = applyRecommendationGate(draft);
+  const hardExclusionActive = Boolean(
+    draft.assessment?.hardExclusionMatches.length,
+  );
+  const warmPathPerson = draft.warmPath?.personName || draft.contactPerson;
+  const warmPathAvailable = hasNamedWarmPathPerson(warmPathPerson);
 
   const save = (event: FormEvent) => {
     event.preventDefault();
+    const stagedUrl = researchUrl.trim() ? safePublicUrl(researchUrl) : "";
+    if (researchUrl.trim() && !stagedUrl) {
+      toast("Bitte nur eine öffentliche HTTP(S)-Stellen-URL verwenden");
+      return;
+    }
+    const canonicalUrl = safePublicUrl(draft.sourceUrl);
+    const sourceChanged = stagedUrl !== preferredRoleResearchUrl(draft);
+    const now = new Date().toISOString();
+    const sourceCandidates = sourceChanged
+      ? normalizeDiscoverySources([
+          ...draft.discoverySources,
+          ...(canonicalUrl
+            ? [
+                {
+                  provider: "employer" as const,
+                  providerJobId: null,
+                  url: canonicalUrl,
+                  sourceKind: "claimed_original" as const,
+                  capturedAt: draft.checkedAt || now,
+                  checkedAt: draft.checkedAt || null,
+                },
+              ]
+            : []),
+          ...(stagedUrl &&
+          !draft.discoverySources.some(
+            (source) => safePublicUrl(source.url) === stagedUrl,
+          )
+            ? [
+                {
+                  provider: "manual" as const,
+                  providerJobId: null,
+                  url: stagedUrl,
+                  sourceKind: "claimed_original" as const,
+                  capturedAt: now,
+                  checkedAt: null,
+                },
+              ]
+            : []),
+        ])
+      : draft.discoverySources;
+    const sourceSafeDraft: ApplicationProcess = sourceChanged
+      ? {
+          ...draft,
+          sourceUrl: "",
+          sourceVerifiedAt: "",
+          discoverySources: sourceCandidates,
+          checkedAt: "",
+          verificationStatus: "unverified",
+          recommendation: "undecided",
+          assessment: draft.assessment
+            ? { ...draft.assessment, approvedAt: null }
+            : null,
+          vacancyResearch: null,
+        }
+      : draft;
     const processStates = new Set<ApplicationStatus>([
       "submitted",
       "interview",
@@ -580,10 +760,19 @@ function ApplicationDetail({
       "rejected",
       "closed",
     ]);
-    const next =
-      processStates.has(draft.status) && !draft.appliedAt
-        ? { ...draft, appliedAt: new Date().toISOString().slice(0, 10) }
-        : draft;
+    const nextBase =
+      processStates.has(sourceSafeDraft.status) && !sourceSafeDraft.appliedAt
+        ? { ...sourceSafeDraft, appliedAt: now.slice(0, 10) }
+        : sourceSafeDraft;
+    const next = {
+      ...nextBase,
+      contentFingerprint: contentFingerprint({
+        employer: nextBase.company,
+        title: nextBase.jobTitle,
+        location: nextBase.location,
+        description: nextBase.jobDescriptionText,
+      }),
+    };
     setDraft(next);
     onUpdate(next);
     toast("Bewerbungsakte aktualisiert");
@@ -644,14 +833,34 @@ function ApplicationDetail({
     let next: ApplicationProcess = {
       ...draft,
       vacancyResearch: research,
-      sourceVerifiedAt: research.researchedAt.slice(0, 10),
-      sourceUrl:
-        research.retrievalStatus === "exact_page_accessed" && research.canonicalUrl
-          ? research.canonicalUrl
-          : draft.sourceUrl,
     };
     if (decidedClaim) {
       next = applyConfirmedResearchClaim(next, decidedClaim);
+      const canonicalUrl = safePublicUrl(research.canonicalUrl);
+      if (research.retrievalStatus === "exact_page_accessed" && canonicalUrl) {
+        setResearchUrl(canonicalUrl);
+      }
+      next = {
+        ...next,
+        sourceVerifiedAt: research.researchedAt.slice(0, 10),
+        checkedAt: research.researchedAt,
+        sourceUrl:
+          research.retrievalStatus === "exact_page_accessed" && canonicalUrl
+            ? canonicalUrl
+            : next.sourceUrl,
+        publishedAt: publishedAtFromResearch(research) ?? next.publishedAt,
+        contractType: contractTypeFromResearch(research) || next.contractType,
+        salaryBasis: salaryBasisFromResearch(research),
+        marketSalaryEstimate:
+          marketSalaryEstimateFromResearch(research) || next.marketSalaryEstimate,
+        verificationStatus: verificationStatusFromResearch(research),
+        contentFingerprint: contentFingerprint({
+          employer: next.company,
+          title: next.jobTitle,
+          location: next.location,
+          description: next.jobDescriptionText,
+        }),
+      };
     }
     setDraft(next);
     onUpdate(next);
@@ -682,30 +891,76 @@ function ApplicationDetail({
     toast(`${label} für heute erfasst`);
   };
 
+  const setRecommendation = (
+    recommendation: ApplicationProcess["recommendation"],
+  ) => {
+    if (recommendation === "apply" && !applyGate.allowed) {
+      toast(applyGate.reasons[0]);
+      return;
+    }
+    if (recommendation === "maybe" && hardExclusionActive) {
+      toast("Ein harter Ausschluss lässt nur Skip zu");
+      return;
+    }
+    const next = {
+      ...draft,
+      recommendation,
+      assessment: draft.assessment
+        ? {
+            ...draft.assessment,
+            approvedAt: new Date().toISOString(),
+          }
+        : null,
+    };
+    setDraft(next);
+    onUpdate(next);
+    toast(
+      recommendation === "apply"
+        ? "Apply bestätigt"
+        : recommendation === "maybe"
+          ? "Maybe bestätigt"
+          : recommendation === "skip"
+            ? "Skip bestätigt"
+            : "Entscheidung zurückgesetzt",
+    );
+  };
+
   return (
     <form className="panel application-detail" onSubmit={save}>
       <header className="application-detail-heading">
         <div>
           <span className="eyebrow">
-            {application.researchRank
-              ? `Rechercheplatz ${application.researchRank}`
+            {draft.researchRank
+              ? `Rechercheplatz ${draft.researchRank}`
               : "Eigener Bewerbungsprozess"}
           </span>
-          <h2>{application.company || "Arbeitgeber ergänzen"}</h2>
-          <p>{application.jobTitle}</p>
+          <h2>{draft.company || "Arbeitgeber ergänzen"}</h2>
+          <p>{draft.jobTitle}</p>
         </div>
-        <span className={`fit-badge fit-${application.fitRating.slice(0, 1).toLowerCase() || "open"}`}>
-          Passung {application.fitRating || "offen"}
-        </span>
+        <div className="application-heading-badges">
+          <span
+            className={`role-verification-badge ${draft.verificationStatus}`}
+          >
+            {ROLE_VERIFICATION_LABELS[draft.verificationStatus]}
+          </span>
+          <span className={`fit-badge fit-${draft.fitRating.slice(0, 1).toLowerCase() || "open"}`}>
+            Passung {draft.fitRating || "offen"}
+          </span>
+        </div>
       </header>
 
       <div className="application-action-bar" aria-label="Schnellaktionen zur Vakanz">
-        {safeHttpUrl(draft.sourceUrl) ? (
+        {safePublicUrl(draft.sourceUrl) ? (
           <a href={draft.sourceUrl} rel="noreferrer" target="_blank">
             Ausschreibung öffnen
           </a>
         ) : null}
-        <button onClick={() => onOpenStudio(draft)} type="button">
+        <button
+          disabled={!generationGate.allowed}
+          onClick={() => onOpenStudio(draft)}
+          title={generationGate.reasons[0]}
+          type="button"
+        >
           Unterlagen erstellen
         </button>
         <button
@@ -847,6 +1102,32 @@ function ApplicationDetail({
               value={draft.deadline ?? ""}
             />
           </label>
+          <label>
+            Veröffentlicht am
+            <input
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  publishedAt: event.target.value || null,
+                }))
+              }
+              type="date"
+              value={draft.publishedAt ?? ""}
+            />
+          </label>
+          <label>
+            Vertragsart
+            <input
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  contractType: event.target.value,
+                }))
+              }
+              placeholder="Unbefristet, Vollzeit …"
+              value={draft.contractType}
+            />
+          </label>
           <label className="wide">
             Rahmen
             <input
@@ -860,7 +1141,7 @@ function ApplicationDetail({
             />
           </label>
           <label>
-            Vergütung
+            Vergütung oder Spanne
             <input
               onChange={(event) =>
                 setDraft((current) => ({
@@ -869,6 +1150,37 @@ function ApplicationDetail({
                 }))
               }
               value={draft.compensation}
+            />
+          </label>
+          <label>
+            Gehaltsbasis
+            <select
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  salaryBasis: event.target.value as ApplicationProcess["salaryBasis"],
+                }))
+              }
+              value={draft.salaryBasis}
+            >
+              {Object.entries(SALARY_BASIS_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="wide">
+            Marktspanne · getrennte Schätzung
+            <input
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  marketSalaryEstimate: event.target.value,
+                }))
+              }
+              placeholder="Nur als Marktschätzung, nie als veröffentlichte Vergütung"
+              value={draft.marketSalaryEstimate}
             />
           </label>
           <label>
@@ -890,30 +1202,57 @@ function ApplicationDetail({
             </select>
           </label>
           <label className="wide">
-            Link zur Ausschreibung
+            Link zur Prüfung
             <input
-              onChange={(event) =>
+              onChange={(event) => {
+                const value = event.target.value;
+                setResearchUrl(value);
                 setDraft((current) => ({
                   ...current,
-                  sourceUrl: event.target.value,
-                }))
-              }
-              placeholder="Im Rechercheanhang nicht mitgeliefert – hier ergänzen"
+                  verificationStatus:
+                    safePublicUrl(value) === safePublicUrl(current.sourceUrl) &&
+                    current.vacancyResearch
+                      ? verificationStatusFromResearch(current.vacancyResearch)
+                      : "unverified",
+                }));
+              }}
+              placeholder="Discovery- oder vermuteter Original-Link zur Prüfung"
               type="url"
-              value={draft.sourceUrl}
+              value={researchUrl}
             />
           </label>
         </div>
         <div className="application-source-actions">
           <span>
-            Recherche geprüft am {formatDate(draft.sourceVerifiedAt)}
+            {draft.checkedAt || draft.sourceVerifiedAt
+              ? `Geprüft am ${formatDate(draft.checkedAt || draft.sourceVerifiedAt)}`
+              : "Originalanzeige noch nicht geprüft"}
           </span>
-          {safeHttpUrl(draft.sourceUrl) ? (
+          {safePublicUrl(draft.sourceUrl) ? (
             <a href={draft.sourceUrl} rel="noreferrer" target="_blank">
               Ausschreibung öffnen
             </a>
           ) : null}
         </div>
+        {draft.discoverySources.length ? (
+          <details className="application-discovery-sources">
+            <summary>
+              Entdeckungsquellen · {draft.discoverySources.length}
+            </summary>
+            <ul>
+              {draft.discoverySources.map((source) => (
+                <li key={`${source.provider}-${source.providerJobId}-${source.url}`}>
+                  <span>{source.provider}</span>
+                  <a href={source.url} rel="noreferrer" target="_blank">
+                    {source.sourceKind === "claimed_original"
+                      ? "Behaupteten Original-Link prüfen"
+                      : "Discovery-Link öffnen"}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
         {draft.tags.length ? (
           <div className="application-tags" aria-label="Stichworte zur Vakanz">
             {draft.tags.map((tag) => <span key={tag}>{tag}</span>)}
@@ -953,7 +1292,7 @@ function ApplicationDetail({
         research={draft.vacancyResearch}
         researchScopes={draft.generationPreferences.researchScopes}
         roleTitle={draft.jobTitle}
-        sourceUrl={draft.sourceUrl}
+        sourceUrl={researchUrl}
       />
 
       <div className="application-detail-section">
@@ -1061,6 +1400,160 @@ function ApplicationDetail({
             ))}
           </div>
         ) : null}
+        {warmPathAvailable ? (
+          <details className="application-warm-path">
+            <summary>
+              <span>
+                <strong>LinkedIn-Warm-path</strong>
+                <small>Erst nach namentlich belegter Ansprechperson</small>
+              </span>
+              <b>Privat prüfen</b>
+            </summary>
+            <div className="application-form-grid">
+              <label>
+                Person
+                <input
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      warmPath: {
+                        personName: event.target.value,
+                        personRole: current.warmPath?.personRole ?? "",
+                        sourceUrl: current.warmPath?.sourceUrl ?? "",
+                        publicContext: current.warmPath?.publicContext ?? "",
+                        commonContactsNote:
+                          current.warmPath?.commonContactsNote ?? "",
+                        commonContactsConfirmedAt:
+                          current.warmPath?.commonContactsConfirmedAt ?? null,
+                      },
+                    }))
+                  }
+                  value={warmPathPerson}
+                />
+              </label>
+              <label>
+                Rolle im Unternehmen
+                <input
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      warmPath: {
+                        personName:
+                          current.warmPath?.personName || current.contactPerson,
+                        personRole: event.target.value,
+                        sourceUrl: current.warmPath?.sourceUrl ?? "",
+                        publicContext: current.warmPath?.publicContext ?? "",
+                        commonContactsNote:
+                          current.warmPath?.commonContactsNote ?? "",
+                        commonContactsConfirmedAt:
+                          current.warmPath?.commonContactsConfirmedAt ?? null,
+                      },
+                    }))
+                  }
+                  value={draft.warmPath?.personRole ?? ""}
+                />
+              </label>
+              <label className="wide">
+                Öffentliche Quelle
+                <input
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      warmPath: {
+                        personName:
+                          current.warmPath?.personName || current.contactPerson,
+                        personRole: current.warmPath?.personRole ?? "",
+                        sourceUrl: event.target.value,
+                        publicContext: current.warmPath?.publicContext ?? "",
+                        commonContactsNote:
+                          current.warmPath?.commonContactsNote ?? "",
+                        commonContactsConfirmedAt:
+                          current.warmPath?.commonContactsConfirmedAt ?? null,
+                      },
+                    }))
+                  }
+                  placeholder="Arbeitgeberseite oder öffentliches Profil"
+                  type="url"
+                  value={draft.warmPath?.sourceUrl ?? ""}
+                />
+              </label>
+              <label className="wide">
+                Belegter Unternehmenskontext
+                <textarea
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      warmPath: {
+                        personName:
+                          current.warmPath?.personName || current.contactPerson,
+                        personRole: current.warmPath?.personRole ?? "",
+                        sourceUrl: current.warmPath?.sourceUrl ?? "",
+                        publicContext: event.target.value,
+                        commonContactsNote:
+                          current.warmPath?.commonContactsNote ?? "",
+                        commonContactsConfirmedAt:
+                          current.warmPath?.commonContactsConfirmedAt ?? null,
+                      },
+                    }))
+                  }
+                  placeholder="Projekte, Technologien oder Themen – jeweils mit öffentlicher Quelle"
+                  rows={3}
+                  value={draft.warmPath?.publicContext ?? ""}
+                />
+              </label>
+              <label className="wide">
+                Gemeinsame Kontakte · private Notiz
+                <textarea
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      warmPath: {
+                        personName:
+                          current.warmPath?.personName || current.contactPerson,
+                        personRole: current.warmPath?.personRole ?? "",
+                        sourceUrl: current.warmPath?.sourceUrl ?? "",
+                        publicContext: current.warmPath?.publicContext ?? "",
+                        commonContactsNote: event.target.value,
+                        commonContactsConfirmedAt: null,
+                      },
+                    }))
+                  }
+                  placeholder="Nur nach eigener LinkedIn-Prüfung; nie Kandidatenevidenz"
+                  rows={2}
+                  value={draft.warmPath?.commonContactsNote ?? ""}
+                />
+              </label>
+              <label className="warm-path-confirmation wide">
+                <input
+                  checked={Boolean(draft.warmPath?.commonContactsConfirmedAt)}
+                  disabled={!draft.warmPath?.commonContactsNote.trim()}
+                  onChange={(event) =>
+                    setDraft((current) =>
+                      current.warmPath
+                        ? {
+                            ...current,
+                            warmPath: {
+                              ...current.warmPath,
+                              commonContactsConfirmedAt: event.target.checked
+                                ? new Date().toISOString()
+                                : null,
+                            },
+                          }
+                        : current,
+                    )
+                  }
+                  type="checkbox"
+                />
+                <span>Von mir manuell geprüft und als private Notiz bestätigt</span>
+              </label>
+            </div>
+          </details>
+        ) : (
+          <p className="application-warm-path-hint">
+            Warm-path wird verfügbar, sobald eine namentlich bekannte Person aus
+            der Anzeige oder einer offiziellen Arbeitgeberquelle eingetragen ist.
+          </p>
+        )}
       </div>
 
       <div className="application-detail-section research-detail">
@@ -1074,6 +1567,98 @@ function ApplicationDetail({
           </span>
         </div>
         <p>{draft.researchSummary || "Noch keine Rechercheeinschätzung hinterlegt."}</p>
+        {draft.assessment ? (
+          <div className="role-assessment-card">
+            <div>
+              <span>Beratende Einschätzung</span>
+              <strong>
+                {draft.assessment.recommendation === "apply"
+                  ? "Apply"
+                  : draft.assessment.recommendation === "maybe"
+                    ? "Maybe"
+                    : "Skip"}
+              </strong>
+              <small>
+                {draft.assessment.fitScore === null
+                  ? "Fit offen"
+                  : `Fit ${draft.assessment.fitScore}/10`}
+                {draft.assessment.shortlistChancePercent === null
+                  ? ""
+                  : ` · Shortlist ${draft.assessment.shortlistChancePercent}%`}
+              </small>
+            </div>
+            <dl>
+              {draft.assessment.mainMatch ? (
+                <>
+                  <dt>Hauptpassung</dt>
+                  <dd>{draft.assessment.mainMatch}</dd>
+                </>
+              ) : null}
+              {draft.assessment.mainRisk ? (
+                <>
+                  <dt>Hauptrisiko</dt>
+                  <dd>{draft.assessment.mainRisk}</dd>
+                </>
+              ) : null}
+              {draft.assessment.cvAngle ? (
+                <>
+                  <dt>CV-Winkel</dt>
+                  <dd>{draft.assessment.cvAngle}</dd>
+                </>
+              ) : null}
+            </dl>
+            {hardExclusionActive ? (
+              <p className="role-assessment-critical">
+                Harter Ausschluss: {draft.assessment.hardExclusionMatches.join(" · ")}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="role-recommendation" aria-label="Entscheidung zur Rolle">
+          <span>Deine Entscheidung</span>
+          <div className="button-group">
+            <button
+              aria-pressed={draft.recommendation === "apply"}
+              disabled={!applyGate.allowed}
+              onClick={() => setRecommendation("apply")}
+              title={applyGate.reasons[0]}
+              type="button"
+            >
+              Apply
+            </button>
+            <button
+              aria-pressed={draft.recommendation === "maybe"}
+              disabled={hardExclusionActive}
+              onClick={() => setRecommendation("maybe")}
+              title={hardExclusionActive ? "Ein harter Ausschluss erzwingt Skip." : undefined}
+              type="button"
+            >
+              Maybe
+            </button>
+            <button
+              aria-pressed={draft.recommendation === "skip"}
+              onClick={() => setRecommendation("skip")}
+              type="button"
+            >
+              Skip
+            </button>
+          </div>
+          {draft.recommendation === "undecided" ? (
+            <small>Eine importierte Einschätzung ändert deinen Status nicht.</small>
+          ) : null}
+        </div>
+        {!generationGate.allowed ? (
+          <div className="role-generation-gate" role="status">
+            <strong>Unterlagen noch gesperrt</strong>
+            <ul>
+              {generationGate.reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="role-generation-ready">Geprüfte Rolle für Unterlagen freigegeben.</p>
+        )}
         <details className="application-generation-summary">
           <summary>Für neue Unterlagen verwenden</summary>
           <div>
@@ -1259,7 +1844,9 @@ function ApplicationDetail({
         ) : null}
         <button
           className="button button-soft"
+          disabled={!generationGate.allowed}
           onClick={() => onOpenStudio(draft)}
+          title={generationGate.reasons[0]}
           type="button"
         >
           Unterlagen erstellen

@@ -24,6 +24,10 @@ export default async function HomePage() {
     requestHeaders.get("oai-authenticated-user-full-name-encoding"),
   );
   const driveRootId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID?.trim();
+  const siteRole =
+    process.env.GERRIS_SITE_ROLE?.trim().toLocaleLowerCase("en-US") === "qa"
+      ? "qa"
+      : "production";
   const integrations = {
     ...DEFAULT_INTEGRATIONS,
     calendarId:
@@ -36,8 +40,9 @@ export default async function HomePage() {
 
   return (
     <LifeOsApp
-      initialState={createDemoState(ownerName)}
+      initialState={createDemoState(ownerName, siteRole)}
       integrations={integrations}
+      siteRole={siteRole}
     />
   );
 }

@@ -15,6 +15,10 @@ import {
   confirmedResearchSources,
   isVacancyResearch,
 } from "../../../lib/job-research";
+import {
+  safePublicUrl,
+  verificationStatusFromResearch,
+} from "../../../lib/role-pipeline";
 import type { GeneratedApplicationPackage } from "../../../lib/application-package";
 import { normalizeApplicationGenerationPreferences } from "../../../lib/application-workflow";
 import {
@@ -185,6 +189,9 @@ type ApplicationInput = {
   salaryFlexibility: string;
   mentionSalary: string;
   researchContext: string;
+  roleVerificationStatus: string;
+  roleRecommendation: string;
+  roleHardExclusionCount: number;
   generationAction: string;
   draftPackage: string;
   generationRequestId: string;
@@ -1250,6 +1257,14 @@ async function handleApplication(
     salaryFlexibility: text(source.salaryFlexibility, 40),
     mentionSalary: text(source.mentionSalary, 40),
     researchContext: text(source.researchContext, 100_000),
+    roleVerificationStatus: text(source.roleVerificationStatus, 40),
+    roleRecommendation: text(source.roleRecommendation, 40),
+    roleHardExclusionCount:
+      typeof source.roleHardExclusionCount === "number" &&
+      Number.isSafeInteger(source.roleHardExclusionCount) &&
+      source.roleHardExclusionCount >= 0
+        ? Math.min(100, source.roleHardExclusionCount)
+        : 0,
     generationAction: text(source.generationAction, 40),
     draftPackage: text(source.draftPackage, 250_000),
     generationRequestId: text(source.generationRequestId, 200),
@@ -1333,6 +1348,52 @@ async function handleApplication(
       );
     }
   }
+  if (
+    !research ||
+    verificationStatusFromResearch(research) !== "verified" ||
+    input.roleVerificationStatus !== "verified"
+  ) {
+    throw new ApplicationGenerationError(
+      "Die exakte Anzeige muss als offen geprüft und sichtbar bestätigt sein.",
+      400,
+    );
+  }
+  const canonicalJobUrl = safePublicUrl(research.canonicalUrl);
+  if (!canonicalJobUrl || safePublicUrl(input.jobUrl) !== canonicalJobUrl) {
+    throw new ApplicationGenerationError(
+      "Die Unterlagenerstellung benötigt den verifizierten exakten Original-Link.",
+      400,
+    );
+  }
+  if (!["apply", "maybe"].includes(input.roleRecommendation)) {
+    throw new ApplicationGenerationError(
+      "Apply oder Maybe muss vor der Unterlagenerstellung sichtbar bestätigt sein.",
+      400,
+    );
+  }
+  if (input.roleHardExclusionCount > 0) {
+    throw new ApplicationGenerationError(
+      "Ein harter Ausschluss sperrt die Unterlagenerstellung.",
+      400,
+    );
+  }
+  const allConfirmedResearch = confirmedResearchContext(research);
+  const confirmedIdentity = allConfirmedResearch?.confirmedFacts ?? [];
+  const confirmedCompany = confirmedIdentity.find(
+    (fact) => fact.factKey === "company.name",
+  )?.value;
+  const confirmedTitle = confirmedIdentity.find(
+    (fact) => fact.factKey === "role.title",
+  )?.value;
+  const confirmedContact = confirmedIdentity.find(
+    (fact) => fact.factKey === "process.contact",
+  )?.value;
+  if (!confirmedCompany || !confirmedTitle) {
+    throw new ApplicationGenerationError(
+      "Arbeitgeber und Stellentitel müssen in der Vakanzrecherche bestätigt sein.",
+      400,
+    );
+  }
   const requestedOutputKinds = jsonStringList(input.outputKinds, 5).filter(
     (kind): kind is ApplicationOutputKind =>
       APPLICATION_OUTPUT_KINDS.includes(kind as ApplicationOutputKind),
@@ -1362,18 +1423,14 @@ async function handleApplication(
       value: redactObviousCredentials(fact.value),
       sourceUrls: fact.sourceUrls,
     })) ?? [];
-  input.companyName ||=
-    confirmedResearchFacts.find((fact) => fact.factKey === "company.name")
-      ?.value ?? "";
-  input.roleTitle ||=
-    confirmedResearchFacts.find((fact) => fact.factKey === "role.title")?.value ??
-    "";
-  if ((!input.companyName || !input.roleTitle) && !input.jobText) {
-    throw new ApplicationGenerationError(
-      "Unternehmen und Rolle konnten aus der Recherche nicht sicher übernommen werden. Bitte ergänze beide Angaben oder füge den Anzeigentext ein.",
-      400,
-    );
-  }
+  input.companyName = confirmedCompany;
+  input.roleTitle = confirmedTitle;
+  input.contactPerson = confirmedContact ?? "";
+  input.jobUrl = canonicalJobUrl;
+  input.jobText = confirmedResearchFacts
+    .map((fact) => `${fact.factKey}: ${fact.value}`)
+    .join("\n")
+    .slice(0, 30_000);
   const confirmedSources = [
     ...new Set([
       input.jobUrl,

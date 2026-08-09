@@ -1,8 +1,12 @@
-import type { AppState, IntegrationConfig } from "./types";
-import { APPLICATION_RESEARCH } from "./application-research";
+import type { AppState, GerrisSiteRole, IntegrationConfig } from "./types";
 import { createDefaultDashboardSettings } from "./dashboard";
 import { createDefaultGamification } from "./gamification";
 import { normalizeApplicationKpiSettings } from "./application-workflow";
+import {
+  createQaRoleFixtures,
+  QA_ROLE_FIXTURE_VERSION,
+} from "./role-pipeline-fixtures";
+import { defaultJobSearchProfile } from "./role-pipeline";
 
 const dayAt = (offset: number, hour = 9, minute = 0): string => {
   const date = new Date();
@@ -21,8 +25,13 @@ export const DEFAULT_INTEGRATIONS: IntegrationConfig = {
   gmailAccount: "0",
 };
 
-export function createDemoState(ownerName = "Gerri"): AppState {
+export function createDemoState(
+  ownerName = "Gerri",
+  siteRole: GerrisSiteRole = "production",
+): AppState {
   const createdAt = new Date().toISOString();
+  const jobSearchProfile = defaultJobSearchProfile(undefined, createdAt);
+  if (siteRole === "qa") jobSearchProfile.reviewedAt = createdAt;
   return {
     schemaVersion: 1,
     revision: 1,
@@ -217,10 +226,18 @@ export function createDemoState(ownerName = "Gerri"): AppState {
         private: true,
       },
     ],
-    applications: APPLICATION_RESEARCH.map((application) => ({
-      ...application,
-      artifacts: [],
-    })),
+    applications:
+      siteRole === "qa" ? createQaRoleFixtures(createdAt) : [],
+    jobSearchProfile,
+    applicationResearchMigration: {
+      version: 1,
+      status: "completed",
+      completedAt: createdAt,
+      archivedCount: 0,
+      retainedCount: 0,
+    },
+    qaFixtureVersion:
+      siteRole === "qa" ? QA_ROLE_FIXTURE_VERSION : undefined,
     masterCvDocumentId: null,
     careerPassportDocumentId: null,
     masterCvContent: null,

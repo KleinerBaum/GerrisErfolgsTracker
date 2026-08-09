@@ -36,6 +36,8 @@ const FACT_LABELS: Record<JobResearchFactKey, string> = {
   "offer.reporting_line": "Berichtslinie",
   "offer.benefits": "Leistungen",
   "process.deadline": "Bewerbungsfrist",
+  "process.published_at": "Veröffentlichungsdatum",
+  "process.posting_status": "Anzeigenstatus",
   "process.contact": "Ansprechperson",
   "process.selection": "Auswahlprozess",
   "process.interview": "Interviewprozess",

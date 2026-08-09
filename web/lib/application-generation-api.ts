@@ -31,7 +31,7 @@ export function isApplicationMasterCvReady(input: {
 }
 
 export function applicationGenerationStartPayload(
-  values: Record<string, string>,
+  values: Record<string, string | number>,
   reference: ApplicationMasterCvReference,
 ): Record<string, string | number> &
   ApplicationMasterCvReference & { kind: "application" } {

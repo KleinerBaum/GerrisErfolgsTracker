@@ -40,6 +40,17 @@ import {
 } from "../lib/application-package";
 import { applyConfirmedResearchClaim } from "../lib/job-research";
 import {
+  contentFingerprint,
+  contractTypeFromResearch,
+  documentGenerationGate,
+  marketSalaryEstimateFromResearch,
+  preferredRoleResearchUrl,
+  publishedAtFromResearch,
+  safePublicUrl,
+  salaryBasisFromResearch,
+  verificationStatusFromResearch,
+} from "../lib/role-pipeline";
+import {
   LLM_MODEL_OPTIONS,
   LLM_REASONING_OPTIONS,
 } from "../lib/llm-config";
@@ -67,6 +78,7 @@ import {
   type LlmModelTier,
   type LlmReasoningEffort,
   type MasterCvContent,
+  type JobResearchClaim,
   type VacancyResearch,
 } from "../lib/types";
 
@@ -1191,15 +1203,6 @@ function downloadText(name: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
-function safeHttpUrl(value: string): string | null {
-  try {
-    const url = new URL(value);
-    return ["http:", "https:"].includes(url.protocol) ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
 function ApplicationStudio({
   account,
   documents,
@@ -1221,7 +1224,9 @@ function ApplicationStudio({
   onUpdateApplication: (application: ApplicationProcess) => void;
   toast: (message: string) => void;
 }) {
-  const [jobUrl, setJobUrl] = useState(initialApplication?.sourceUrl ?? "");
+  const [jobUrl, setJobUrl] = useState(
+    initialApplication ? preferredRoleResearchUrl(initialApplication) : "",
+  );
   const [jobText, setJobText] = useState(
     initialApplication?.jobDescriptionText ?? "",
   );
@@ -1344,6 +1349,20 @@ function ApplicationStudio({
   const salarySummary = preferences.desiredSalaryAnnual
     ? `${preferences.desiredSalaryAnnual.toLocaleString("de-DE")} € Wunschgehalt`
     : "Keine Gehaltsangabe hinterlegt";
+  const researchedCanonicalUrl =
+    research?.retrievalStatus === "exact_page_accessed"
+      ? safePublicUrl(research.canonicalUrl)
+      : "";
+  const effectiveVerificationStatus = research
+    ? verificationStatusFromResearch(research)
+    : initialApplication?.verificationStatus ?? "unverified";
+  const generationRoleGate = documentGenerationGate({
+    sourceUrl: researchedCanonicalUrl || initialApplication?.sourceUrl || "",
+    verificationStatus: effectiveVerificationStatus,
+    recommendation: initialApplication?.recommendation ?? "undecided",
+    assessment: initialApplication?.assessment ?? null,
+    vacancyResearch: research ?? initialApplication?.vacancyResearch ?? null,
+  });
 
   const updateDocumentDesign = (
     value: Parameters<typeof normalizeApplicationDocumentDesign>[0],
@@ -1353,12 +1372,6 @@ function ApplicationStudio({
     if (!initialApplication) return;
     onUpdateApplication({
       ...initialApplication,
-      sourceUrl: jobUrl.trim(),
-      jobDescriptionText: jobText.trim(),
-      company: companyName.trim(),
-      jobTitle: roleTitle.trim(),
-      contactPerson: contactPerson.trim(),
-      contactEmail: recipientEmail.trim(),
       generationInputs: normalizeApplicationGenerationInputs({
         motivation,
         achievements,
@@ -1370,7 +1383,6 @@ function ApplicationStudio({
         preferences,
       ),
       documentDesign: normalized,
-      vacancyResearch: research,
     });
   };
 
@@ -1416,18 +1428,15 @@ function ApplicationStudio({
     }));
   };
 
-  const updateResearch = (nextResearch: VacancyResearch) => {
+  const updateResearch = (
+    nextResearch: VacancyResearch,
+    decidedClaim?: JobResearchClaim,
+  ) => {
     setResearch(nextResearch);
     if (!initialApplication) return;
     let nextApplication: ApplicationProcess = {
       ...initialApplication,
       vacancyResearch: nextResearch,
-      sourceVerifiedAt: nextResearch.researchedAt.slice(0, 10),
-      sourceUrl:
-        nextResearch.retrievalStatus === "exact_page_accessed" &&
-        nextResearch.canonicalUrl
-          ? nextResearch.canonicalUrl
-          : initialApplication.sourceUrl,
       documentDesign,
     };
     for (const claim of [
@@ -1435,6 +1444,36 @@ function ApplicationStudio({
       ...nextResearch.enrichment,
     ]) {
       nextApplication = applyConfirmedResearchClaim(nextApplication, claim);
+    }
+    if (decidedClaim) {
+      const canonicalUrl = safePublicUrl(nextResearch.canonicalUrl);
+      if (nextResearch.retrievalStatus === "exact_page_accessed" && canonicalUrl) {
+        setJobUrl(canonicalUrl);
+      }
+      nextApplication = {
+        ...nextApplication,
+        sourceVerifiedAt: nextResearch.researchedAt.slice(0, 10),
+        checkedAt: nextResearch.researchedAt,
+        sourceUrl:
+          nextResearch.retrievalStatus === "exact_page_accessed" && canonicalUrl
+            ? canonicalUrl
+            : nextApplication.sourceUrl,
+        publishedAt:
+          publishedAtFromResearch(nextResearch) ?? nextApplication.publishedAt,
+        contractType:
+          contractTypeFromResearch(nextResearch) || nextApplication.contractType,
+        salaryBasis: salaryBasisFromResearch(nextResearch),
+        marketSalaryEstimate:
+          marketSalaryEstimateFromResearch(nextResearch) ||
+          nextApplication.marketSalaryEstimate,
+        verificationStatus: verificationStatusFromResearch(nextResearch),
+        contentFingerprint: contentFingerprint({
+          employer: nextApplication.company,
+          title: nextApplication.jobTitle,
+          location: nextApplication.location,
+          description: nextApplication.jobDescriptionText,
+        }),
+      };
     }
     onUpdateApplication(nextApplication);
   };
@@ -1447,16 +1486,9 @@ function ApplicationStudio({
     if (!initialApplication) return;
     onUpdateApplication({
       ...initialApplication,
-      sourceUrl: jobUrl.trim(),
-      jobDescriptionText: jobText.trim(),
-      company: companyName.trim(),
-      jobTitle: roleTitle.trim(),
-      contactPerson: contactPerson.trim(),
-      contactEmail: recipientEmail.trim(),
       generationInputs,
       generationPreferences: normalizedPreferences,
       documentDesign,
-      vacancyResearch: research,
     });
     if (announce) toast("Persönliche Angaben und Paketauswahl gespeichert");
   };
@@ -1506,6 +1538,10 @@ function ApplicationStudio({
     action: "generate" | "manual_review",
     draft: ApplicationPackage | null = null,
   ) => {
+    if (!generationRoleGate.allowed) {
+      toast(generationRoleGate.reasons[0]);
+      return;
+    }
     if (!preferences.outputKinds.length) {
       toast("Bitte mindestens ein gewünschtes Ergebnis auswählen");
       return;
@@ -1563,7 +1599,7 @@ function ApplicationStudio({
     generationCancelRequested.current = false;
     try {
       const values = {
-        jobUrl,
+        jobUrl: researchedCanonicalUrl || initialApplication?.sourceUrl || "",
         jobText,
         companyName,
         roleTitle,
@@ -1602,6 +1638,10 @@ function ApplicationStudio({
         salaryFlexibility: normalizedPreferences.salaryFlexibility,
         mentionSalary: normalizedPreferences.mentionSalary,
         researchContext: JSON.stringify(research),
+        roleVerificationStatus: effectiveVerificationStatus,
+        roleRecommendation: initialApplication?.recommendation ?? "undecided",
+        roleHardExclusionCount:
+          initialApplication?.assessment?.hardExclusionMatches.length ?? 0,
         generationAction: action,
         generationRequestId: crypto.randomUUID(),
         draftPackage: draft ? JSON.stringify(draft) : "",
@@ -2116,7 +2156,7 @@ function ApplicationStudio({
             <div>
               <strong>Verwendete Quellen</strong>
               {result.sources.map((source) => {
-                const href = safeHttpUrl(source);
+                const href = safePublicUrl(source);
                 return href ? (
                   <a href={href} key={source} rel="noreferrer" target="_blank">
                     {source}
@@ -2718,6 +2758,16 @@ function ApplicationStudio({
         wird weder in D1 noch in R2 oder der Dokumentbibliothek gespeichert;
         für die nächste Bewerbung wählst du sie erneut aus.
       </p>
+      {!generationRoleGate.allowed ? (
+        <div className="quality-check-panel" role="status">
+          <strong>Unterlagen noch gesperrt</strong>
+          <ul>
+            {generationRoleGate.reasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {generationError.length ? (
         <div className="quality-check-panel" role="alert">
           <strong>Keine Freigabe</strong>
@@ -2774,7 +2824,7 @@ function ApplicationStudio({
           disabled={
             busy ||
             !masterCvReady ||
-            (!jobUrl.trim() && !jobText.trim())
+            !generationRoleGate.allowed
           }
           type="submit"
         >

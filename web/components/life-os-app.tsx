@@ -36,6 +36,7 @@ import {
 import {
   APPLICATION_KPI_DEFINITIONS,
 } from "../lib/application-workflow";
+import { archiveLegacyApplicationResearch } from "../lib/application-research";
 import { COST_TEMPLATES } from "../lib/finance-catalog";
 import { parseEuroInput } from "../lib/finance-data";
 import { diaryRhythmDays, upsertDiaryEntry } from "../lib/diary";
@@ -131,7 +132,9 @@ import {
   type DiarySaveInput,
   type DocumentRef,
   type IntegrationConfig,
+  type GerrisSiteRole,
   type Income,
+  type JobSearchProfile,
   type GamificationState,
   type MasterCvContent,
   type MasterCvImportBundle,
@@ -395,14 +398,19 @@ function MilestoneCelebrationDialog({
 type LifeOsAppProps = {
   initialState: AppState;
   integrations: IntegrationConfig;
+  siteRole: GerrisSiteRole;
 };
 
 export function LifeOsApp({
   initialState,
   integrations,
+  siteRole,
 }: LifeOsAppProps) {
+  const defaultView: ViewKey = siteRole === "qa" ? "applications" : "today";
   const [view, setView] = useState<ViewKey>(() =>
-    typeof window === "undefined" ? "today" : viewFromUrl(window.location.href),
+    typeof window === "undefined"
+      ? defaultView
+      : viewFromUrl(window.location.href, defaultView),
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -463,14 +471,15 @@ export function LifeOsApp({
     exportBackup,
     importBackup,
     acceptRemoteState,
-  } = useGerriState(initialState);
+  } = useGerriState(initialState, siteRole);
   const pendingLegacyTasks = state.pendingTaskImports ?? [];
 
   useEffect(() => {
-    const syncViewFromHistory = () => setView(viewFromUrl(window.location.href));
+    const syncViewFromHistory = () =>
+      setView(viewFromUrl(window.location.href, defaultView));
     window.addEventListener("popstate", syncViewFromHistory);
     return () => window.removeEventListener("popstate", syncViewFromHistory);
-  }, []);
+  }, [defaultView]);
 
   useEffect(() => {
     document.title = `${VIEW_TITLES[view]} – Gerris Kompass`;
@@ -1123,6 +1132,32 @@ export function LifeOsApp({
         candidate.id === application.id ? application : candidate,
       ),
     }));
+  };
+
+  const replaceApplications = (applications: ApplicationProcess[]) => {
+    updateState((current) => ({ ...current, applications }));
+  };
+
+  const updateJobSearchProfile = (jobSearchProfile: JobSearchProfile) => {
+    updateState((current) => ({ ...current, jobSearchProfile }));
+  };
+
+  const archiveLegacyResearch = () => {
+    updateState((current) => {
+      const result = archiveLegacyApplicationResearch(current.applications);
+      return {
+        ...current,
+        applications: result.applications,
+        applicationResearchMigration: {
+          version: 1,
+          status: "completed",
+          completedAt: new Date().toISOString(),
+          archivedCount: result.archivedCount,
+          retainedCount: result.retainedCount,
+        },
+      };
+    });
+    setNotice("Altbestand archiviert; aktive Prozesse bleiben erhalten");
   };
 
   const updateContacts = (contacts: AppState["contacts"]) => {
@@ -1994,12 +2029,17 @@ export function LifeOsApp({
           {view === "applications" ? (
             <ApplicationsView
               onAttachArtifact={attachApplicationArtifact}
+              onArchiveLegacyResearch={archiveLegacyResearch}
               onCreateApplication={createApplication}
+              onExportBackup={exportBackup}
               onImportMasterCv={importMasterCv}
               onOpenStudio={openApplicationStudio}
+              onReplaceApplications={replaceApplications}
               onRemoveArtifact={removeApplicationArtifact}
               onSaveMasterCvContent={saveMasterCvContent}
+              onUpdateJobSearchProfile={updateJobSearchProfile}
               onUpdateApplication={updateApplication}
+              siteRole={siteRole}
               state={state}
               toast={setNotice}
             />
@@ -2160,7 +2200,7 @@ export function LifeOsApp({
               "Beispieldaten wirklich zurücksetzen? Dein aktueller Stand wird ersetzt.",
             );
             if (!confirmed) return;
-            const reset = createDemoState(state.ownerName);
+            const reset = createDemoState(state.ownerName, siteRole);
             reset.tasks = state.tasks;
             reset.pendingTaskImports = state.pendingTaskImports;
             updateState(() => reset);

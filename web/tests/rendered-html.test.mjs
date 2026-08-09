@@ -731,7 +731,7 @@ test("bündelt Google Workspace sicher und dokumentiert die Sites-Konfiguration"
   assert.match(gmailDraftRoute, /export async function POST/);
 });
 
-test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen", async () => {
+test("liefert die evidenzsichere Bewerbungs- und Vakanzpipeline", async () => {
   const [
     app,
     applications,
@@ -748,6 +748,9 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
     applicationWorkflow,
     applicationGeneration,
     applicationGenerationJobs,
+    discoveryPanel,
+    roleImport,
+    rolePipeline,
   ] =
     await Promise.all([
       readFile(new URL("components/life-os-app.tsx", root), "utf8"),
@@ -768,6 +771,9 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
         new URL("lib/server/application-generation-jobs.ts", root),
         "utf8",
       ),
+      readFile(new URL("components/job-discovery-panel.tsx", root), "utf8"),
+      readFile(new URL("lib/role-import.ts", root), "utf8"),
+      readFile(new URL("lib/role-pipeline.ts", root), "utf8"),
     ]);
 
   assert.match(app, /label: "Bewerbungen"/);
@@ -779,6 +785,10 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(applications, /Stellenbeschreibung/);
   assert.match(applications, /application-record/);
   assert.match(applications, /Unterlagen erstellen/);
+  assert.match(applications, /<JobDiscoveryPanel/);
+  assert.match(applications, /Unterlagen noch gesperrt/);
+  assert.match(applications, /LinkedIn-Warm-path/);
+  assert.match(applications, /Deine Entscheidung/);
   assert.match(applications, /Telefoninterview/);
   assert.match(applications, /Vor-Ort-Gespräch/);
   assert.match(masterCvWorkspace, /Master-CV/);
@@ -788,6 +798,9 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(types, /masterCvContent: MasterCvContent \| null/);
   assert.match(types, /careerPassportDocumentId: string \| null/);
   assert.match(types, /vacancyResearch: VacancyResearch \| null/);
+  assert.match(types, /discoverySources: JobDiscoverySource\[\]/);
+  assert.match(types, /verificationStatus: RoleVerificationStatus/);
+  assert.match(types, /marketSalaryEstimate: string/);
   assert.match(stateHook, /mergeApplicationResearch/);
   assert.match(stateHook, /normalizeMasterCvContent/);
   assert.match(actions, /Gespeicherter Master-CV/);
@@ -856,6 +869,8 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(jobResearchRoute, /sameOrigin\(request\)/);
   assert.doesNotMatch(assistantRoute, /type: "web_search"/);
   assert.match(assistantRoute, /confirmedResearchContext/);
+  assert.match(assistantRoute, /input\.jobText = confirmedResearchFacts/);
+  assert.match(assistantRoute, /roleHardExclusionCount/);
   assert.match(assistantRoute, /selectedResearchClaimIds/);
   assert.match(assistantRoute, /resolveApplicationMasterCv/);
   assert.match(assistantRoute, /editRevision: input\.masterCvEditRevision/);
@@ -882,7 +897,8 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(masterCvRoute, /sameOrigin\(request\)/);
   assert.match(research, /JOB_RADAR_RECORDS/);
   assert.match(research, /LEGACY_ID_BY_SOURCE_ID/);
-  assert.match(research, /refreshedSeedValue/);
+  assert.match(research, /archiveLegacyApplicationResearch/);
+  assert.match(research, /return saved\.map/);
   assert.equal((researchData.match(/"sourceId":/g) ?? []).length, 105);
   assert.match(researchData, /Sachbearbeiter\*in Kommunales Krisenmanagement/);
   assert.match(researchData, /Business Project Manager Conversational AI/);
@@ -892,9 +908,17 @@ test("liefert das Bewerbungsdashboard mit 105 tagesaktuellen Recherchevakanzen",
   assert.match(applicationWorkflow, /APPLICATION_RESEARCH_SCOPE_DEFINITIONS/);
   assert.match(app, /applicationKpiSettings/);
   assert.match(app, /Bewerbungsziele/);
+  assert.match(discoveryPanel, /Jooble nur für diesen Suchlauf zuschalten/);
+  assert.match(discoveryPanel, /Suchprofil &amp; Quellen/);
+  assert.match(discoveryPanel, /Nicht persistierte Vorschau/);
+  assert.match(discoveryPanel, /Ausgewählte vormerken/);
+  assert.match(roleImport, /GerrisRoleImportV1/);
+  assert.match(roleImport, /MAX_ROLE_IMPORT_CANDIDATES = 20/);
+  assert.match(rolePipeline, /documentGenerationGate/);
+  assert.doesNotMatch(actions, /warmPath/);
 });
 
-test("normalisiert einen alten Zustand ohne Bewerbungsfelder abwärtskompatibel", async () => {
+test("sät einen alten Zustand nicht erneut mit dem statischen Pool aus", async () => {
   const { APPLICATION_RESEARCH, mergeApplicationResearch } = await import(
     "../lib/application-research.ts"
   );
@@ -908,20 +932,11 @@ test("normalisiert einen alten Zustand ohne Bewerbungsfelder abwärtskompatibel"
   };
   const normalized = mergeApplicationResearch(legacyState.applications);
 
-  assert.equal(normalized.length, 105);
-  assert.equal(normalized.filter((item) => item.shortlisted).length, 24);
-  assert.equal(
-    new Set(normalized.map((item) => item.id)).size,
-    APPLICATION_RESEARCH.length,
-  );
-  assert.equal(normalized[0].status, "research");
-  assert.equal(normalized[0].artifacts.length, 0);
-  assert.equal(normalized[0].vacancyResearch?.schemaVersion, 1);
-  assert.equal(normalized[0].sourceVerifiedAt, "2026-08-01");
-  assert.match(normalized[0].sourceUrl, /^https:\/\//);
+  assert.equal(normalized.length, 0);
+  assert.equal(APPLICATION_RESEARCH.length, 105);
 });
 
-test("aktualisiert alte Recherchefelder und bewahrt den persönlichen Bewerbungsstand", async () => {
+test("normalisiert alte Recherchefelder und bewahrt den persönlichen Bewerbungsstand", async () => {
   const { APPLICATION_RESEARCH, mergeApplicationResearch } = await import(
     "../lib/application-research.ts"
   );
@@ -936,6 +951,17 @@ test("aktualisiert alte Recherchefelder und bewahrt den persönlichen Bewerbungs
       "BWL und Business Administration werden ausdrücklich akzeptiert. Prozesse, Risiken, Projektsteuerung, Beratung und Krisenorganisation passen sehr gut.",
     sourceUrl: "",
     sourceVerifiedAt: "2026-07-29",
+    discoverySources: undefined,
+    checkedAt: undefined,
+    publishedAt: undefined,
+    contractType: undefined,
+    salaryBasis: undefined,
+    marketSalaryEstimate: undefined,
+    verificationStatus: undefined,
+    contentFingerprint: undefined,
+    recommendation: undefined,
+    assessment: undefined,
+    warmPath: undefined,
     status: "submitted",
     appliedAt: "2026-07-31",
     nextStep: "Bewerbungsentscheidung treffen",
@@ -954,29 +980,39 @@ test("aktualisiert alte Recherchefelder und bewahrt den persönlichen Bewerbungs
 
   const [updated] = mergeApplicationResearch([legacy]);
 
-  assert.match(updated.jobTitle, /Business Continuity Management/);
-  assert.match(updated.sourceUrl, /^https:\/\//);
-  assert.equal(updated.sourceVerifiedAt, "2026-08-01");
+  assert.match(updated.jobTitle, /Business Continuity/);
+  assert.equal(updated.sourceUrl, "");
+  assert.equal(updated.sourceVerifiedAt, "2026-07-29");
+  assert.equal(updated.checkedAt, "2026-07-29");
+  assert.equal(updated.verificationStatus, "unverified");
+  assert.equal(updated.recommendation, "undecided");
   assert.equal(updated.status, "submitted");
   assert.equal(updated.appliedAt, "2026-07-31");
   assert.equal(updated.notes, "Rückruf für Montag vereinbart");
   assert.equal(updated.artifacts.length, 1);
-  assert.equal(updated.vacancyResearch?.schemaVersion, 1);
+  assert.equal(updated.vacancyResearch, null);
 });
 
-test("ersetzt unberührte Altrecherche ohne laufende Bewerbungsakten zu verlieren", async () => {
+test("archiviert unberührte Altrecherche ohne laufende Bewerbungsakten zu verlieren", async () => {
   const {
     APPLICATION_RESEARCH,
-    LEGACY_APPLICATION_RESEARCH,
+    archiveLegacyApplicationResearch,
+    legacyApplicationResearchSummary,
     mergeApplicationResearch,
   } = await import("../lib/application-research.ts");
-  const untouched = mergeApplicationResearch(LEGACY_APPLICATION_RESEARCH);
+  const untouched = mergeApplicationResearch(APPLICATION_RESEARCH);
 
   assert.equal(untouched.length, APPLICATION_RESEARCH.length);
   assert.equal(new Set(untouched.map((item) => item.id)).size, untouched.length);
+  assert.deepEqual(legacyApplicationResearchSummary(untouched), {
+    candidates: 105,
+    archive: 105,
+    retain: 0,
+  });
+  assert.equal(archiveLegacyApplicationResearch(untouched).applications.length, 0);
 
-  const startedLegacy = LEGACY_APPLICATION_RESEARCH.map((application) =>
-    application.id === "vacancy-25"
+  const startedLegacy = APPLICATION_RESEARCH.map((application, index) =>
+    index === 0
       ? {
           ...application,
           status: "submitted",
@@ -985,11 +1021,14 @@ test("ersetzt unberührte Altrecherche ohne laufende Bewerbungsakten zu verliere
         }
       : application,
   );
-  const withStartedProcess = mergeApplicationResearch(startedLegacy);
-  const retained = withStartedProcess.find((item) => item.id === "vacancy-25");
+  const archived = archiveLegacyApplicationResearch(
+    mergeApplicationResearch(startedLegacy),
+  );
+  const retained = archived.applications[0];
 
-  assert.equal(withStartedProcess.length, APPLICATION_RESEARCH.length + 1);
+  assert.equal(archived.applications.length, 1);
   assert.equal(retained?.status, "submitted");
+  assert.equal(retained?.verificationStatus, "stale");
   assert.equal(retained?.notes, "Bereits versendet und deshalb als eigene Akte behalten");
 });
 

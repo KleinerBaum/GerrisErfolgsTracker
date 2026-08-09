@@ -13,14 +13,20 @@ const VIEW_KEYS = new Set<ViewKey>([
 
 export const VIEW_QUERY_PARAMETER = "bereich";
 
-export function parseViewKey(value: string | null | undefined): ViewKey {
+export function parseViewKey(
+  value: string | null | undefined,
+  fallback: ViewKey = "today",
+): ViewKey {
   const candidate = value?.trim().toLocaleLowerCase("de-DE") as ViewKey;
-  return VIEW_KEYS.has(candidate) ? candidate : "today";
+  return VIEW_KEYS.has(candidate) ? candidate : fallback;
 }
 
-export function viewFromUrl(value: string | URL): ViewKey {
+export function viewFromUrl(
+  value: string | URL,
+  fallback: ViewKey = "today",
+): ViewKey {
   const url = typeof value === "string" ? new URL(value) : value;
-  return parseViewKey(url.searchParams.get(VIEW_QUERY_PARAMETER));
+  return parseViewKey(url.searchParams.get(VIEW_QUERY_PARAMETER), fallback);
 }
 
 export function urlForView(value: string | URL, view: ViewKey): string {

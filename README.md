@@ -33,6 +33,12 @@ einer ruhigen deutschen Oberfläche zusammen.
   gespeichert; bestehende Journal-Daten aus älteren Backups bleiben lesbar.
 - Private, geräteübergreifende Sites-Persistenz über D1; lokaler Browser-Speicher
   dient nur als Offline-Rückfall.
+- Evidenzsichere Vakanzpipeline mit geprüftem Suchprofil, nicht persistierter
+  Importvorschau, Dublettenerkennung, kanonischer Originalquelle und harter
+  Freigabeschranke vor der Unterlagenerstellung. Der versionierte
+  Übergabevertrag ist in
+  [`web/docs/GERRIS_ROLE_IMPORT_V1.md`](web/docs/GERRIS_ROLE_IMPORT_V1.md)
+  dokumentiert.
 
 Lokaler Start:
 
@@ -57,6 +63,8 @@ npm test
 ```
 
 Die Werte in `web/.env.example` sind ausschließlich Integrationskonfiguration.
+`GERRIS_SITE_ROLE=qa` schaltet den getrennten, synthetischen Bewerbungsstudio-
+Kanal ein; ohne diesen Wert läuft die produktive Kompass-Rolle.
 Google OAuth-Client-Secrets oder API-Schlüssel gehören niemals in das
 Repository. Die vollständige Google-Cloud- und Sites-Konfiguration einschließlich
 OAuth-Weiterleitungs-URL, minimaler Berechtigungen und Migration bestehender
