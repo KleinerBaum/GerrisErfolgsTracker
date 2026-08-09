@@ -815,6 +815,12 @@ export type ApplicationDocumentKind = Exclude<
   "application-email"
 >;
 
+export type ApplicationDocumentPresetId =
+  | "gerris"
+  | "modern-stylish"
+  | "professional-stylish"
+  | "conservative-chic";
+
 export type ApplicationVisualizationPlacement =
   | "after-profile"
   | "after-skills"
@@ -831,6 +837,11 @@ export type ApplicationDocumentVisualization = {
 };
 
 export type ApplicationDocumentDesign = {
+  basePresetId: ApplicationDocumentPresetId;
+  presetOverrides: Record<
+    ApplicationDocumentKind,
+    ApplicationDocumentPresetId | null
+  >;
   templateDocumentIds: Record<ApplicationDocumentKind, string | null>;
   visualizations: ApplicationDocumentVisualization[];
 };

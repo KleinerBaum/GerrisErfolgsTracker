@@ -5,6 +5,7 @@ import { strFromU8, strToU8, unzipSync } from "fflate";
 
 import {
   createEditableDocx,
+  cvPageBreakIndex,
   resolveVisualizationPlacements,
 } from "../lib/docx-export.ts";
 import {
@@ -27,9 +28,9 @@ const SAFE_PARTS = new Set([
   "word/_rels/document.xml.rels",
 ]);
 
-function archiveFor(content, kind) {
+function archiveFor(content, kind, options = {}) {
   return unzipSync(
-    createEditableDocx(content, kind, masterCvFixture.links),
+    createEditableDocx(content, kind, masterCvFixture.links, options),
   );
 }
 
@@ -70,7 +71,7 @@ function assertSafePackage(archive) {
     ...styles.matchAll(/<w:sz(?:Cs)?\s+w:val="(\d+)"/g),
   ].map((match) => Number(match[1]));
   assert.ok(fontSizes.length > 0);
-  assert.ok(fontSizes.every((size) => size >= 18));
+  assert.ok(fontSizes.every((size) => size >= 20));
 }
 
 test("erzeugt einen ATS-sicheren zweiseitigen CV mit A4, Seitenfeldern und Links", () => {
@@ -145,8 +146,8 @@ test("verwendet für Briefing und Interviewmappe eigene Layoutsysteme", () => {
     "word/styles.xml",
   );
   assert.match(coverStyles, /w:styleId="Normal"[\s\S]*w:sz w:val="20"/);
-  assert.match(cvStyles, /w:styleId="Normal"[\s\S]*w:sz w:val="(?:18|19|20)"/);
-  assert.match(briefStyles, /w:styleId="Normal"[\s\S]*w:sz w:val="18"/);
+  assert.match(cvStyles, /w:styleId="Normal"[\s\S]*w:sz w:val="(?:20|21)"/);
+  assert.match(briefStyles, /w:styleId="Normal"[\s\S]*w:sz w:val="20"/);
 });
 
 test("setzt das Anschreiben als zurückhaltenden DIN-5008-Geschäftsbrief ohne Marketingkopf", () => {
@@ -197,8 +198,106 @@ test("passt den zweiseitigen CV innerhalb der Mindestschrift an die Textmenge an
   );
   assert.match(
     textPart(dense, "word/styles.xml"),
-    /w:styleId="Normal"[\s\S]*w:sz w:val="18"/,
+    /w:styleId="Normal"[\s\S]*w:sz w:val="20"/,
   );
+});
+
+test("setzt den CV-Umbruch anhand visueller Zeilen auch vor Rollenüberschriften", () => {
+  const longParagraph = "Belegbare Projekt- und Prozesserfahrung mit klarer Verantwortungszuordnung. ".repeat(7);
+  const lines = [
+    "# Beispiel",
+    "Kontakt",
+    "## PROFIL",
+    longParagraph,
+    "## BERUFSERFAHRUNG",
+    "### Rolle 1 | 2024 – heute",
+    longParagraph,
+    "### Rolle 2 | 2021 – 2023",
+    longParagraph,
+    "### Rolle 3 | 2018 – 2020",
+    longParagraph,
+    "### Rolle 4 | 2015 – 2017",
+    longParagraph,
+    "## PROJEKTE",
+    longParagraph,
+    "## KOMPETENZEN",
+    longParagraph,
+  ];
+
+  const breakIndex = cvPageBreakIndex(lines);
+  assert.ok(breakIndex > 4);
+  assert.match(lines[breakIndex], /^### Rolle/);
+});
+
+test("liefert alle drei neuen Paketdesigns für alle vier Dokumenttypen ATS-sicher", () => {
+  const draft = makeValidDraft();
+  const contents = {
+    "tailored-cv": draft.tailoredCv,
+    "cover-letter": draft.coverLetter,
+    "company-brief": draft.companyBrief,
+    "interview-prep": draft.interviewPrep,
+  };
+  const presets = [
+    {
+      id: "modern-stylish",
+      bodyFont: "Carlito",
+      titleFont: "Carlito",
+      accent: "0F766E",
+    },
+    {
+      id: "professional-stylish",
+      bodyFont: "Carlito",
+      titleFont: "Caladea",
+      accent: "2B6F75",
+    },
+    {
+      id: "conservative-chic",
+      bodyFont: "Caladea",
+      titleFont: "Caladea",
+      accent: "31465A",
+    },
+  ];
+
+  for (const preset of presets) {
+    for (const [kind, baseContent] of Object.entries(contents)) {
+      const content = `${baseContent}\n- Belegter Prüfpunkt\n[Offizielle Quelle](https://example.test/beleg)`;
+      const archive = archiveFor(content, kind, { presetId: preset.id });
+      assertSafePackage(archive);
+      const document = textPart(archive, "word/document.xml");
+      const styles = textPart(archive, "word/styles.xml");
+      const fonts = textPart(archive, "word/fontTable.xml");
+      const relationships = textPart(archive, "word/_rels/document.xml.rels");
+
+      assert.match(styles, new RegExp(`w:ascii="${preset.bodyFont}"`));
+      assert.match(styles, new RegExp(`w:ascii="${preset.titleFont}"`));
+      assert.match(styles, new RegExp(`w:color w:val="${preset.accent}"`));
+      assert.match(fonts, new RegExp(`w:font w:name="${preset.bodyFont}"`));
+      assert.match(document, /<w:numPr><w:ilvl w:val="0"\/><w:numId w:val="1"\/><\/w:numPr>/);
+      assert.match(document, /<w:hyperlink r:id="rId\d+">/);
+      assert.match(relationships, /Target="https:\/\/example\.test\/beleg"/);
+      assert.ok(archive["word/header1.xml"]);
+      assert.ok(archive["word/footer1.xml"]);
+      assert.doesNotMatch(document, /<w:tbl\b|w:txbxContent|<v:shape\b/);
+    }
+  }
+});
+
+test("setzt die drei neuen Designsprachen mit unterscheidbaren sicheren Absatzmitteln um", () => {
+  const draft = makeValidDraft();
+  const modern = archiveFor(draft.interviewPrep, "interview-prep", {
+    presetId: "modern-stylish",
+  });
+  const professional = archiveFor(draft.interviewPrep, "interview-prep", {
+    presetId: "professional-stylish",
+  });
+  const conservative = archiveFor(draft.interviewPrep, "interview-prep", {
+    presetId: "conservative-chic",
+  });
+
+  assert.match(textPart(modern, "word/styles.xml"), /w:left w:val="single" w:sz="14"/);
+  assert.match(textPart(professional, "word/header1.xml"), /w:color="B58A46"/);
+  assert.match(textPart(conservative, "word/styles.xml"), /w:bottom w:val="single" w:sz="4"/);
+  assert.doesNotMatch(textPart(conservative, "word/document.xml"), /<w:shd\b/);
 });
 
 test("unterstützt sichere Telefonlinks als echte Word-Hyperlinks", () => {

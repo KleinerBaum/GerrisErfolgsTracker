@@ -25,6 +25,10 @@ import {
   prepareDocxVisualization,
 } from "../lib/application-document-design";
 import {
+  applicationDocumentPreset,
+  resolvedApplicationDocumentPresetId,
+} from "../lib/application-document-presets";
+import {
   analyzeDocxTemplate,
   type DocxTemplateAnalysis,
   type DocxTemplateProfile,
@@ -68,6 +72,7 @@ import {
 import {
   SALARY_OUTLOOK_LABELS,
   type ApplicationDocumentKind,
+  type ApplicationDocumentPresetId,
   type ApplicationDocumentVisualization,
   type ApplicationGenerationPreferences,
   type ApplicationOutputKind,
@@ -1089,12 +1094,14 @@ function ApplicationDocumentPreview({
   content,
   documents,
   kind,
+  presetId,
   profile,
   visualizations,
 }: {
   content: string;
   documents: DocumentRef[];
   kind: ApplicationTab;
+  presetId: ApplicationDocumentPresetId;
   profile: DocxTemplateProfile | null;
   visualizations: ApplicationDocumentVisualization[];
 }) {
@@ -1109,17 +1116,18 @@ function ApplicationDocumentPreview({
     items.push({ visual: visualizations[index], warning: placement.warning });
     visualsByLine.set(placement.insertBeforeLine, items);
   });
-  const previewStyle = profile
-    ? ({
-        "--document-body-font": profile.fonts.body,
-        "--document-title-font": profile.fonts.title,
-        "--document-heading-font": profile.fonts.heading,
-        "--document-text": `#${profile.colors.text}`,
-        "--document-accent": `#${profile.colors.accent}`,
-        "--document-muted": `#${profile.colors.muted}`,
-        "--document-soft": `#${profile.colors.soft}`,
-      } as CSSProperties)
-    : undefined;
+  const preset = applicationDocumentPreset(presetId);
+  const previewStyle = {
+    "--document-body-font": profile?.fonts.body ?? preset.fonts.body,
+    "--document-title-font": profile?.fonts.title ?? preset.fonts.title,
+    "--document-heading-font": profile?.fonts.heading ?? preset.fonts.heading,
+    "--document-title": `#${profile?.colors.accent ?? preset.colors.title}`,
+    "--document-text": `#${profile?.colors.text ?? preset.colors.text}`,
+    "--document-accent": `#${profile?.colors.accent ?? preset.colors.accent}`,
+    "--document-rule": `#${profile?.colors.accent ?? preset.colors.rule}`,
+    "--document-muted": `#${profile?.colors.muted ?? preset.colors.muted}`,
+    "--document-soft": `#${profile?.colors.soft ?? preset.colors.soft}`,
+  } as CSSProperties;
   const renderVisuals = (lineIndex: number) =>
     (visualsByLine.get(lineIndex) ?? []).map(({ visual, warning }) => {
       const source = documents.find(
@@ -1143,7 +1151,9 @@ function ApplicationDocumentPreview({
   return (
     <article
       aria-label="Formatierte Dokumentvorschau"
-      className={`application-document-preview preview-${kind}`}
+      className={`application-document-preview preview-${kind} document-layout-${
+        profile ? "custom" : preset.layout
+      }`}
       style={previewStyle}
     >
       {lines.map((rawLine, index) => {
@@ -1759,6 +1769,9 @@ function ApplicationStudio({
       interviewPrep: "interview-prep",
     } as const;
     const activeDocumentKind = TAB_DOCUMENT_KIND[activeTab];
+    const activePresetId = activeDocumentKind
+      ? resolvedApplicationDocumentPresetId(documentDesign, activeDocumentKind)
+      : documentDesign.basePresetId;
     const selectedTemplateId = activeDocumentKind
       ? documentDesign.templateDocumentIds[activeDocumentKind]
       : null;
@@ -1807,7 +1820,12 @@ function ApplicationStudio({
       if (!activeDocumentKind || exportBusy) return;
       setExportBusy(true);
       try {
-        const options: DocxExportOptions = {};
+        const options: DocxExportOptions = {
+          presetId: resolvedApplicationDocumentPresetId(
+            documentDesign,
+            activeDocumentKind,
+          ),
+        };
         const templateId = documentDesign.templateDocumentIds[activeDocumentKind];
         if (templateId) {
           const template = documents.find((document) => document.id === templateId);
@@ -1980,6 +1998,7 @@ function ApplicationStudio({
             content={activeContent}
             documents={documents}
             kind={activeTab}
+            presetId={activePresetId}
             profile={activeTemplateProfile}
             visualizations={activeVisualizations}
           />

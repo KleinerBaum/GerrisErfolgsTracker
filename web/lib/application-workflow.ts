@@ -5,6 +5,7 @@ import type {
   ApplicationContact,
   ApplicationDocumentDesign,
   ApplicationDocumentKind,
+  ApplicationDocumentPresetId,
   ApplicationDocumentVisualization,
   ApplicationGenerationPreferences,
   ApplicationGenerationInputs,
@@ -18,6 +19,7 @@ import type {
   DocumentRef,
   SalaryOutlook,
 } from "./types.ts";
+import { APPLICATION_DOCUMENT_PRESET_IDS } from "./application-document-presets.ts";
 import {
   applicationModelSetting,
   DEFAULT_APPLICATION_MODEL_SETTINGS,
@@ -264,6 +266,13 @@ export function normalizeApplicationGenerationInputs(
 }
 
 export const DEFAULT_APPLICATION_DOCUMENT_DESIGN: ApplicationDocumentDesign = {
+  basePresetId: "gerris",
+  presetOverrides: {
+    "tailored-cv": null,
+    "cover-letter": null,
+    "company-brief": null,
+    "interview-prep": null,
+  },
   templateDocumentIds: {
     "tailored-cv": null,
     "cover-letter": null,
@@ -280,6 +289,28 @@ export function normalizeApplicationDocumentDesign(
     value && typeof value === "object"
       ? (value as Partial<ApplicationDocumentDesign>)
       : {};
+  const normalizedPreset = (
+    input: unknown,
+    fallback: ApplicationDocumentPresetId | null,
+  ): ApplicationDocumentPresetId | null =>
+    typeof input === "string" &&
+    APPLICATION_DOCUMENT_PRESET_IDS.has(input as ApplicationDocumentPresetId)
+      ? (input as ApplicationDocumentPresetId)
+      : fallback;
+  const basePresetId =
+    normalizedPreset(candidate.basePresetId, "gerris") ?? "gerris";
+  const presetOverridesCandidate: Partial<
+    Record<ApplicationDocumentKind, ApplicationDocumentPresetId | null>
+  > =
+    candidate.presetOverrides && typeof candidate.presetOverrides === "object"
+      ? candidate.presetOverrides
+      : {};
+  const presetOverride = (
+    kind: ApplicationDocumentKind,
+  ): ApplicationDocumentPresetId | null => {
+    const normalized = normalizedPreset(presetOverridesCandidate[kind], null);
+    return normalized === basePresetId ? null : normalized;
+  };
   const templateIds: Partial<
     Record<ApplicationDocumentKind, string | null>
   > =
@@ -340,6 +371,13 @@ export function normalizeApplicationDocumentDesign(
     .slice(0, 16);
 
   return {
+    basePresetId,
+    presetOverrides: {
+      "tailored-cv": presetOverride("tailored-cv"),
+      "cover-letter": presetOverride("cover-letter"),
+      "company-brief": presetOverride("company-brief"),
+      "interview-prep": presetOverride("interview-prep"),
+    },
     templateDocumentIds: {
       "tailored-cv": templateId("tailored-cv"),
       "cover-letter": templateId("cover-letter"),

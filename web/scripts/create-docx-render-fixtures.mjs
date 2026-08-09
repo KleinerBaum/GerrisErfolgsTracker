@@ -20,10 +20,20 @@ const artifacts = [
   ["unternehmensbriefing.docx", draft.companyBrief, "company-brief"],
   ["interviewvorbereitung.docx", draft.interviewPrep, "interview-prep"],
 ];
+const presets = [
+  "gerris",
+  "modern-stylish",
+  "professional-stylish",
+  "conservative-chic",
+];
 
-for (const [name, content, kind] of artifacts) {
-  writeFileSync(
-    resolve(outputDirectory, name),
-    createEditableDocx(content, kind, masterCvFixture.links),
-  );
+for (const presetId of presets) {
+  const presetDirectory = resolve(outputDirectory, presetId);
+  mkdirSync(presetDirectory, { recursive: true });
+  for (const [name, content, kind] of artifacts) {
+    writeFileSync(
+      resolve(presetDirectory, name),
+      createEditableDocx(content, kind, masterCvFixture.links, { presetId }),
+    );
+  }
 }

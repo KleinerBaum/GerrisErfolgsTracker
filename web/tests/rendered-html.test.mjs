@@ -918,6 +918,41 @@ test("liefert die evidenzsichere Bewerbungs- und Vakanzpipeline", async () => {
   assert.doesNotMatch(actions, /warmPath/);
 });
 
+test("zeigt kompakte Faktenzeilen und paketweite Dokumentdesigns mit Einzelausnahmen", async () => {
+  const [facts, designPanel, presets, types, actions, css] = await Promise.all([
+    readFile(new URL("components/job-research-panel.tsx", root), "utf8"),
+    readFile(new URL("components/application-design-panel.tsx", root), "utf8"),
+    readFile(new URL("lib/application-document-presets.ts", root), "utf8"),
+    readFile(new URL("lib/types.ts", root), "utf8"),
+    readFile(new URL("components/quick-actions.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  assert.match(facts, /className="research-claim-preview"/);
+  assert.match(facts, /aria-expanded=\{detailsOpen\}/);
+  assert.match(facts, /Erledigte Fakten \(\{settled\.length\}\)/);
+  assert.match(facts, /const pending = claims\.filter/);
+  assert.match(facts, /disabled=\{needsEditBeforeConfirmation\}/);
+  assert.match(designPanel, /Paketdesign/);
+  assert.match(designPanel, /Je Dokument anpassen/);
+  assert.match(designPanel, /Eigene DOCX-Vorlage hat für dieses Dokument Vorrang/);
+  assert.match(designPanel, /APPLICATION_DOCUMENT_PRESETS\.map/);
+  assert.match(presets, /id: "modern-stylish"/);
+  assert.match(presets, /id: "professional-stylish"/);
+  assert.match(presets, /id: "conservative-chic"/);
+  assert.match(types, /ApplicationDocumentPresetId/);
+  assert.match(types, /basePresetId: ApplicationDocumentPresetId/);
+  assert.match(types, /presetOverrides:\s*Record<\s*ApplicationDocumentKind/);
+  assert.match(actions, /resolvedApplicationDocumentPresetId/);
+  assert.match(actions, /profile \? "custom" : preset\.layout/);
+  assert.match(css, /-webkit-line-clamp:\s*2/);
+  assert.match(css, /\.document-preset-grid/);
+  assert.match(
+    css,
+    /@media \(pointer: coarse\)[\s\S]*\.research-claim-actions button[\s\S]*min-height:\s*44px/,
+  );
+});
+
 test("sät einen alten Zustand nicht erneut mit dem statischen Pool aus", async () => {
   const { APPLICATION_RESEARCH, mergeApplicationResearch } = await import(
     "../lib/application-research.ts"

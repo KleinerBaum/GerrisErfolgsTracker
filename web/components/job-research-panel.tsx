@@ -139,6 +139,7 @@ function ResearchClaimCard({
   ) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [editedValue, setEditedValue] = useState(
     claim.decision.value || claim.value,
   );
@@ -148,8 +149,8 @@ function ResearchClaimCard({
   const displayedValue = claim.decision.value || claim.value;
   return (
     <article className={`research-claim decision-${claim.decision.status}`}>
-      <header>
-        <div>
+      <div className="research-claim-row">
+        <div className="research-claim-copy">
           <span>{FACT_LABELS[claim.factKey]}</span>
           <div className="research-evidence-row">
             <small>{EVIDENCE_LABELS[claim.evidenceClass]}</small>
@@ -157,85 +158,149 @@ function ResearchClaimCard({
               {EVIDENCE_STATUS_LABELS[claim.evidenceStatus]}
             </small>
             {claim.asOf ? <small>Stand {claim.asOf}</small> : null}
+            {claim.decision.status !== "pending" ? (
+              <strong className="research-decision-label">
+                {claim.decision.status === "confirmed"
+                  ? "Bestätigt"
+                  : claim.decision.status === "edited"
+                    ? "Bearbeitet bestätigt"
+                    : "Abgelehnt"}
+              </strong>
+            ) : null}
           </div>
+          <p className="research-claim-preview">{displayedValue}</p>
         </div>
-        {claim.decision.status !== "pending" ? (
-          <strong className="research-decision-label">
-            {claim.decision.status === "confirmed"
-              ? "Bestätigt"
-              : claim.decision.status === "edited"
-                ? "Bearbeitet bestätigt"
-                : "Abgelehnt"}
-          </strong>
-        ) : null}
-      </header>
-      {editing ? (
-        <label className="research-edit-field">
-          Bestätigten Wert bearbeiten
-          <textarea
-            onChange={(event) => setEditedValue(event.target.value)}
-            rows={3}
-            value={editedValue}
-          />
-        </label>
-      ) : (
-        <p>{displayedValue}</p>
-      )}
-      {claim.whyItMatters ? <small>{claim.whyItMatters}</small> : null}
-      {claim.sourceUrls.length ? (
-        <div className="research-source-chips" aria-label="Quellen dieser Aussage">
-          {claim.sourceUrls.map((sourceUrl) => (
-            <a href={sourceUrl} key={sourceUrl} rel="noreferrer" target="_blank">
-              {sourceTitle(research, sourceUrl)}
-            </a>
+        <div className="research-claim-actions">
+          <button
+            className="button button-soft"
+            disabled={needsEditBeforeConfirmation}
+            onClick={() => onDecision(claim, "confirmed")}
+            title={
+              needsEditBeforeConfirmation
+                ? "Nicht belegte Aussagen und Schlussfolgerungen müssen vor der Bestätigung bearbeitet werden."
+                : undefined
+            }
+            type="button"
+          >
+            Bestätigen
+          </button>
+          <button
+            onClick={() => {
+              setEditing(true);
+              setDetailsOpen(true);
+            }}
+            type="button"
+          >
+            Bearbeiten
+          </button>
+          <button onClick={() => onDecision(claim, "rejected")} type="button">
+            Ablehnen
+          </button>
+          <button
+            aria-expanded={detailsOpen}
+            className="research-details-toggle"
+            onClick={() => setDetailsOpen((current) => !current)}
+            type="button"
+          >
+            Details
+          </button>
+        </div>
+      </div>
+      {detailsOpen ? (
+        <div className="research-claim-details">
+          {editing ? (
+            <label className="research-edit-field">
+              Bestätigten Wert bearbeiten
+              <textarea
+                onChange={(event) => setEditedValue(event.target.value)}
+                rows={3}
+                value={editedValue}
+              />
+              <span className="research-edit-actions">
+                <button
+                  className="button button-soft"
+                  disabled={!editedValue.trim()}
+                  onClick={() => {
+                    onDecision(claim, "edited", editedValue);
+                    setEditing(false);
+                  }}
+                  type="button"
+                >
+                  Bearbeitung bestätigen
+                </button>
+                <button onClick={() => setEditing(false)} type="button">
+                  Abbrechen
+                </button>
+              </span>
+            </label>
+          ) : (
+            <p>{displayedValue}</p>
+          )}
+          {claim.whyItMatters ? (
+            <small className="research-claim-rationale">{claim.whyItMatters}</small>
+          ) : null}
+          {claim.sourceUrls.length ? (
+            <div className="research-source-chips" aria-label="Quellen dieser Aussage">
+              {claim.sourceUrls.map((sourceUrl) => (
+                <a href={sourceUrl} key={sourceUrl} rel="noreferrer" target="_blank">
+                  {sourceTitle(research, sourceUrl)}
+                </a>
+              ))}
+            </div>
+          ) : (
+            <small className="research-source-missing">Keine belegte Webquelle zugeordnet</small>
+          )}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function ResearchClaimList({
+  claims,
+  research,
+  onDecision,
+}: {
+  claims: JobResearchClaim[];
+  research: VacancyResearch;
+  onDecision: (
+    claim: JobResearchClaim,
+    status: "confirmed" | "edited" | "rejected",
+    editedValue?: string,
+  ) => void;
+}) {
+  const pending = claims.filter((claim) => claim.decision.status === "pending");
+  const settled = claims.filter((claim) => claim.decision.status !== "pending");
+  return (
+    <div className="research-claim-collection">
+      {pending.length ? (
+        <div className="research-claim-list research-pending-claims">
+          {pending.map((claim) => (
+            <ResearchClaimCard
+              claim={claim}
+              key={claim.id}
+              onDecision={onDecision}
+              research={research}
+            />
           ))}
         </div>
-      ) : (
-        <small className="research-source-missing">Keine belegte Webquelle zugeordnet</small>
-      )}
-      <div className="research-claim-actions">
-        {editing ? (
-          <>
-            <button
-              className="button button-soft"
-              disabled={!editedValue.trim()}
-              onClick={() => {
-                onDecision(claim, "edited", editedValue);
-                setEditing(false);
-              }}
-              type="button"
-            >
-              Bearbeitung bestätigen
-            </button>
-            <button onClick={() => setEditing(false)} type="button">
-              Abbrechen
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              className="button button-soft"
-              disabled={needsEditBeforeConfirmation}
-              onClick={() => onDecision(claim, "confirmed")}
-              title={
-                needsEditBeforeConfirmation
-                  ? "Nicht belegte Aussagen und Schlussfolgerungen müssen vor der Bestätigung bearbeitet werden."
-                  : undefined
-              }
-              type="button"
-            >
-              Bestätigen
-            </button>
-            <button onClick={() => setEditing(true)} type="button">
-              Bearbeiten
-            </button>
-            <button onClick={() => onDecision(claim, "rejected")} type="button">
-              Ablehnen
-            </button>
-          </>
-        )}
-      </div>
-    </article>
+      ) : null}
+      {settled.length ? (
+        <details className="research-settled-claims">
+          <summary>Erledigte Fakten ({settled.length})</summary>
+          <div className="research-claim-list">
+            {settled.map((claim) => (
+              <ResearchClaimCard
+                claim={claim}
+                key={claim.id}
+                onDecision={onDecision}
+                research={research}
+              />
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </div>
   );
 }
 
@@ -462,16 +527,11 @@ export function JobResearchPanel({
                 <span className="eyebrow">Stellenanzeige</span>
                 <h4>Fakten prüfen</h4>
               </header>
-              <div className="research-claim-list">
-                {research.adFacts.map((claim) => (
-                  <ResearchClaimCard
-                    claim={claim}
-                    key={claim.id}
-                    onDecision={decide}
-                    research={research}
-                  />
-                ))}
-              </div>
+              <ResearchClaimList
+                claims={research.adFacts}
+                onDecision={decide}
+                research={research}
+              />
             </section>
           ) : null}
 
@@ -480,16 +540,11 @@ export function JobResearchPanel({
               <summary>
                 Unternehmens- und Marktkontext ({research.enrichment.length})
               </summary>
-              <div className="research-claim-list">
-                {research.enrichment.map((claim) => (
-                  <ResearchClaimCard
-                    claim={claim}
-                    key={claim.id}
-                    onDecision={decide}
-                    research={research}
-                  />
-                ))}
-              </div>
+              <ResearchClaimList
+                claims={research.enrichment}
+                onDecision={decide}
+                research={research}
+              />
             </details>
           ) : null}
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import {
   applicationTemplateDocuments,
@@ -13,11 +13,16 @@ import {
   analyzeDocxTemplate,
   type DocxTemplateAnalysis,
 } from "../lib/docx-template-profile";
+import {
+  APPLICATION_DOCUMENT_PRESETS,
+  applicationDocumentPreset,
+} from "../lib/application-document-presets";
 import { safePrivateFileUrl } from "../lib/document-library";
 import { decodeAndSanitizeSvg } from "../lib/safe-svg";
 import type {
   ApplicationDocumentDesign,
   ApplicationDocumentKind,
+  ApplicationDocumentPresetId,
   ApplicationDocumentVisualization,
   ApplicationOutputKind,
   DocumentRef,
@@ -205,6 +210,26 @@ export function ApplicationDesignPanel({
     }
   };
 
+  const updateDocumentDesign = (
+    kind: ApplicationDocumentKind,
+    selection: string,
+  ) => {
+    const templateDocumentIds = { ...design.templateDocumentIds };
+    const presetOverrides = { ...design.presetOverrides };
+    if (selection === "package") {
+      templateDocumentIds[kind] = null;
+      presetOverrides[kind] = null;
+    } else if (selection.startsWith("preset:")) {
+      templateDocumentIds[kind] = null;
+      const presetId = selection.slice("preset:".length) as ApplicationDocumentPresetId;
+      presetOverrides[kind] =
+        presetId === design.basePresetId ? null : presetId;
+    } else if (selection.startsWith("template:")) {
+      templateDocumentIds[kind] = selection.slice("template:".length) || null;
+    }
+    onChange({ ...design, presetOverrides, templateDocumentIds });
+  };
+
   const handleVisualUpload = async (file: File | undefined) => {
     if (!file || busy) return;
     setBusy(true);
@@ -235,7 +260,8 @@ export function ApplicationDesignPanel({
         <span>
           <strong>Format &amp; Visualisierungen</strong>
           <small>
-            {Object.values(design.templateDocumentIds).filter(Boolean).length} Vorlagen ·{" "}
+            {applicationDocumentPreset(design.basePresetId).label} ·{" "}
+            {Object.values(design.templateDocumentIds).filter(Boolean).length} eigene Vorlagen ·{" "}
             {design.visualizations.length} Visualisierungen
           </small>
         </span>
@@ -250,82 +276,153 @@ export function ApplicationDesignPanel({
           </p>
         </div>
 
-        <section className="design-section" aria-labelledby="template-library-title">
+        <section className="design-section" aria-labelledby="package-design-title">
           <div className="design-section-heading">
             <div>
-              <strong id="template-library-title">DOCX-Formatvorlagen</strong>
-              <small>Ohne Auswahl bleibt das Gerris-Design aktiv.</small>
+              <strong id="package-design-title">Paketdesign</strong>
+              <small>Gilt zunächst für CV, Anschreiben, Briefing und Interviewmappe.</small>
             </div>
-            <div className="design-upload-actions">
-              <select
-                aria-label="Dokumenttyp für neue Vorlage"
-                onChange={(event) =>
-                  setTemplateTarget(event.target.value as ApplicationDocumentKind)
+          </div>
+          <fieldset className="document-preset-grid">
+            <legend className="visually-hidden">Paketdesign wählen</legend>
+            {APPLICATION_DOCUMENT_PRESETS.map((preset) => (
+              <label
+                className={`document-preset-card${
+                  design.basePresetId === preset.id ? " is-selected" : ""
+                }`}
+                key={preset.id}
+                style={
+                  {
+                    "--preset-accent": `#${preset.colors.accent}`,
+                    "--preset-ink": `#${preset.colors.title}`,
+                    "--preset-soft": `#${preset.colors.soft}`,
+                  } as CSSProperties
                 }
-                value={templateTarget}
               >
-                {DOCUMENT_KINDS.map((kind) => (
-                  <option key={kind.key} value={kind.key}>{kind.label}</option>
-                ))}
-              </select>
-              <button
-                className="button button-soft"
-                disabled={busy}
-                onClick={() => templateInput.current?.click()}
-                type="button"
-              >
-                DOCX hochladen
-              </button>
-              <input
-                accept=".docx"
-                className="visually-hidden"
-                onChange={(event) => void handleTemplateUpload(event.target.files?.[0])}
-                ref={templateInput}
-                type="file"
-              />
+                <input
+                  checked={design.basePresetId === preset.id}
+                  name="application-package-design"
+                  onChange={() =>
+                    onChange({
+                      ...design,
+                      basePresetId: preset.id,
+                      presetOverrides: Object.fromEntries(
+                        Object.entries(design.presetOverrides).map(([kind, override]) => [
+                          kind,
+                          override === preset.id ? null : override,
+                        ]),
+                      ) as ApplicationDocumentDesign["presetOverrides"],
+                    })
+                  }
+                  type="radio"
+                  value={preset.id}
+                />
+                <span className="document-preset-swatch" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                <strong>{preset.label}</strong>
+                <small>{preset.description}</small>
+              </label>
+            ))}
+          </fieldset>
+
+          <details className="document-design-overrides">
+            <summary>
+              <span>
+                <strong>Je Dokument anpassen</strong>
+                <small>
+                  Eingebaute Designs oder eine private DOCX-Vorlage auswählen.
+                </small>
+              </span>
+              <b aria-hidden="true">Optional</b>
+            </summary>
+            <div className="document-design-overrides-content">
+              <div className="design-upload-actions">
+                <select
+                  aria-label="Dokumenttyp für neue Vorlage"
+                  onChange={(event) =>
+                    setTemplateTarget(event.target.value as ApplicationDocumentKind)
+                  }
+                  value={templateTarget}
+                >
+                  {DOCUMENT_KINDS.map((kind) => (
+                    <option key={kind.key} value={kind.key}>{kind.label}</option>
+                  ))}
+                </select>
+                <button
+                  className="button button-soft"
+                  disabled={busy}
+                  onClick={() => templateInput.current?.click()}
+                  type="button"
+                >
+                  Private DOCX hochladen
+                </button>
+                <input
+                  accept=".docx"
+                  className="visually-hidden"
+                  onChange={(event) => void handleTemplateUpload(event.target.files?.[0])}
+                  ref={templateInput}
+                  type="file"
+                />
+              </div>
+              <div className="template-selection-grid">
+                {DOCUMENT_KINDS.map((kind) => {
+                  const selectedId = design.templateDocumentIds[kind.key];
+                  const selectedOverride = design.presetOverrides[kind.key];
+                  const selectedValue = selectedId
+                    ? `template:${selectedId}`
+                    : selectedOverride
+                      ? `preset:${selectedOverride}`
+                      : "package";
+                  const analysis = selectedId ? analyses[selectedId] : null;
+                  const missing = selectedId && !allDocuments.some((item) => item.id === selectedId);
+                  return (
+                    <label key={kind.key}>
+                      <span>{kind.label}</span>
+                      <select
+                        aria-label={`${kind.label} gestalten`}
+                        onChange={(event) => updateDocumentDesign(kind.key, event.target.value)}
+                        value={selectedValue}
+                      >
+                        <option value="package">
+                          Paketdesign – {applicationDocumentPreset(design.basePresetId).label}
+                        </option>
+                        {APPLICATION_DOCUMENT_PRESETS.map((preset) => (
+                          <option key={preset.id} value={`preset:${preset.id}`}>
+                            {preset.label}
+                          </option>
+                        ))}
+                        {templates.map((template) => (
+                          <option key={template.id} value={`template:${template.id}`}>
+                            Eigene Vorlage – {template.name}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedId ? (
+                        <small className="design-priority-note">
+                          Eigene DOCX-Vorlage hat für dieses Dokument Vorrang.
+                        </small>
+                      ) : null}
+                      {missing ? <small className="design-status blocked">Ressource fehlt</small> : null}
+                      {analysis ? (
+                        <small className={`design-status ${analysis.status}`}>
+                          {analysis.status === "ready"
+                            ? "Geprüft"
+                            : analysis.status === "adapted"
+                              ? `Sicher adaptiert${analysis.warnings.length ? ` · ${analysis.warnings[0]}` : ""}`
+                              : `Blockiert · ${analysis.error}`}
+                        </small>
+                      ) : selectedId && !missing ? (
+                        <small className="design-status">Wird lokal analysiert …</small>
+                      ) : null}
+                    </label>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-          <div className="template-selection-grid">
-            {DOCUMENT_KINDS.map((kind) => {
-              const selectedId = design.templateDocumentIds[kind.key];
-              const analysis = selectedId ? analyses[selectedId] : null;
-              const missing = selectedId && !allDocuments.some((item) => item.id === selectedId);
-              return (
-                <label key={kind.key}>
-                  <span>{kind.label}</span>
-                  <select
-                    onChange={(event) =>
-                      onChange({
-                        ...design,
-                        templateDocumentIds: {
-                          ...design.templateDocumentIds,
-                          [kind.key]: event.target.value || null,
-                        },
-                      })
-                    }
-                    value={selectedId ?? ""}
-                  >
-                    <option value="">Gerris-Design</option>
-                    {templates.map((template) => (
-                      <option key={template.id} value={template.id}>{template.name}</option>
-                    ))}
-                  </select>
-                  {missing ? <small className="design-status blocked">Ressource fehlt</small> : null}
-                  {analysis ? (
-                    <small className={`design-status ${analysis.status}`}>
-                      {analysis.status === "ready"
-                        ? "Geprüft"
-                        : analysis.status === "adapted"
-                          ? `Sicher adaptiert${analysis.warnings.length ? ` · ${analysis.warnings[0]}` : ""}`
-                          : `Blockiert · ${analysis.error}`}
-                    </small>
-                  ) : selectedId && !missing ? (
-                    <small className="design-status">Wird lokal analysiert …</small>
-                  ) : null}
-                </label>
-              );
-            })}
-          </div>
+          </details>
         </section>
 
         <section className="design-section" aria-labelledby="visual-library-title">

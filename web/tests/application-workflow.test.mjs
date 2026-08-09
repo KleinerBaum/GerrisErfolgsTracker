@@ -10,6 +10,7 @@ import {
   normalizeApplicationGenerationPreferences,
   normalizeApplicationKpiSettings,
 } from "../lib/application-workflow.ts";
+import { resolvedApplicationDocumentPresetId } from "../lib/application-document-presets.ts";
 
 function documentRef(id, storage, name) {
   return {
@@ -161,6 +162,13 @@ test("normalisiert Generierungsfilter und verwirft unbekannte Werte", () => {
 
 test("ergänzt alte Bewerbungszustände abwärtskompatibel um das Dokumentdesign", () => {
   assert.deepEqual(normalizeApplicationDocumentDesign(undefined), {
+    basePresetId: "gerris",
+    presetOverrides: {
+      "tailored-cv": null,
+      "cover-letter": null,
+      "company-brief": null,
+      "interview-prep": null,
+    },
     templateDocumentIds: {
       "tailored-cv": null,
       "cover-letter": null,
@@ -171,8 +179,14 @@ test("ergänzt alte Bewerbungszustände abwärtskompatibel um das Dokumentdesign
   });
 });
 
-test("normalisiert Vorlagenauswahl und Visualisierungsziele je Dokumenttyp", () => {
+test("normalisiert Paketdesign, Einzelausnahmen, Vorlagen und Visualisierungen", () => {
   const design = normalizeApplicationDocumentDesign({
+    basePresetId: "professional-stylish",
+    presetOverrides: {
+      "tailored-cv": "modern-stylish",
+      "cover-letter": "professional-stylish",
+      "company-brief": "unbekannt",
+    },
     templateDocumentIds: {
       "tailored-cv": " template-1 ",
       "cover-letter": "template-2",
@@ -193,12 +207,36 @@ test("normalisiert Vorlagenauswahl und Visualisierungsziele je Dokumenttyp", () 
 
   assert.equal(design.templateDocumentIds["tailored-cv"], "template-1");
   assert.equal(design.templateDocumentIds["company-brief"], null);
+  assert.equal(design.basePresetId, "professional-stylish");
+  assert.equal(design.presetOverrides["tailored-cv"], "modern-stylish");
+  assert.equal(design.presetOverrides["cover-letter"], null);
+  assert.equal(design.presetOverrides["company-brief"], null);
+  assert.equal(
+    resolvedApplicationDocumentPresetId(design, "tailored-cv"),
+    "modern-stylish",
+  );
+  assert.equal(
+    resolvedApplicationDocumentPresetId(design, "interview-prep"),
+    "professional-stylish",
+  );
   assert.deepEqual(design.visualizations[0].targetKinds, [
     "tailored-cv",
     "interview-prep",
   ]);
   assert.equal(design.visualizations[0].placement, "after-skills");
   assert.equal(design.visualizations[0].confirmedAt, "2026-08-06T10:00:00.000Z");
+});
+
+test("verwirft ungültige Presets und behält eigene Vorlagen als getrennten Vorrang", () => {
+  const design = normalizeApplicationDocumentDesign({
+    basePresetId: "nicht-vorhanden",
+    presetOverrides: { "tailored-cv": "conservative-chic" },
+    templateDocumentIds: { "tailored-cv": "private-vorlage" },
+  });
+
+  assert.equal(design.basePresetId, "gerris");
+  assert.equal(design.presetOverrides["tailored-cv"], "conservative-chic");
+  assert.equal(design.templateDocumentIds["tailored-cv"], "private-vorlage");
 });
 
 test("ordnet den Gehaltswunsch gegen eine veröffentlichte Spanne ein", () => {

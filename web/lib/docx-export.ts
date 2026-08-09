@@ -1,20 +1,16 @@
 import { strToU8, zipSync } from "fflate";
 
+import { applicationDocumentPreset } from "./application-document-presets.ts";
 import type { DocxTemplateProfile } from "./docx-template-profile";
 import type {
   ApplicationDocumentKind,
+  ApplicationDocumentPresetId,
   ApplicationVisualizationPlacement,
   MasterCvLink,
 } from "./types";
 
 const CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-const NAVY = "142A3A";
-const TEAL = "17605E";
-const GOLD = "C29A4A";
-const TEXT = "26343E";
-const MUTED = "60717C";
-const SOFT = "EAF1F2";
 
 // Gerris Application Line v1: bewusstes, benutzerdefiniertes A4-Preset.
 // Schriftgrößen sind OOXML-Halbpunktwerte, Abstände und Ränder Twips.
@@ -33,6 +29,7 @@ export type DocxEmbeddedMedia = {
 };
 
 export type DocxExportOptions = {
+  presetId?: ApplicationDocumentPresetId;
   templateProfile?: DocxTemplateProfile | null;
   media?: DocxEmbeddedMedia[];
 };
@@ -57,6 +54,8 @@ type ArtifactConfig = {
 };
 
 type ResolvedArtifactConfig = ArtifactConfig & {
+  presetId: ApplicationDocumentPresetId;
+  layout: "gerris" | "modern" | "professional" | "conservative";
   page: { width: number; height: number };
   fonts: { body: string; title: string; heading: string };
   colors: {
@@ -75,8 +74,8 @@ type ResolvedArtifactConfig = ArtifactConfig & {
 const CONFIG: Record<DocxArtifactKind, ArtifactConfig> = {
   "tailored-cv": {
     label: "FOKUSSIERTER LEBENSLAUF",
-    bodySize: 18,
-    bodyLine: 216,
+    bodySize: 20,
+    bodyLine: 228,
     bodyAfter: 30,
     titleSize: 42,
     heading1Size: 22,
@@ -95,9 +94,9 @@ const CONFIG: Record<DocxArtifactKind, ArtifactConfig> = {
   },
   "company-brief": {
     label: "ROLLENBRIEFING",
-    bodySize: 18,
-    bodyLine: 216,
-    bodyAfter: 40,
+    bodySize: 20,
+    bodyLine: 232,
+    bodyAfter: 36,
     titleSize: 36,
     heading1Size: 21,
     heading2Size: 19,
@@ -118,44 +117,51 @@ const CONFIG: Record<DocxArtifactKind, ArtifactConfig> = {
 function artifactConfig(
   content: string,
   kind: DocxArtifactKind,
+  presetId: ApplicationDocumentPresetId,
   templateProfile?: DocxTemplateProfile | null,
 ): ResolvedArtifactConfig {
   const base = CONFIG[kind];
+  const preset = applicationDocumentPreset(presetId);
   let sized = base;
   if (kind === "tailored-cv") {
     const words = content.trim().split(/\s+/).filter(Boolean).length;
     sized = words <= 850
-      ? { ...base, bodySize: 20, bodyLine: 240, bodyAfter: 40 }
+      ? { ...base, bodySize: 21, bodyLine: 244, bodyAfter: 36 }
       : words <= 1_000
-        ? { ...base, bodySize: 19, bodyLine: 228, bodyAfter: 34 }
-        : { ...base, bodySize: 18, bodyLine: 216, bodyAfter: 28 };
+        ? { ...base, bodySize: 20, bodyLine: 232, bodyAfter: 32 }
+        : { ...base, bodySize: 20, bodyLine: 224, bodyAfter: 26 };
   }
   if (!templateProfile) {
+    const margins =
+      kind === "cover-letter"
+        ? sized.margins
+        : preset.layout === "modern"
+          ? { top: 680, right: 780, bottom: 680, left: 820 }
+          : preset.layout === "conservative"
+            ? { top: 760, right: 900, bottom: 760, left: 900 }
+            : sized.margins;
     return {
       ...sized,
+      margins,
+      presetId,
+      layout: preset.layout,
       page: { width: 11_906, height: 16_838 },
-      fonts: { body: "Carlito", title: "Caladea", heading: "Caladea" },
-      colors: {
-        title: NAVY,
-        heading: NAVY,
-        accent: TEAL,
-        rule: GOLD,
-        text: TEXT,
-        muted: MUTED,
-        soft: SOFT,
-      },
-      headingBefore: 150,
-      headingAfter: 64,
+      fonts: { ...preset.fonts },
+      colors: { ...preset.colors },
+      headingBefore: preset.layout === "modern" ? 138 : 150,
+      headingAfter: preset.layout === "conservative" ? 54 : 64,
     };
   }
   return {
     ...sized,
-    bodySize: Math.max(18, templateProfile.sizes.body),
+    presetId,
+    layout: "gerris",
+    bodySize: Math.max(20, templateProfile.sizes.body),
     bodyLine: templateProfile.spacing.bodyLine,
     bodyAfter: templateProfile.spacing.bodyAfter,
-    titleSize: templateProfile.sizes.title,
-    heading1Size: templateProfile.sizes.heading1,
-    heading2Size: templateProfile.sizes.heading2,
+    titleSize: Math.max(20, templateProfile.sizes.title),
+    heading1Size: Math.max(20, templateProfile.sizes.heading1),
+    heading2Size: Math.max(20, templateProfile.sizes.heading2),
     margins: { ...templateProfile.page.margins },
     page: {
       width: templateProfile.page.width,
@@ -398,13 +404,21 @@ function paragraph(
     ? '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>'
     : "";
   const callout = options.callout
-    ? '<w:ind ' +
-      (options.bullet ? 'w:right="120"' : 'w:left="160" w:right="120"') +
-      '/><w:shd w:val="clear" w:color="auto" w:fill="' +
-      config.colors.soft +
-      '"/><w:pBdr><w:left w:val="single" w:sz="18" w:space="6" w:color="' +
-      config.colors.accent +
-      '"/></w:pBdr>'
+    ? config.layout === "conservative"
+      ? '<w:ind ' +
+        (options.bullet ? 'w:right="120"' : 'w:left="140" w:right="120"') +
+        '/><w:pBdr><w:left w:val="single" w:sz="6" w:space="6" w:color="' +
+        config.colors.rule +
+        '"/></w:pBdr>'
+      : '<w:ind ' +
+        (options.bullet ? 'w:right="120"' : 'w:left="160" w:right="120"') +
+        '/><w:shd w:val="clear" w:color="auto" w:fill="' +
+        config.colors.soft +
+        '"/><w:pBdr><w:left w:val="single" w:sz="' +
+        (config.layout === "modern" ? "16" : "12") +
+        '" w:space="6" w:color="' +
+        config.colors.accent +
+        '"/></w:pBdr>'
     : "";
   const properties =
     '<w:pStyle w:val="' +
@@ -417,25 +431,43 @@ function paragraph(
   return "<w:p><w:pPr>" + properties + "</w:pPr>" + content + "</w:p>";
 }
 
-function cvPageBreakIndex(lines: string[]): number {
-  const totalWords = lines.join(" ").trim().split(/\s+/).filter(Boolean).length;
-  if (totalWords < 650) return -1;
+function visualLineEstimate(rawLine: string): number {
+  const line = rawLine.trim();
+  if (!line) return 0.22;
+  const plain = stripMarkdown(line.replace(/^#{1,3}\s+|^(?:[-•])\s+/, ""));
+  const wrappedLines = Math.max(1, Math.ceil(plain.length / 92));
+  if (/^#\s+/.test(line)) return 2.5;
+  if (/^##\s+/.test(line)) return 1.75;
+  if (/^###\s+/.test(line)) return 1.35;
+  if (/^\*\*.*\d.*\*\*$/.test(line)) return 1.3;
+  if (/^\*(?!\*)/.test(line)) return 1.05;
+  if (/^(?:[-•])\s+/.test(line)) return wrappedLines * 1.08 + 0.18;
+  return wrappedLines + 0.28;
+}
+
+export function cvPageBreakIndex(lines: string[]): number {
+  const estimates = lines.map(visualLineEstimate);
+  const totalVisualLines = estimates.reduce((sum, value) => sum + value, 0);
+  if (totalVisualLines < 54) return -1;
   let running = 0;
   let bestIndex = -1;
   let bestDistance = Number.POSITIVE_INFINITY;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index].trim();
-    if ((/^##\s+/.test(line) || /^\*\*.*\d.*\*\*$/.test(line)) && index > 4) {
-      const ratio = running / totalWords;
-      if (ratio >= 0.42 && ratio <= 0.62) {
-        const distance = Math.abs(ratio - 0.52);
+    if (
+      (/^#{2,3}\s+/.test(line) || /^\*\*.*\d.*\*\*$/.test(line)) &&
+      index > 4
+    ) {
+      const ratio = running / totalVisualLines;
+      if (ratio >= 0.36 && ratio <= 0.54) {
+        const distance = Math.abs(ratio - 0.44);
         if (distance < bestDistance) {
           bestDistance = distance;
           bestIndex = index;
         }
       }
     }
-    running += line.split(/\s+/).filter(Boolean).length;
+    running += estimates[index];
   }
   return bestIndex;
 }
@@ -608,7 +640,9 @@ function bodyXml(
             kind === "cover-letter" ? "CoverSubject" : "Title",
             inlineRuns(value, links, relationships, config.colors.accent),
             config,
-            { keepNext: true },
+            {
+              keepNext: true,
+            },
           ),
         );
       } else if (level <= 2) {
@@ -633,7 +667,10 @@ function bodyXml(
             "Heading2",
             inlineRuns(value, links, relationships, config.colors.accent),
             config,
-            { keepNext: true },
+            {
+              keepNext: true,
+              pageBreakBefore: index === pageBreakIndex,
+            },
           ),
         );
       }
@@ -803,6 +840,37 @@ function stylesXml(
   kind: DocxArtifactKind,
   config: ResolvedArtifactConfig,
 ): string {
+  const titleParagraph =
+    config.layout === "modern"
+      ? '<w:ind w:left="150"/><w:spacing w:before="0" w:after="86"/><w:keepNext/><w:pBdr><w:left w:val="single" w:sz="22" w:space="7" w:color="' +
+        config.colors.accent +
+        '"/></w:pBdr>'
+      : config.layout === "professional"
+        ? '<w:spacing w:before="0" w:after="92"/><w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="8" w:space="6" w:color="' +
+          config.colors.rule +
+          '"/></w:pBdr>'
+        : '<w:spacing w:before="0" w:after="80"/><w:keepNext/>';
+  const headingBorder =
+    config.layout === "modern"
+      ? '<w:ind w:left="110"/><w:pBdr><w:left w:val="single" w:sz="14" w:space="5" w:color="' +
+        config.colors.accent +
+        '"/></w:pBdr>'
+      : '<w:pBdr><w:bottom w:val="single" w:sz="' +
+        (config.layout === "conservative" ? "4" : "8") +
+        '" w:space="4" w:color="' +
+        config.colors.rule +
+        '"/></w:pBdr>';
+  const calloutParagraph =
+    '<w:ind w:left="' +
+    (config.layout === "conservative" ? "140" : "160") +
+    '" w:right="120"/><w:spacing w:before="20" w:after="90" w:line="' +
+    config.bodyLine +
+    '" w:lineRule="auto"/>' +
+    (config.layout === "conservative"
+      ? ""
+      : '<w:shd w:val="clear" w:color="auto" w:fill="' +
+        config.colors.soft +
+        '"/>');
   const normal = style(
     "Normal",
     "Normal",
@@ -826,7 +894,7 @@ function stylesXml(
       "Title",
       "Dokumenttitel",
       "Normal",
-      '<w:spacing w:before="0" w:after="80"/><w:keepNext/>',
+      titleParagraph,
       fontProperties(config.titleSize, config.fonts.title, config.colors.title, "<w:b/>"),
     ) +
     style(
@@ -848,14 +916,14 @@ function stylesXml(
       "CV Schwerpunkte",
       "Normal",
       '<w:spacing w:before="0" w:after="44"/><w:keepNext/>',
-      fontProperties(18, config.fonts.body, config.colors.muted),
+      fontProperties(20, config.fonts.body, config.colors.muted),
     ) +
     style(
       "Contact",
       "Kontakt",
       "Normal",
       '<w:spacing w:before="0" w:after="52"/><w:keepNext/>',
-      fontProperties(18, config.fonts.body, config.colors.muted),
+      fontProperties(20, config.fonts.body, config.colors.muted),
     ) +
     style(
       "Recipient",
@@ -876,7 +944,7 @@ function stylesXml(
       "Anrede",
       "Normal",
       '<w:spacing w:before="120" w:after="120"/><w:keepNext/>',
-      fontProperties(Math.max(18, config.bodySize), config.fonts.body, config.colors.text),
+      fontProperties(Math.max(20, config.bodySize), config.fonts.body, config.colors.text),
     ) +
     style(
       "Heading1",
@@ -886,38 +954,37 @@ function stylesXml(
         config.headingBefore +
         '" w:after="' +
         config.headingAfter +
-        '"/><w:keepNext/><w:keepLines/><w:outlineLvl w:val="0"/><w:pBdr><w:bottom w:val="single" w:sz="8" w:space="4" w:color="' +
-        config.colors.rule +
-        '"/></w:pBdr>',
-      fontProperties(config.heading1Size, config.fonts.heading, config.colors.heading, "<w:b/>"),
+        '"/><w:keepNext/><w:keepLines/><w:outlineLvl w:val="0"/>' +
+        headingBorder,
+      fontProperties(Math.max(20, config.heading1Size), config.fonts.heading, config.colors.heading, "<w:b/>"),
     ) +
     style(
       "Heading2",
       "Überschrift 2",
       "Normal",
       '<w:spacing w:before="92" w:after="24"/><w:keepNext/><w:keepLines/><w:outlineLvl w:val="1"/>',
-      fontProperties(config.heading2Size, config.fonts.heading, config.colors.accent, "<w:b/>"),
+      fontProperties(Math.max(20, config.heading2Size), config.fonts.heading, config.colors.accent, "<w:b/>"),
     ) +
     style(
       "Kicker",
       "Dokumenttyp",
       "Normal",
       '<w:spacing w:before="0" w:after="24"/><w:keepNext/>',
-      fontProperties(18, config.fonts.body, config.colors.rule, "<w:b/><w:caps/>"),
+      fontProperties(20, config.fonts.body, config.colors.rule, "<w:b/><w:caps/>"),
     ) +
     style(
       "Date",
       "CV Datum",
       "Normal",
       '<w:spacing w:before="78" w:after="12"/><w:keepNext/>',
-      fontProperties(18, config.fonts.body, config.colors.accent, "<w:b/>"),
+      fontProperties(20, config.fonts.body, config.colors.accent, "<w:b/>"),
     ) +
     style(
       "Company",
       "CV Unternehmen",
       "Normal",
       '<w:spacing w:before="0" w:after="24"/><w:keepNext/>',
-      fontProperties(18, config.fonts.body, config.colors.muted, "<w:i/>"),
+      fontProperties(20, config.fonts.body, config.colors.muted, "<w:i/>"),
     ) +
     style(
       "Bullet",
@@ -934,11 +1001,7 @@ function stylesXml(
       "Callout",
       "Kernbotschaft",
       "Normal",
-      '<w:ind w:left="160" w:right="120"/><w:spacing w:before="20" w:after="90" w:line="' +
-        config.bodyLine +
-        '" w:lineRule="auto"/><w:shd w:val="clear" w:color="auto" w:fill="' +
-        config.colors.soft +
-        '"/>',
+      calloutParagraph,
       fontProperties(config.bodySize, config.fonts.body, config.colors.text),
     ) +
     style(
@@ -946,14 +1009,14 @@ function stylesXml(
       "Kopfzeile",
       "Normal",
       '<w:spacing w:after="0"/>',
-      fontProperties(18, config.fonts.body, config.colors.muted),
+      fontProperties(20, config.fonts.body, config.colors.muted),
     ) +
     style(
       "Footer",
       "Fußzeile",
       "Normal",
       '<w:spacing w:after="0"/>',
-      fontProperties(18, config.fonts.body, config.colors.muted),
+      fontProperties(20, config.fonts.body, config.colors.muted),
     ) +
     style(
       "Figure",
@@ -967,7 +1030,7 @@ function stylesXml(
       "Visualisierungstitel",
       "Normal",
       '<w:jc w:val="center"/><w:spacing w:before="0" w:after="100"/><w:keepLines/>',
-      fontProperties(18, config.fonts.body, config.colors.muted, "<w:i/>"),
+      fontProperties(20, config.fonts.body, config.colors.muted, "<w:i/>"),
     ) +
     "</w:styles>"
   );
@@ -996,12 +1059,22 @@ function headerXml(
   }
   const title = titleFromContent(content).slice(0, 90);
   const tabPosition = config.page.width - config.margins.left - config.margins.right;
+  const mastheadBorder =
+    config.layout === "gerris"
+      ? ""
+      : '<w:pBdr><w:bottom w:val="single" w:sz="' +
+        (config.layout === "modern" ? "12" : config.layout === "professional" ? "8" : "4") +
+        '" w:space="5" w:color="' +
+        (config.layout === "professional" ? config.colors.rule : config.colors.accent) +
+        '"/></w:pBdr>';
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
     '<w:p><w:pPr><w:pStyle w:val="Header"/><w:tabs><w:tab w:val="right" w:pos="' +
     tabPosition +
-    '"/></w:tabs></w:pPr>' +
+    '"/></w:tabs>' +
+    mastheadBorder +
+    '</w:pPr>' +
     run(CONFIG[kind].label, { bold: true, color: config.colors.accent }) +
     run("\t" + title, { color: config.colors.muted }) +
     "</w:p></w:hdr>"
@@ -1019,6 +1092,12 @@ function footerXml(
     );
   }
   const tabPosition = config.page.width - config.margins.left - config.margins.right;
+  const footerBorder =
+    config.layout === "professional" || config.layout === "conservative"
+      ? '<w:pBdr><w:top w:val="single" w:sz="4" w:space="5" w:color="' +
+        config.colors.rule +
+        '"/></w:pBdr>'
+      : "";
   const stand = new Intl.DateTimeFormat("de-DE", {
     month: "2-digit",
     year: "numeric",
@@ -1031,7 +1110,9 @@ function footerXml(
     '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
     '<w:p><w:pPr><w:pStyle w:val="Footer"/><w:tabs><w:tab w:val="right" w:pos="' +
     tabPosition +
-    '"/></w:tabs></w:pPr>' +
+    '"/></w:tabs>' +
+    footerBorder +
+    '</w:pPr>' +
     run(CONFIG[kind].label + "  |  Stand " + stand, { color: config.colors.muted }) +
     run("\tSeite ", { color: config.colors.muted }) +
     '<w:fldSimple w:instr=" PAGE ">' +
@@ -1202,7 +1283,12 @@ export function createEditableDocx(
   options: DocxExportOptions = {},
 ): Uint8Array {
   const media = options.media ? [...options.media] : [];
-  const config = artifactConfig(content, kind, options.templateProfile);
+  const config = artifactConfig(
+    content,
+    kind,
+    options.presetId ?? "gerris",
+    options.templateProfile,
+  );
   const relationships = new DocumentRelationships();
   const document = documentXml(
     content,
