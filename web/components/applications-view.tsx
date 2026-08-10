@@ -100,6 +100,7 @@ const CLOSED_STATUSES = new Set<ApplicationStatus>([
   "rejected",
   "withdrawn",
   "closed",
+  "archived",
 ]);
 
 const APPLICATION_FILE_TYPES =
@@ -276,6 +277,7 @@ export function ApplicationsView({
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | "all">(
     "all",
   );
+  const [showArchived, setShowArchived] = useState(false);
   const [salaryFilter, setSalaryFilter] = useState<SalaryOutlook | "all">("all");
   const [poolFilter, setPoolFilter] = useState<
     "shortlist" | "all" | "top" | "plausible" | "stretch" | "own"
@@ -284,6 +286,8 @@ export function ApplicationsView({
   const visible = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return applications.filter((application) => {
+      const matchesArchive =
+        showArchived || application.status !== "archived" || statusFilter === "archived";
       const matchesQuery =
         !normalizedQuery ||
         `${application.jobTitle} ${application.company} ${application.location} ${application.researchSummary}`
@@ -298,9 +302,9 @@ export function ApplicationsView({
         (poolFilter === "shortlist"
           ? application.shortlisted
           : application.researchTier === poolFilter);
-      return matchesQuery && matchesStatus && matchesSalary && matchesPool;
+      return matchesArchive && matchesQuery && matchesStatus && matchesSalary && matchesPool;
     });
-  }, [applications, poolFilter, query, salaryFilter, statusFilter]);
+  }, [applications, poolFilter, query, salaryFilter, showArchived, statusFilter]);
 
   const selected =
     applications.find((application) => application.id === selectedId) ?? null;
@@ -554,6 +558,14 @@ export function ApplicationsView({
                 </option>
               ))}
             </select>
+            <label className="applications-archive-toggle">
+              <input
+                checked={showArchived}
+                onChange={(event) => setShowArchived(event.target.checked)}
+                type="checkbox"
+              />
+              Archivierte anzeigen
+            </label>
           </div>
 
           <div className="application-table-head" aria-hidden="true">
@@ -980,6 +992,26 @@ function ApplicationDetail({
           type="button"
         >
           Vor-Ort-Gespräch
+        </button>
+        <button
+          onClick={() => {
+            const next = {
+              ...draft,
+              status: draft.status === "archived" ? "research" : "archived",
+            } satisfies ApplicationProcess;
+            setDraft(next);
+            onUpdate(next);
+            toast(
+              next.status === "archived"
+                ? "Vakanz archiviert"
+                : "Vakanz aus dem Archiv zurückgeholt",
+            );
+          }}
+          type="button"
+        >
+          {draft.status === "archived"
+            ? "Aus Archiv zurückholen"
+            : "Vakanz archivieren"}
         </button>
       </div>
 

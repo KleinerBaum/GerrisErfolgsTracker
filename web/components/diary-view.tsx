@@ -114,7 +114,7 @@ export function DiaryView({
   const tomorrowApplications = state.applications.filter(
     (application) =>
       onDate(application.nextStepAt, tomorrow) &&
-      !["rejected", "withdrawn", "closed"].includes(application.status),
+      !["rejected", "withdrawn", "closed", "archived"].includes(application.status),
   );
   const tomorrowCosts = state.costs.filter(
     (cost) => cost.status !== "paid" && onDate(cost.dueAt, tomorrow),
@@ -128,7 +128,7 @@ export function DiaryView({
   const weekApplications = state.applications.filter(
     (application) =>
       planningDates.some((date) => onDate(application.nextStepAt, date)) &&
-      !["rejected", "withdrawn", "closed"].includes(application.status),
+      !["rejected", "withdrawn", "closed", "archived"].includes(application.status),
   );
 
   const suggestions = useMemo(

@@ -720,7 +720,8 @@ export type ApplicationStatus =
   | "offer"
   | "rejected"
   | "withdrawn"
-  | "closed";
+  | "closed"
+  | "archived";
 
 export type SalaryOutlook = "yes" | "borderline" | "open" | "no";
 
@@ -1382,6 +1383,7 @@ export const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
   rejected: "Absage",
   withdrawn: "Zurückgezogen",
   closed: "Abgeschlossen",
+  archived: "Archiviert",
 };
 
 export const SALARY_OUTLOOK_LABELS: Record<SalaryOutlook, string> = {

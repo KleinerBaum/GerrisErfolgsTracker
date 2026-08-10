@@ -659,7 +659,7 @@ async function desiredCalendarEvents(
   }
 
   for (const application of snapshot.state.applications) {
-    if (["rejected", "withdrawn", "closed"].includes(application.status)) continue;
+    if (["rejected", "withdrawn", "closed", "archived"].includes(application.status)) continue;
     if (!application.nextStep.trim() || !hasExplicitTime(application.nextStepAt)) {
       continue;
     }
