@@ -280,6 +280,8 @@ export const DEFAULT_APPLICATION_DOCUMENT_DESIGN: ApplicationDocumentDesign = {
     "interview-prep": null,
   },
   visualizations: [],
+  visualizationsEnabled: null,
+  selectionConfirmedAt: null,
 };
 
 export function normalizeApplicationDocumentDesign(
@@ -369,6 +371,15 @@ export function normalizeApplicationDocumentDesign(
     })
     .filter((item): item is ApplicationDocumentVisualization => Boolean(item))
     .slice(0, 16);
+  const visualizationsEnabled =
+    typeof candidate.visualizationsEnabled === "boolean"
+      ? candidate.visualizationsEnabled
+      : null;
+  const selectionConfirmedAt =
+    typeof candidate.selectionConfirmedAt === "string" &&
+    Number.isFinite(Date.parse(candidate.selectionConfirmedAt))
+      ? candidate.selectionConfirmedAt
+      : null;
 
   return {
     basePresetId,
@@ -385,6 +396,8 @@ export function normalizeApplicationDocumentDesign(
       "interview-prep": templateId("interview-prep"),
     },
     visualizations,
+    visualizationsEnabled,
+    selectionConfirmedAt,
   };
 }
 

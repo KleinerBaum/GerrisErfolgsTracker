@@ -21,6 +21,7 @@ import {
 } from "../../../lib/role-pipeline";
 import type { GeneratedApplicationPackage } from "../../../lib/application-package";
 import { normalizeApplicationGenerationPreferences } from "../../../lib/application-workflow";
+import { normalizeApplicationGenerationDesignContext } from "../../../lib/application-generation-design";
 import {
   ApplicationGenerationError,
   APPLICATION_ARTIFACT_SCHEMA,
@@ -189,6 +190,7 @@ type ApplicationInput = {
   salaryFlexibility: string;
   mentionSalary: string;
   researchContext: string;
+  documentDesignContext: string;
   roleVerificationStatus: string;
   roleRecommendation: string;
   roleHardExclusionCount: number;
@@ -1257,6 +1259,7 @@ async function handleApplication(
     salaryFlexibility: text(source.salaryFlexibility, 40),
     mentionSalary: text(source.mentionSalary, 40),
     researchContext: text(source.researchContext, 100_000),
+    documentDesignContext: text(source.documentDesignContext, 30_000),
     roleVerificationStatus: text(source.roleVerificationStatus, 40),
     roleRecommendation: text(source.roleRecommendation, 40),
     roleHardExclusionCount:
@@ -1464,6 +1467,21 @@ async function handleApplication(
   });
   preferences.language = "Deutsch";
   preferences.cvLength = "two_pages";
+  let documentDesignContext = null;
+  try {
+    documentDesignContext = normalizeApplicationGenerationDesignContext(
+      JSON.parse(input.documentDesignContext),
+      outputKinds,
+    );
+  } catch {
+    documentDesignContext = null;
+  }
+  if (!documentDesignContext) {
+    throw new ApplicationGenerationError(
+      "Format und Visualisierungen müssen vor der Generierung vollständig ausgewählt und bestätigt sein.",
+      400,
+    );
+  }
   const editedOutputKinds = jsonStringList(input.editedOutputKinds, 5).filter(
     (kind): kind is ApplicationOutputKind =>
       outputKinds.includes(kind as ApplicationOutputKind),
@@ -1505,6 +1523,7 @@ async function handleApplication(
     requestedAt: parsedAt,
     personalInputs,
     preferences,
+    documentDesignContext,
     confirmedResearchFacts,
     confirmedSources,
     masterCv,

@@ -145,6 +145,15 @@ test("der Startrequest bleibt auch bei einem synthetischen 16-MB-CV klein und bi
     {
       jobText: "Kurze Stellenbeschreibung",
       generationRequestId: "application-request-0001",
+      documentDesignContext: JSON.stringify({
+        selectionConfirmedAt: "2026-08-10T08:05:00.000Z",
+        documents: [
+          { kind: "tailored-cv", presetId: "gerris", layout: "gerris", customTemplateLayout: null },
+          { kind: "cover-letter", presetId: "gerris", layout: "gerris", customTemplateLayout: null },
+        ],
+        visualizationsEnabled: false,
+        visualizations: [],
+      }),
     },
     {
       masterCvDocumentId: documentId,
@@ -155,12 +164,13 @@ test("der Startrequest bleibt auch bei einem synthetischen 16-MB-CV klein und bi
   const serialized = JSON.stringify(payload);
 
   assert.equal(APPLICATION_MASTER_CV_MAX_BYTES, 16 * 1024 * 1024);
-  assert.ok(Buffer.byteLength(serialized) < 1_000);
+  assert.ok(Buffer.byteLength(serialized) < 2_000);
   assert.equal(payload.masterCvDocumentId, documentId);
   assert.equal(payload.masterCvFingerprint, fingerprint);
   assert.equal(payload.masterCvEditRevision, editRevision);
   assert.ok(!("masterCvFile" in payload));
   assert.ok(!("cv" in payload));
+  assert.doesNotMatch(serialized, /sourceDocumentId|downloadUrl|data:image/);
 });
 
 test("die eine Client-Bereitschaft verlangt Persistenz und vollständige DOCX-Identität", () => {

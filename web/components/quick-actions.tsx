@@ -2,6 +2,7 @@
 
 import {
   Fragment,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -24,6 +25,10 @@ import {
   loadPrivateDocumentBytes,
   prepareDocxVisualization,
 } from "../lib/application-document-design";
+import {
+  applicationDocumentDesignConfigurationIssues,
+  buildApplicationGenerationDesignContext,
+} from "../lib/application-generation-design";
 import {
   applicationDocumentPreset,
   resolvedApplicationDocumentPresetId,
@@ -1304,6 +1309,8 @@ function ApplicationStudio({
   const [activeGenerationJobId, setActiveGenerationJobId] = useState<
     string | null
   >(null);
+  const [focusDesignAfterReturn, setFocusDesignAfterReturn] = useState(false);
+  const designStepRef = useRef<HTMLDivElement>(null);
   const activeGenerationJobIdRef = useRef<string | null>(null);
   const generationCancelRequested = useRef(false);
   const storedMasterCvDocument = documents.find(
@@ -1324,6 +1331,13 @@ function ApplicationStudio({
         : [],
     [research],
   );
+  const designOutputKinds: ApplicationOutputKind[] = [
+    "tailored-cv",
+    "cover-letter",
+    ...preferences.outputKinds.filter(
+      (kind) => !["tailored-cv", "cover-letter"].includes(kind),
+    ),
+  ];
   const visibleTabs = APPLICATION_TABS.filter((tab) =>
     preferences.outputKinds.some((kind) => OUTPUT_TAB_MAP[kind] === tab.key),
   );
@@ -1378,11 +1392,39 @@ function ApplicationStudio({
     assessment: initialApplication?.assessment ?? null,
     vacancyResearch: research ?? initialApplication?.vacancyResearch ?? null,
   });
+  const documentDesignConfigurationIssues =
+    applicationDocumentDesignConfigurationIssues({
+      analyses: templateAnalyses,
+      design: documentDesign,
+      documents,
+      outputKinds: designOutputKinds,
+    });
+  const documentDesignContext = buildApplicationGenerationDesignContext({
+    analyses: templateAnalyses,
+    design: documentDesign,
+    documents,
+    outputKinds: designOutputKinds,
+  });
+
+  useEffect(() => {
+    if (result || !focusDesignAfterReturn) return;
+    const frame = requestAnimationFrame(() => {
+      designStepRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      designStepRef.current?.focus({ preventScroll: true });
+      setFocusDesignAfterReturn(false);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusDesignAfterReturn, result]);
 
   const updateDocumentDesign = (
     value: Parameters<typeof normalizeApplicationDocumentDesign>[0],
+    preserveConfirmation = false,
+    preferenceValue: ApplicationGenerationPreferences = preferences,
   ) => {
-    const normalized = normalizeApplicationDocumentDesign(value);
+    const candidate = normalizeApplicationDocumentDesign(value);
+    const normalized = preserveConfirmation
+      ? candidate
+      : { ...candidate, selectionConfirmedAt: null };
     setDocumentDesign(normalized);
     if (!initialApplication) return;
     onUpdateApplication({
@@ -1395,10 +1437,22 @@ function ApplicationStudio({
         availability,
       }),
       generationPreferences: normalizeApplicationGenerationPreferences(
-        preferences,
+        preferenceValue,
       ),
       documentDesign: normalized,
     });
+  };
+
+  const confirmDocumentDesign = () => {
+    if (documentDesignConfigurationIssues.length) {
+      toast(documentDesignConfigurationIssues[0]);
+      return;
+    }
+    updateDocumentDesign(
+      { ...documentDesign, selectionConfirmedAt: new Date().toISOString() },
+      true,
+    );
+    toast("Format und Visualisierungen für die Generierung bestätigt");
   };
 
   const recordTemplateAnalysis = (
@@ -1418,12 +1472,12 @@ function ApplicationStudio({
   };
 
   const toggleOutput = (kind: ApplicationOutputKind, enabled: boolean) => {
-    setPreferences((current) => {
-      const outputKinds = enabled
-        ? [...new Set([...current.outputKinds, kind])]
-        : current.outputKinds.filter((candidate) => candidate !== kind);
-      return { ...current, outputKinds };
-    });
+    const outputKinds = enabled
+      ? [...new Set([...preferences.outputKinds, kind])]
+      : preferences.outputKinds.filter((candidate) => candidate !== kind);
+    const nextPreferences = { ...preferences, outputKinds };
+    setPreferences(nextPreferences);
+    updateDocumentDesign(documentDesign, false, nextPreferences);
   };
 
   const updateArtifactModel = (
@@ -1561,6 +1615,19 @@ function ApplicationStudio({
       toast("Bitte mindestens ein gewünschtes Ergebnis auswählen");
       return;
     }
+    const confirmedDesignContext = buildApplicationGenerationDesignContext({
+      analyses: templateAnalyses,
+      design: documentDesign,
+      documents,
+      outputKinds: designOutputKinds,
+    });
+    if (!confirmedDesignContext) {
+      toast(
+        documentDesignConfigurationIssues[0] ||
+          "Bitte Format und Visualisierungen vor der Generierung bestätigen",
+      );
+      return;
+    }
     if (
       !masterCvReady ||
       (!jobUrl.trim() && !jobText.trim()) ||
@@ -1653,6 +1720,7 @@ function ApplicationStudio({
         salaryFlexibility: normalizedPreferences.salaryFlexibility,
         mentionSalary: normalizedPreferences.mentionSalary,
         researchContext: JSON.stringify(research),
+        documentDesignContext: JSON.stringify(confirmedDesignContext),
         roleVerificationStatus: effectiveVerificationStatus,
         roleRecommendation: initialApplication?.recommendation ?? "undecided",
         roleHardExclusionCount:
@@ -1795,9 +1863,11 @@ function ApplicationStudio({
         ? activeTemplateAnalysis.profile
         : null;
     const activeVisualizations = activeDocumentKind
-      ? documentDesign.visualizations.filter((visual) =>
+      ? documentDesign.visualizationsEnabled === true
+        ? documentDesign.visualizations.filter((visual) =>
           visual.targetKinds.includes(activeDocumentKind),
         )
+        : []
       : [];
     const packageReady =
       result.status === "ready" && result.qualityReport.status === "ready";
@@ -1847,9 +1917,12 @@ function ApplicationStudio({
           if (analysis.status === "blocked") throw new Error(analysis.error);
           options.templateProfile = analysis.profile;
         }
-        const selectedVisuals = documentDesign.visualizations.filter((visual) =>
-          visual.targetKinds.includes(activeDocumentKind),
-        );
+        const selectedVisuals =
+          documentDesign.visualizationsEnabled === true
+            ? documentDesign.visualizations.filter((visual) =>
+                visual.targetKinds.includes(activeDocumentKind),
+              )
+            : [];
         const unconfirmed = selectedVisuals.find((visual) => !visual.confirmedAt);
         if (unconfirmed) {
           throw new Error(
@@ -1990,19 +2063,29 @@ function ApplicationStudio({
             </small>
           </div>
         ) : null}
-        <details className="studio-option-group">
-          <summary>Erweitert: Vorlage und Visualisierungen</summary>
-          <ApplicationDesignPanel
-            analyses={templateAnalyses}
-            design={documentDesign}
-            documents={documents}
-            onAnalysis={recordTemplateAnalysis}
-            onChange={updateDocumentDesign}
-            onSaveDocument={onSaveDocument}
-            outputKinds={preferences.outputKinds}
-            toast={toast}
-          />
-        </details>
+        <div className="application-design-result-summary">
+          <div>
+            <strong>Verwendetes Format</strong>
+            <small>
+              {applicationDocumentPreset(documentDesign.basePresetId).label} ·{" "}
+              {documentDesign.visualizationsEnabled
+                ? `${activeVisualizations.length} Visualisierungen in diesem Dokument`
+                : "ohne Visualisierungen"}
+            </small>
+          </div>
+          <button
+            className="button button-ghost"
+            onClick={() => {
+              setFocusDesignAfterReturn(true);
+              setResult(null);
+              setGenerationUsage(undefined);
+              setEditedOutputKinds([]);
+            }}
+            type="button"
+          >
+            Format ändern und neu erstellen
+          </button>
+        </div>
         {editingResult ? (
           <textarea
             aria-label={`${APPLICATION_TABS.find((tab) => tab.key === activeTab)?.label} bearbeiten`}
@@ -2783,25 +2866,26 @@ function ApplicationStudio({
           </small>
         </div>
       </details>
-      <details className="studio-option-group">
-        <summary>
-          <span>
-            <strong>Erweitert: eigene Vorlagen und Visualisierungen</strong>
-            <small>Der Standardexport bleibt einspaltig und ATS-sicher</small>
-          </span>
-          <b aria-hidden="true">Optional</b>
-        </summary>
+      <div className="studio-step" ref={designStepRef} tabIndex={-1}>
+        <span>4</span>
+        <div>
+          <strong>Format &amp; Visualisierungen</strong>
+          <small>Vor der Generierung bewusst auswählen und bestätigen</small>
+        </div>
+      </div>
+      <div>
         <ApplicationDesignPanel
           analyses={templateAnalyses}
           design={documentDesign}
           documents={documents}
           onAnalysis={recordTemplateAnalysis}
           onChange={updateDocumentDesign}
+          onConfirm={confirmDocumentDesign}
           onSaveDocument={onSaveDocument}
-          outputKinds={preferences.outputKinds}
+          outputKinds={designOutputKinds}
           toast={toast}
         />
-      </details>
+      </div>
       <p className="form-trust">
         Der ausgewählte Master-CV gilt nur für diesen Auftrag. Die Binärdatei
         wird weder in D1 noch in R2 oder der Dokumentbibliothek gespeichert;
@@ -2825,6 +2909,15 @@ function ApplicationStudio({
               <li key={issue}>{issue}</li>
             ))}
           </ul>
+        </div>
+      ) : null}
+      {!documentDesignContext ? (
+        <div className="quality-check-panel" role="status">
+          <strong>Format noch nicht freigegeben</strong>
+          <p>
+            {documentDesignConfigurationIssues[0] ||
+              "Bitte die Auswahl für Format und Visualisierungen bestätigen."}
+          </p>
         </div>
       ) : null}
       {generationProgress ? (
@@ -2873,7 +2966,8 @@ function ApplicationStudio({
           disabled={
             busy ||
             !masterCvReady ||
-            !generationRoleGate.allowed
+            !generationRoleGate.allowed ||
+            !documentDesignContext
           }
           type="submit"
         >

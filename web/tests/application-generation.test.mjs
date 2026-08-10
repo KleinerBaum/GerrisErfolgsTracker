@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   ApplicationGenerationError,
+  applicationArtifactModelInput,
   applicationModelBudget,
   applicationModelInput,
   buildApplicationEvidenceRegister,
@@ -237,6 +238,40 @@ test("dedupliziert das Master-CV-Evidenzregister und sendet keine zweite Abschni
   assert.doesNotMatch(prompt, /"sections"/);
   assert.doesNotMatch(prompt, /"safeWording"/);
   assert.match(prompt, /"evidence"/);
+});
+
+test("behandelt bestätigte Designmetadaten ausschließlich als sichere Layoutvorgaben", () => {
+  const request = generationRequestFixture();
+  request.documentDesignContext.visualizationsEnabled = true;
+  request.documentDesignContext.visualizations = [
+    {
+      title: "Kompetenzfelder",
+      altText: "Matrix der Kompetenzfelder",
+      targetKinds: ["tailored-cv"],
+      placement: "after-skills",
+    },
+  ];
+
+  const cvPrompt = applicationArtifactModelInput(
+    request,
+    "tailored-cv",
+    "draft",
+  ).prompt;
+  const letterPrompt = applicationArtifactModelInput(
+    request,
+    "cover-letter",
+    "draft",
+  ).prompt;
+
+  assert.match(cvPrompt, /Kompetenzfelder/);
+  assert.match(cvPrompt, /"layout":"gerris"/);
+  assert.doesNotMatch(letterPrompt, /Kompetenzfelder/);
+  const sourceContract = JSON.parse(cvPrompt.split("QUELLENVERTRAG:\n\n")[1]);
+  const designContract = JSON.stringify(sourceContract.preferences.documentDesign);
+  assert.doesNotMatch(
+    designContract,
+    /sourceDocumentId|downloadUrl|sourceFingerprint/,
+  );
 });
 
 test("überträgt im Reparaturlauf nur das mangelhafte Artefakt", () => {

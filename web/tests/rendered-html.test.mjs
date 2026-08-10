@@ -918,10 +918,11 @@ test("liefert die evidenzsichere Bewerbungs- und Vakanzpipeline", async () => {
   assert.doesNotMatch(actions, /warmPath/);
 });
 
-test("zeigt kompakte Faktenzeilen und paketweite Dokumentdesigns mit Einzelausnahmen", async () => {
-  const [facts, designPanel, presets, types, actions, css] = await Promise.all([
+test("zeigt kompakte Faktenzeilen und fragt das Dokumentdesign verbindlich vor der Generierung ab", async () => {
+  const [facts, designPanel, designContext, presets, types, actions, css] = await Promise.all([
     readFile(new URL("components/job-research-panel.tsx", root), "utf8"),
     readFile(new URL("components/application-design-panel.tsx", root), "utf8"),
+    readFile(new URL("lib/application-generation-design.ts", root), "utf8"),
     readFile(new URL("lib/application-document-presets.ts", root), "utf8"),
     readFile(new URL("lib/types.ts", root), "utf8"),
     readFile(new URL("components/quick-actions.tsx", root), "utf8"),
@@ -935,6 +936,9 @@ test("zeigt kompakte Faktenzeilen und paketweite Dokumentdesigns mit Einzelausna
   assert.match(facts, /disabled=\{needsEditBeforeConfirmation\}/);
   assert.match(designPanel, /Paketdesign/);
   assert.match(designPanel, /Je Dokument anpassen/);
+  assert.match(designPanel, /Ohne Visualisierung/);
+  assert.match(designPanel, /PNG\/SVG verwenden/);
+  assert.match(designPanel, /Auswahl bestätigen/);
   assert.match(designPanel, /Eigene DOCX-Vorlage hat für dieses Dokument Vorrang/);
   assert.match(designPanel, /APPLICATION_DOCUMENT_PRESETS\.map/);
   assert.match(presets, /id: "modern-stylish"/);
@@ -943,7 +947,19 @@ test("zeigt kompakte Faktenzeilen und paketweite Dokumentdesigns mit Einzelausna
   assert.match(types, /ApplicationDocumentPresetId/);
   assert.match(types, /basePresetId: ApplicationDocumentPresetId/);
   assert.match(types, /presetOverrides:\s*Record<\s*ApplicationDocumentKind/);
+  assert.match(types, /visualizationsEnabled: boolean \| null/);
+  assert.match(types, /selectionConfirmedAt: string \| null/);
+  assert.match(designContext, /buildApplicationGenerationDesignContext/);
+  assert.match(designContext, /normalizeApplicationGenerationDesignContext/);
+  assert.doesNotMatch(designContext, /downloadUrl:/);
   assert.match(actions, /resolvedApplicationDocumentPresetId/);
+  assert.match(actions, /documentDesignContext: JSON\.stringify\(confirmedDesignContext\)/);
+  assert.match(actions, /Format &amp; Visualisierungen/);
+  assert.ok(
+    actions.indexOf("Format &amp; Visualisierungen") <
+      actions.indexOf("Lebenslauf & Anschreiben erstellen"),
+  );
+  assert.doesNotMatch(actions, /Erweitert: eigene Vorlagen und Visualisierungen/);
   assert.match(actions, /profile \? "custom" : preset\.layout/);
   assert.match(css, /-webkit-line-clamp:\s*2/);
   assert.match(css, /\.document-preset-grid/);

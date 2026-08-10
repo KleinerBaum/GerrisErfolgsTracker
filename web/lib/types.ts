@@ -844,6 +844,45 @@ export type ApplicationDocumentDesign = {
   >;
   templateDocumentIds: Record<ApplicationDocumentKind, string | null>;
   visualizations: ApplicationDocumentVisualization[];
+  visualizationsEnabled: boolean | null;
+  selectionConfirmedAt: string | null;
+};
+
+export type ApplicationGenerationTemplateLayout = {
+  status: "ready" | "adapted";
+  page: {
+    width: number;
+    height: number;
+    margins: { top: number; right: number; bottom: number; left: number };
+  };
+  sizes: { body: number; title: number; heading1: number; heading2: number };
+  spacing: {
+    bodyAfter: number;
+    bodyLine: number;
+    headingBefore: number;
+    headingAfter: number;
+  };
+};
+
+export type ApplicationGenerationDocumentDesign = {
+  kind: ApplicationDocumentKind;
+  presetId: ApplicationDocumentPresetId;
+  layout: "gerris" | "modern" | "professional" | "conservative";
+  customTemplateLayout: ApplicationGenerationTemplateLayout | null;
+};
+
+export type ApplicationGenerationVisualization = {
+  title: string;
+  altText: string;
+  targetKinds: ApplicationDocumentKind[];
+  placement: ApplicationVisualizationPlacement;
+};
+
+export type ApplicationGenerationDesignContext = {
+  selectionConfirmedAt: string;
+  documents: ApplicationGenerationDocumentDesign[];
+  visualizationsEnabled: boolean;
+  visualizations: ApplicationGenerationVisualization[];
 };
 
 export type ApplicationFormality =

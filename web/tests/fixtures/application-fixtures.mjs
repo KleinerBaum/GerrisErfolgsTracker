@@ -528,6 +528,17 @@ export function generationRequestFixture() {
       availability: "",
     },
     preferences: preferencesFixture,
+    documentDesignContext: {
+      selectionConfirmedAt: "2026-08-06T08:00:00.000Z",
+      documents: [
+        { kind: "tailored-cv", presetId: "gerris", layout: "gerris", customTemplateLayout: null },
+        { kind: "cover-letter", presetId: "gerris", layout: "gerris", customTemplateLayout: null },
+        { kind: "company-brief", presetId: "gerris", layout: "gerris", customTemplateLayout: null },
+        { kind: "interview-prep", presetId: "gerris", layout: "gerris", customTemplateLayout: null },
+      ],
+      visualizationsEnabled: false,
+      visualizations: [],
+    },
     confirmedResearchFacts: [
       {
         id: "JOB-1",

@@ -9,6 +9,7 @@ import {
   newVisualizationConfiguration,
   uploadApplicationDesignFile,
 } from "../lib/application-document-design";
+import { applicationDocumentDesignConfigurationIssues } from "../lib/application-generation-design";
 import {
   analyzeDocxTemplate,
   type DocxTemplateAnalysis,
@@ -100,6 +101,7 @@ export function ApplicationDesignPanel({
   documents,
   onAnalysis,
   onChange,
+  onConfirm,
   onSaveDocument,
   outputKinds,
   toast,
@@ -109,6 +111,7 @@ export function ApplicationDesignPanel({
   documents: DocumentRef[];
   onAnalysis: (documentId: string, analysis: DocxTemplateAnalysis) => void;
   onChange: (design: ApplicationDocumentDesign) => void;
+  onConfirm: () => void;
   onSaveDocument: (document: DocumentRef) => void;
   outputKinds: ApplicationOutputKind[];
   toast: (message: string) => void;
@@ -132,6 +135,12 @@ export function ApplicationDesignPanel({
   const selectedOutputKinds = outputKinds.filter(
     (kind): kind is ApplicationDocumentKind => kind !== "application-email",
   );
+  const configurationIssues = applicationDocumentDesignConfigurationIssues({
+    analyses,
+    design,
+    documents: allDocuments,
+    outputKinds,
+  });
 
   useEffect(() => {
     const selectedIds = Object.values(design.templateDocumentIds).filter(
@@ -255,18 +264,27 @@ export function ApplicationDesignPanel({
   };
 
   return (
-    <details className="studio-option-group application-design-panel">
-      <summary>
+    <section
+      aria-labelledby="application-design-title"
+      className="application-design-panel required-design-panel"
+    >
+      <div className="application-design-heading">
         <span>
-          <strong>Format &amp; Visualisierungen</strong>
+          <strong id="application-design-title">Format &amp; Visualisierungen</strong>
           <small>
             {applicationDocumentPreset(design.basePresetId).label} ·{" "}
             {Object.values(design.templateDocumentIds).filter(Boolean).length} eigene Vorlagen ·{" "}
-            {design.visualizations.length} Visualisierungen
+            {design.visualizationsEnabled
+              ? `${design.visualizations.length} Visualisierungen`
+              : design.visualizationsEnabled === false
+                ? "ohne Visualisierungen"
+                : "Visualisierungen noch nicht entschieden"}
           </small>
         </span>
-        <b aria-hidden="true">Anpassen</b>
-      </summary>
+        <b className={design.selectionConfirmedAt ? "is-confirmed" : ""}>
+          {design.selectionConfirmedAt ? "Bestätigt" : "Pflichtauswahl"}
+        </b>
+      </div>
       <div className="studio-option-content application-design-content">
         <div className="design-privacy-note">
           <strong>Nur das visuelle System wird übernommen.</strong>
@@ -429,60 +447,97 @@ export function ApplicationDesignPanel({
           <div className="design-section-heading">
             <div>
               <strong id="visual-library-title">PNG-/SVG-Visualisierungen</strong>
-              <small>Inline, proportional und auf die Seite begrenzt.</small>
+              <small>Bitte ausdrücklich mit oder ohne Grafiken fortfahren.</small>
             </div>
-            <button
-              className="button button-soft"
-              disabled={busy}
-              onClick={() => visualInput.current?.click()}
-              type="button"
-            >
-              PNG oder SVG hochladen
-            </button>
-            <input
-              accept=".png,.svg"
-              className="visually-hidden"
-              onChange={(event) => void handleVisualUpload(event.target.files?.[0])}
-              ref={visualInput}
-              type="file"
-            />
           </div>
-          {visuals.length ? (
-            <div className="design-library-picker">
-              <select
-                aria-label="Visualisierung aus Bibliothek"
-                onChange={(event) => setLibraryVisualId(event.target.value)}
-                value={libraryVisualId}
-              >
-                <option value="">Aus privater Bibliothek wählen …</option>
-                {visuals.map((visual) => (
-                  <option key={visual.id} value={visual.id}>{visual.name}</option>
-                ))}
-              </select>
-              <button
-                className="button button-ghost"
-                disabled={!libraryVisualId || design.visualizations.some((item) => item.sourceDocumentId === libraryVisualId)}
-                onClick={() => {
-                  const source = visuals.find((visual) => visual.id === libraryVisualId);
-                  if (!source) return;
-                  onChange({
-                    ...design,
-                    visualizations: [
-                      ...design.visualizations,
-                      newVisualizationConfiguration(source, selectedOutputKinds),
-                    ],
-                  });
-                  setLibraryVisualId("");
-                }}
-                type="button"
-              >
-                Hinzufügen
-              </button>
-            </div>
-          ) : null}
+          <fieldset className="design-visualization-choice">
+            <legend>Visualisierungen für dieses Paket</legend>
+            <label
+              className={design.visualizationsEnabled === false ? "is-selected" : ""}
+            >
+              <input
+                checked={design.visualizationsEnabled === false}
+                name="application-visualizations-enabled"
+                onChange={() => onChange({ ...design, visualizationsEnabled: false })}
+                type="radio"
+              />
+              <span>
+                <strong>Ohne Visualisierung</strong>
+                <small>Einspaltige Dokumente ohne eingebettete PNG-/SVG-Grafiken.</small>
+              </span>
+            </label>
+            <label
+              className={design.visualizationsEnabled === true ? "is-selected" : ""}
+            >
+              <input
+                checked={design.visualizationsEnabled === true}
+                name="application-visualizations-enabled"
+                onChange={() => onChange({ ...design, visualizationsEnabled: true })}
+                type="radio"
+              />
+              <span>
+                <strong>PNG/SVG verwenden</strong>
+                <small>Nur ausdrücklich bestätigte private Grafiken werden eingebettet.</small>
+              </span>
+            </label>
+          </fieldset>
 
-          <div className="visual-configuration-list">
-            {design.visualizations.map((visual) => {
+          {design.visualizationsEnabled === true ? (
+            <>
+              <div className="design-section-heading">
+                <small>Inline, proportional und auf die Seite begrenzt.</small>
+                <button
+                  className="button button-soft"
+                  disabled={busy}
+                  onClick={() => visualInput.current?.click()}
+                  type="button"
+                >
+                  PNG oder SVG hochladen
+                </button>
+                <input
+                  accept=".png,.svg"
+                  className="visually-hidden"
+                  onChange={(event) => void handleVisualUpload(event.target.files?.[0])}
+                  ref={visualInput}
+                  type="file"
+                />
+              </div>
+              {visuals.length ? (
+                <div className="design-library-picker">
+                  <select
+                    aria-label="Visualisierung aus Bibliothek"
+                    onChange={(event) => setLibraryVisualId(event.target.value)}
+                    value={libraryVisualId}
+                  >
+                    <option value="">Aus privater Bibliothek wählen …</option>
+                    {visuals.map((visual) => (
+                      <option key={visual.id} value={visual.id}>{visual.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    className="button button-ghost"
+                    disabled={!libraryVisualId || design.visualizations.some((item) => item.sourceDocumentId === libraryVisualId)}
+                    onClick={() => {
+                      const source = visuals.find((visual) => visual.id === libraryVisualId);
+                      if (!source) return;
+                      onChange({
+                        ...design,
+                        visualizations: [
+                          ...design.visualizations,
+                          newVisualizationConfiguration(source, selectedOutputKinds),
+                        ],
+                      });
+                      setLibraryVisualId("");
+                    }}
+                    type="button"
+                  >
+                    Hinzufügen
+                  </button>
+                </div>
+              ) : null}
+
+              <div className="visual-configuration-list">
+                {design.visualizations.map((visual) => {
               const source = allDocuments.find(
                 (document) => document.id === visual.sourceDocumentId,
               );
@@ -585,14 +640,52 @@ export function ApplicationDesignPanel({
                   </div>
                 </article>
               );
-            })}
-          </div>
-          {!design.visualizations.length ? (
-            <p className="design-empty-state">Noch keine Visualisierung konfiguriert.</p>
-          ) : null}
+                })}
+              </div>
+              {!design.visualizations.length ? (
+                <p className="design-empty-state">Noch keine Visualisierung konfiguriert.</p>
+              ) : null}
+            </>
+          ) : design.visualizationsEnabled === false ? (
+            <p className="design-empty-state">
+              Für diese Generierung werden keine Visualisierungen verwendet.
+              {design.visualizations.length
+                ? ` ${design.visualizations.length} vorhandene Konfigurationen bleiben für später erhalten.`
+                : ""}
+            </p>
+          ) : (
+            <p className="design-empty-state">
+              Wähle bewusst aus, ob das Paket Visualisierungen enthalten soll.
+            </p>
+          )}
         </section>
         {message ? <p className="form-error" role="alert">{message}</p> : null}
+        <div
+          className={`design-generation-confirmation${
+            design.selectionConfirmedAt ? " is-confirmed" : ""
+          }`}
+        >
+          <div>
+            <strong>
+              {design.selectionConfirmedAt
+                ? "Auswahl für die Generierung bestätigt"
+                : "Format vor der Generierung bestätigen"}
+            </strong>
+            <small>
+              {configurationIssues[0] ||
+                "Änderungen an Format, Vorlagen, Ergebnissen oder Grafiken verlangen eine neue Bestätigung."}
+            </small>
+          </div>
+          <button
+            className="button button-primary"
+            disabled={busy || configurationIssues.length > 0}
+            onClick={onConfirm}
+            type="button"
+          >
+            {design.selectionConfirmedAt ? "Erneut bestätigen" : "Auswahl bestätigen"}
+          </button>
+        </div>
       </div>
-    </details>
+    </section>
   );
 }

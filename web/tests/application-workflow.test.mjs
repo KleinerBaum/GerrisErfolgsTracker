@@ -176,6 +176,8 @@ test("ergänzt alte Bewerbungszustände abwärtskompatibel um das Dokumentdesign
       "interview-prep": null,
     },
     visualizations: [],
+    visualizationsEnabled: null,
+    selectionConfirmedAt: null,
   });
 });
 
@@ -203,6 +205,8 @@ test("normalisiert Paketdesign, Einzelausnahmen, Vorlagen und Visualisierungen",
         confirmedAt: "2026-08-06T10:00:00.000Z",
       },
     ],
+    visualizationsEnabled: true,
+    selectionConfirmedAt: "2026-08-06T10:01:00.000Z",
   });
 
   assert.equal(design.templateDocumentIds["tailored-cv"], "template-1");
@@ -225,6 +229,8 @@ test("normalisiert Paketdesign, Einzelausnahmen, Vorlagen und Visualisierungen",
   ]);
   assert.equal(design.visualizations[0].placement, "after-skills");
   assert.equal(design.visualizations[0].confirmedAt, "2026-08-06T10:00:00.000Z");
+  assert.equal(design.visualizationsEnabled, true);
+  assert.equal(design.selectionConfirmedAt, "2026-08-06T10:01:00.000Z");
 });
 
 test("verwirft ungültige Presets und behält eigene Vorlagen als getrennten Vorrang", () => {
