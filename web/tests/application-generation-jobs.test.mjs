@@ -301,7 +301,7 @@ test("gibt Zusatztexte erst nach bestandener Einzelprüfung der Kerndokumente fr
   );
 });
 
-test("liefert nach dem einzigen Reparaturlauf ein erklärtes Qualitätsversagen", async () => {
+test("schließt nach dem einzigen Reparaturlauf mit sichtbaren Qualitätshinweisen ab", async () => {
   const { store, model, service } = harness();
   const request = requestFor();
   await service.start("owner-a", request);
@@ -311,17 +311,14 @@ test("liefert nach dem einzigen Reparaturlauf ein erklärtes Qualitätsversagen"
   await service.poll("owner-a", "application-job-1");
   model.queue("resp_test_3", completed(invalidCvOutput(request)));
 
-  await assert.rejects(
-    () => service.poll("owner-a", "application-job-1"),
-    (error) => {
-      assert.ok(error instanceof ApplicationJobError);
-      assert.equal(error.status, 422);
-      assert.ok(error.issues.some((issue) => /Umfang/.test(issue)));
-      return true;
-    },
-  );
+  const result = await service.poll("owner-a", "application-job-1");
+  assert.equal(result.status, "ready");
+  assert.equal(result.result.status, "needs_review");
+  assert.equal(result.result.qualityReport.status, "needs_review");
+  assert.ok(result.result.qualityReport.issues.some((issue) => /Umfang/.test(issue)));
   const terminal = await store.get("application-job-1", "owner-a");
-  assert.equal(terminal.terminalError.status, 422);
+  assert.equal(terminal.terminalError, null);
+  assert.equal(terminal.result.status, "needs_review");
   assert.deepEqual(
     terminal.usage.map((entry) => entry.artifact),
     ["tailored-cv", "cover-letter", "tailored-cv"],

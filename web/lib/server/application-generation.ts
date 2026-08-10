@@ -1,4 +1,5 @@
 import {
+  applicationPackageNeedsReview,
   buildApplicationQualityReport,
   readyApplicationPackage,
   type ApplicationArtifactKey,
@@ -1190,6 +1191,7 @@ export function assembleApplicationArtifactDrafts(
 
 export type ApplicationArtifactSetEvaluation =
   | { status: "ready"; result: ApplicationPackageV4 }
+  | { status: "needs_review"; result: ApplicationPackageV4 }
   | {
       status: "repair_required";
       draft: GeneratedApplicationPackage;
@@ -1213,7 +1215,10 @@ export function evaluateApplicationArtifactDraft(
     { [draft.artifact]: draft },
     attempt,
   );
-  return evaluation.status === "ready" ? [] : evaluation.issues;
+  if (evaluation.status === "ready") return [];
+  return evaluation.status === "needs_review"
+    ? evaluation.result.qualityReport.issues
+    : evaluation.issues;
 }
 
 export function evaluateApplicationArtifactSet(
@@ -1230,6 +1235,17 @@ export function evaluateApplicationArtifactSet(
     attempt,
   );
   if (report.issues.length) {
+    if (attempt === 2) {
+      const needsReview = applicationPackageNeedsReview(assembled.generated, report);
+      return {
+        status: "needs_review",
+        result: {
+          ...needsReview,
+          schemaVersion: 4,
+          blocks: assembled.blocks,
+        },
+      };
+    }
     return {
       status: "repair_required",
       draft: assembled.generated,

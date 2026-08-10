@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  applicationPackageNeedsReview,
   applicationPackageQualityIssues,
   buildApplicationQualityReport,
   markApplicationPackageNeedsReview,
@@ -63,6 +64,27 @@ test("verwirft unvollständigen Kurz-CV, Platzhalter und abgeschnittene Aussagen
   assert.ok(issues.some((issue) => /Kürzungsellipsen/.test(issue)));
   assert.ok(issues.some((issue) => /belegte Station fehlt/.test(issue)));
   assert.ok(issues.some((issue) => /zu wenig intern belegte Aussagen/.test(issue)));
+});
+
+test("schließt einen vollständigen Entwurf mit Prüfhinweisen statt eines Fehlers ab", () => {
+  const draft = makeValidDraft();
+  draft.tailoredCv = "# Lebenslauf\n\nZu kurz.";
+  draft.evidenceMap = draft.evidenceMap.filter(
+    (mapping) => mapping.artifact !== "tailoredCv",
+  );
+  const report = buildApplicationQualityReport(
+    draft,
+    allOutputKinds,
+    "two_pages",
+    qualityContextFixture,
+    2,
+  );
+
+  const result = applicationPackageNeedsReview(draft, report);
+
+  assert.equal(result.status, "needs_review");
+  assert.equal(result.qualityReport.status, "needs_review");
+  assert.ok(result.qualityReport.issues.some((issue) => /Umfang/.test(issue)));
 });
 
 test("weist interne Fit-Bewertungen, kombinierte Kontaktlabels und Satzzeichenfehler ab", () => {

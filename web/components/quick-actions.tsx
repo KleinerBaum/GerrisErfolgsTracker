@@ -944,6 +944,7 @@ function EmailComposer({
 function isApplicationPackage(value: unknown): value is ApplicationPackage {
   if (!value || typeof value !== "object") return false;
   const result = value as Partial<ApplicationPackage>;
+  const needsReview = result.status === "needs_review";
   return (
     typeof result.coverLetter === "string" &&
     typeof result.tailoredCv === "string" &&
@@ -955,12 +956,16 @@ function isApplicationPackage(value: unknown): value is ApplicationPackage {
     Array.isArray(result.openQuestions) &&
     Array.isArray(result.sources) &&
     Array.isArray(result.evidenceMap) &&
-    result.status === "ready" &&
+    (result.status === "ready" || needsReview) &&
     Boolean(result.qualityReport) &&
     typeof result.qualityReport === "object" &&
-    result.qualityReport.status === "ready" &&
+    (needsReview
+      ? result.qualityReport.status === "needs_review"
+      : result.qualityReport.status === "ready") &&
     Array.isArray(result.qualityReport.issues) &&
-    result.qualityReport.issues.length === 0
+    (needsReview
+      ? result.qualityReport.issues.length > 0
+      : result.qualityReport.issues.length === 0)
   );
 }
 
@@ -1715,14 +1720,20 @@ function ApplicationStudio({
           }),
         });
       }
-      setGenerationProgress("Qualität prüfen: Das verbindliche Gate ist bestanden …");
+      setGenerationProgress(
+        payload.result.status === "ready"
+          ? "Qualität prüfen: Das verbindliche Gate ist bestanden …"
+          : "Entwurf abgeschlossen: Qualitätshinweise werden angezeigt …",
+      );
       setResult(payload.result);
       setGenerationUsage(payload.usage);
       setEditedOutputKinds([]);
       toast(
-        action === "manual_review"
-          ? "Änderungen erneut geprüft und freigegeben"
-          : "Versandfertiges Bewerbungspaket geprüft und freigegeben",
+        payload.result.status === "ready"
+          ? action === "manual_review"
+            ? "Änderungen erneut geprüft und freigegeben"
+            : "Versandfertiges Bewerbungspaket geprüft und freigegeben"
+          : "Entwurf erstellt – bitte die Qualitätshinweise prüfen",
       );
     } catch (error) {
       if (!generationError.length) {
@@ -1901,6 +1912,15 @@ function ApplicationStudio({
             Angaben ändern
           </button>
         </div>
+        {!packageReady ? (
+          <div className="quality-check-panel" role="status">
+            <strong>Entwurf abgeschlossen – noch nicht freigegeben</strong>
+            <p>
+              Die Generierung ist abgeschlossen. Bitte die Hinweise bearbeiten und
+              anschließend mit KI und Evidenz erneut prüfen.
+            </p>
+          </div>
+        ) : null}
         <div className="result-tabs" role="tablist">
           {visibleTabs.map((tab) => (
             <button
@@ -2125,6 +2145,16 @@ function ApplicationStudio({
             · Versuch {result.qualityReport.attempt} · Evidenzzuordnung{" "}
             {result.qualityReport.metrics.evidenceCoveragePercent}%
           </p>
+          {!packageReady && result.qualityReport.issues.length ? (
+            <>
+              <strong>Hinweise vor dem Versand</strong>
+              <ul>
+                {result.qualityReport.issues.map((issue) => (
+                  <li key={issue}>{issue}</li>
+                ))}
+              </ul>
+            </>
+          ) : null}
           {generationUsage ? (
             <div className="model-usage-summary">
               <p>

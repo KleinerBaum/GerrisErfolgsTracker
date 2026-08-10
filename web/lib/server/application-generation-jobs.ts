@@ -622,7 +622,7 @@ export class ApplicationGenerationJobService {
           candidate.artifact === item.artifact
             ? {
                 ...candidate,
-                status: failedAfterReview ? candidate.status : "repair_pending",
+                status: failedAfterReview ? "ready" : "repair_pending",
                 stage: failedAfterReview ? candidate.stage : "repair",
                 responseId: "",
                 draft,
@@ -634,16 +634,6 @@ export class ApplicationGenerationJobService {
             : candidate,
         );
         next.issues = [...new Set([...next.issues, ...artifactIssues])];
-        if (failedAfterReview) {
-          return this.storeTerminalError(next, {
-            status: 422,
-            message:
-              item.stage === "manual_review"
-                ? "Die manuell bearbeitete Fassung hat die erneute KI-/Evidenzprüfung nicht bestanden."
-                : `Das Ergebnis ${item.artifact} hat auch nach dem einmaligen Reparaturversuch die Qualitätsprüfung nicht bestanden.`,
-            issues: artifactIssues,
-          });
-        }
         continue;
       }
       next.work = next.work.map((candidate) =>
@@ -706,13 +696,16 @@ export class ApplicationGenerationJobService {
       }
       throw error;
     }
-    if (evaluation.status === "ready") {
+    if (
+      evaluation.status === "ready" ||
+      evaluation.status === "needs_review"
+    ) {
       const now = new Date(this.timestampAfter(job.updatedAt));
       const completed: ApplicationGenerationJob = {
         ...next,
         draft: evaluation.result,
         result: evaluation.result,
-        issues: [],
+        issues: evaluation.result.qualityReport.issues,
         completedAt: now.toISOString(),
         updatedAt: now.toISOString(),
         expiresAt: new Date(
@@ -729,15 +722,6 @@ export class ApplicationGenerationJobService {
         );
       }
       return terminalResult(completed);
-    }
-
-    if (next.request.manualDraft) {
-      return this.storeTerminalError(next, {
-        status: 422,
-        message:
-          "Die manuell bearbeitete Fassung hat die erneute KI-/Evidenzprüfung nicht bestanden.",
-        issues: evaluation.issues,
-      });
     }
     const affected = applicationArtifactsForIssues(
       evaluation.issues,

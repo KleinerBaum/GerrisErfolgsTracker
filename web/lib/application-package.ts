@@ -775,6 +775,27 @@ export function readyApplicationPackage(
   };
 }
 
+/**
+ * Liefert einen vollständigen Entwurf zurück, der erst nach einer sichtbaren
+ * manuellen Überarbeitung und erneuten Prüfung versendet werden darf.
+ */
+export function applicationPackageNeedsReview(
+  value: GeneratedApplicationPackage,
+  report: ApplicationQualityReport,
+): ApplicationPackage {
+  if (!report.issues.length) {
+    throw new Error("Ein fehlerfreies Bewerbungspaket benötigt keine manuelle Prüfung.");
+  }
+  return {
+    ...value,
+    status: "needs_review",
+    qualityReport: {
+      ...report,
+      status: "needs_review",
+    },
+  };
+}
+
 export function markApplicationPackageNeedsReview(
   value: ApplicationPackage,
 ): ApplicationPackage {
